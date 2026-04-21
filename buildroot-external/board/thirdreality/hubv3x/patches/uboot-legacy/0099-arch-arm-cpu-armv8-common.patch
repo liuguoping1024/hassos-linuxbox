@@ -1,0 +1,908 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/a32_kernel_pre_entry.S b/arch/arm/cpu/armv8/a32_kernel_pre_entry.S
+--- a/arch/arm/cpu/armv8/a32_kernel_pre_entry.S	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/cpu/armv8/a32_kernel_pre_entry.S	2026-02-09 11:25:46.912990947 +0800
+@@ -0,0 +1,105 @@
++/*
++* Copyright (C) 2017 Amlogic, Inc. All rights reserved.
++* *
++This program is free software; you can redistribute it and/or modify
++* it under the terms of the GNU General Public License as published by
++* the Free Software Foundation; either version 2 of the License, or
++* (at your option) any later version.
++* *
++This program is distributed in the hope that it will be useful, but WITHOUT
++* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++* FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
++* more details.
++* *
++You should have received a copy of the GNU General Public License along
++* with this program; if not, write to the Free Software Foundation, Inc.,
++* 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++* *
++Description:
++*/
++
++#include <asm-offsets.h>
++#include <config.h>
++#include <version.h>
++#include <asm/macro.h>
++#include <linux/linkage.h>
++
++#define HCR_RW		(1 << 31)
++#define HCR_TGE		(1 << 27)
++#define HCR_E2H		(1 << 34)
++
++
++/* AArch32 SPSR*/
++#define AARCH32_SPSR_MODE      (3 << 0)
++#define AARCH32_SPSR_STATE     (1 << 4)
++#define AARCH32_SPSR_DAIF      (7 << 6)
++
++/*
++ * void jump_to_a32_kernel(kernel_ep, machid, dtb pointer)
++*/
++ENTRY(jump_to_a32_kernel)
++	mov x20, x0
++	mov x21, x1
++	mov x22, x2
++
++	mrs	x0, sctlr_el2
++	bic	x0, x0, #(1 << 25)
++	msr	sctlr_el2, x0
++
++	mov	x2, xzr
++
++	/* sctlr_el1 */
++	mov	x0, #0x0878			// Set/clear RES{1,0} bits
++	movk	x0, #0x00c5, lsl #16	// Clear EE and E0E on LE systems
++	msr	sctlr_el1, x0
++
++	/* Generic timers. */
++	mrs	x0, cnthctl_el2
++	orr	x0, x0, #3			// Enable EL1 physical timers
++	msr	cnthctl_el2, x0
++	msr	cntvoff_el2, xzr		// Clear virtual offset
++
++#if 0
++	/* Populate ID registers. */
++	mrs	x0, midr_el1
++	mrs	x1, mpidr_el1
++	msr	vpidr_el2, x0
++	msr	vmpidr_el2, x1
++
++	/* Coprocessor traps. */
++	mov	x0, #0x33ff
++	msr	cptr_el2, x0			// Disable copro. traps to EL2
++
++	msr	hstr_el2, xzr			// Disable CP15 traps to EL2
++
++	/* EL2 debug */
++	mrs	x0, id_aa64dfr0_el1		// Check ID_AA64DFR0_EL1 PMUVer
++	sbfx	x0, x0, #8, #4
++	cmp	x0, #1
++	b.lt	4f				// Skip if no PMU present
++	mrs	x0, pmcr_el0			// Disable debug access traps
++	ubfx	x0, x0, #11, #5			// to EL2 and allow access to
++4:
++	csel	x0, xzr, x0, lt			// all PMU counters from EL1
++	msr	mdcr_el2, x0			// (if they exist)
++
++	/* Stage-2 translation */
++	msr	vttbr_el2, xzr
++#endif
++
++	/* Hyp configuration. */
++	mov	x0, #0			// 32-bit EL1 HCR_EL2.RW=0
++	msr	hcr_el2, x0
++	isb
++
++	/* spsr */
++	mov x0, #(AARCH32_SPSR_MODE | \
++				AARCH32_SPSR_STATE  | \
++				AARCH32_SPSR_DAIF)
++	msr	spsr_el2, x0
++	msr	elr_el2, x20
++	mov x0, #0
++	mov x1, x21
++	mov x2, x22
++	eret
++ENDPROC(jump_to_a32_kernel)
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/board_id.c b/arch/arm/cpu/armv8/board_id.c
+--- a/arch/arm/cpu/armv8/board_id.c	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/cpu/armv8/board_id.c	2026-02-09 11:25:46.936992256 +0800
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * arch/arm/cpu/armv8/board_id.c
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#include <common.h>
++#include <asm/arch/io.h>
++#include <asm/arch/board_id.h>
++#include <asm/arch/secure_apb.h>
++
++__weak unsigned int get_board_id(void)
++{
++	unsigned int board_id = 0;
++	board_id = (readl(P_AO_SEC_GP_CFG0) >> 8 ) & 0xFF;
++	return board_id;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/cache_v8.c b/arch/arm/cpu/armv8/cache_v8.c
+--- a/arch/arm/cpu/armv8/cache_v8.c	2026-04-02 18:17:40.823486782 +0800
++++ b/arch/arm/cpu/armv8/cache_v8.c	2026-02-09 11:25:46.936992256 +0800
+@@ -18,14 +18,18 @@
+ 	u64 value;
+ 
+ 	value = section | PMD_TYPE_SECT | PMD_SECT_AF;
++#ifdef CONFIG_CMD_AML_MTEST
++	if (memory_type == MT_NORMAL)
++		value |= PMD_SECT_S;
++#endif
+ 	value |= PMD_ATTRINDX(memory_type);
+ 	page_table[index] = value;
+ }
+ 
+ /* to activate the MMU we need to set up virtual memory */
+-static void mmu_setup(void)
++void mmu_setup(void)
+ {
+-	int i, j, el;
++	u64 i, j, el;
+ 	bd_t *bd = gd->bd;
+ 	u64 *page_table = (u64 *)gd->arch.tlb_addr;
+ 
+@@ -38,11 +42,28 @@
+ 	/* Setup an identity-mapping for all RAM space */
+ 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
+ 		ulong start = bd->bi_dram[i].start;
++		/* plus CONFIG_SYS_MEM_TOP_HIDE, for all ddr need cached */
++#if defined(CONFIG_SYS_MEM_TOP_HIDE)
++		ulong end = bd->bi_dram[i].start + bd->bi_dram[i].size + CONFIG_SYS_MEM_TOP_HIDE;
++#else
+ 		ulong end = bd->bi_dram[i].start + bd->bi_dram[i].size;
+-		for (j = start >> SECTION_SHIFT;
+-		     j < end >> SECTION_SHIFT; j++) {
+-			set_pgtable_section(page_table, j, j << SECTION_SHIFT,
+-					    MT_NORMAL);
++#endif
++		end &= 0xF8000000;
++		if ((end >> (SECTION_SHIFT-2)) & 1) {
++			/* odd multiple of 128MB, align to 256M */
++			end += (SECTION_SIZE>>2);
++		}
++		if ((end >> (SECTION_SHIFT-1)) & 1) {
++			/* odd multiple of 256MB, align to 512M */
++			end += (SECTION_SIZE>>1);
++		}
++		printf("mmu cfg end: 0x%lx\n", end);
++		if (end == 0x100000000) {
++			end -= SECTION_SIZE;
++		}
++		printf("mmu cfg end: 0x%lx\n", end);
++		for (j = start >> SECTION_SHIFT; j < end >> SECTION_SHIFT; j++) {
++			set_pgtable_section(page_table, j, j << SECTION_SHIFT, MT_NORMAL);
+ 		}
+ 	}
+ 
+@@ -126,7 +147,8 @@
+ 
+ 	set_sctlr(sctlr & ~(CR_C|CR_M));
+ 
+-	flush_dcache_all();
++	__asm_flush_dcache_all();
++	flush_l3_cache();
+ 	__asm_invalidate_tlb_all();
+ }
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/cpu_id.c b/arch/arm/cpu/armv8/cpu_id.c
+--- a/arch/arm/cpu/armv8/cpu_id.c	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/cpu/armv8/cpu_id.c	2026-02-09 11:25:46.936992256 +0800
+@@ -0,0 +1,52 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * arch/arm/cpu/armv8/cpu_id.c
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#include <common.h>
++#include <asm/cpu_id.h>
++#include <asm/arch/secure_apb.h>
++#include <asm/arch/io.h>
++
++/**
++ * TODO: This should be moved to a RO region of registers or SRAM that
++ * provides static system information that's needed across all software
++ *
++ * Chip ID copy to avoid unnecessary message exchange.
++ */
++chip_id_t aml_chip_id = { 0, { 0 } };
++
++cpu_id_t __attribute__((weak)) get_cpu_id(void)
++{
++	cpu_id_t cpu_id;
++	unsigned int cpu_id_reg = readl(P_AO_SEC_SD_CFG8);
++	cpu_id.reserve = 0;
++	cpu_id.family_id = (cpu_id_reg >> 24) & (0XFF);
++	cpu_id.package_id = (cpu_id_reg >> 16) & (0XF0);
++	cpu_id.chip_rev = (cpu_id_reg >> 8) & (0XFF);
++	cpu_id.layout_ver = (cpu_id_reg) & (0XF);
++	return cpu_id;
++}
++
++int get_chip_id(unsigned char *buff, unsigned int size)
++{
++	int rc = 0;
++
++	if (buff == NULL || size < 16)
++		return -1;
++
++	if (aml_chip_id.version == 0) {
++		/* Chip ID has not been fetched yet */
++		rc = __get_chip_id(&aml_chip_id.chipid[0], 16);
++
++		/* Mark version if chip ID is fetched successfully */
++		if (rc == 0)
++			aml_chip_id.version = 2;
++	}
++
++	memcpy(buff, &aml_chip_id.chipid[0], 16);
++	return rc;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/exceptions.S b/arch/arm/cpu/armv8/exceptions.S
+--- a/arch/arm/cpu/armv8/exceptions.S	2026-04-02 18:17:40.823486782 +0800
++++ b/arch/arm/cpu/armv8/exceptions.S	2026-02-09 11:25:46.936992256 +0800
+@@ -38,14 +38,18 @@
+ 	switch_el x11, 3f, 2f, 1f
+ 3:	mrs	x1, esr_el3
+ 	mrs	x2, elr_el3
++	mrs	x3, far_el3
+ 	b	0f
+ 2:	mrs	x1, esr_el2
+ 	mrs	x2, elr_el2
++	mrs	x3, far_el2
+ 	b	0f
+ 1:	mrs	x1, esr_el1
+ 	mrs	x2, elr_el1
++	mrs	x3, far_el1
+ 0:
+ 	stp	x2, x0, [sp, #-16]!
++	mov	x2, x3
+ 	mov	x0, sp
+ .endm
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/hard_sha2.c b/arch/arm/cpu/armv8/hard_sha2.c
+--- a/arch/arm/cpu/armv8/hard_sha2.c	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/cpu/armv8/hard_sha2.c	2026-02-09 11:25:46.960993564 +0800
+@@ -0,0 +1,266 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * arch/arm/cpu/armv8/hard_sha2.c
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#include <common.h>
++#include <linux/string.h>
++#include <u-boot/sha256.h>
++#include <asm/arch/secure_apb.h>
++
++
++#ifndef __AP_DMA_H__
++#define __AP_DMA_H__
++
++
++typedef struct dma_dsc {
++	union {
++		uint32_t d32;
++		struct {
++		    unsigned length:17;
++		    unsigned irq:1;
++		    unsigned eoc:1;
++		    unsigned loop:1;
++		    unsigned mode:4;
++		    unsigned begin:1;
++		    unsigned end:1;
++		    unsigned op_mode:2;
++		    unsigned enc_sha_only:1;
++		    unsigned block:1;
++		    unsigned error:1;
++		    unsigned owner:1;
++		} b;
++	} dsc_cfg;
++	uint32_t src_addr;
++	uint32_t tgt_addr;
++} dma_dsc_t;
++
++#endif /* __AP_DMA_H__ */
++
++static sha2_ctx *cur_ctx;
++
++static void hw_init(uint32_t is224)
++{
++	cur_ctx->digest_len = is224 ? 224 : 256;
++	cur_ctx->tot_len = 0;
++}
++
++static void hw_update(const uint8_t *input, uint32_t ilen,
++		      uint8_t *hash, uint8_t last_update)
++{
++	dma_dsc_t dsc;
++	unsigned char szTempSHA2[32];
++
++	if (!last_update && (ilen % 64)) {
++		serial_puts("Err:sha5\n");
++		// sha2 usage problem
++		return;
++	}
++
++	struct {
++		unsigned long lSource;
++		unsigned long lTarget;
++		unsigned int  nLength;
++		unsigned int nBlkFlag;
++	}arrSteps[2];
++
++	unsigned int index = 0;
++	memset((void *)arrSteps, 0, sizeof(arrSteps));
++
++	arrSteps[0].lSource = (unsigned long)input;
++
++	arrSteps[0].lTarget = (unsigned long)hash;
++	arrSteps[1].lTarget = (unsigned long)szTempSHA2;
++
++	int nStep_len = (128<<10)- 64; //17bit length
++	/*If input length bigger than (128KB - 64bytes),default use block mode is 1. */
++
++	if (ilen > nStep_len)
++	{
++		arrSteps[0].nLength = ilen >> 9;
++		arrSteps[0].nBlkFlag = 1;
++		arrSteps[1].lSource = arrSteps[0].lSource + (arrSteps[0].nLength << 9);
++		arrSteps[1].nLength = ilen % 512;
++		arrSteps[1].nBlkFlag = 0;
++	}
++	else
++	{
++		arrSteps[0].nLength = ilen;
++		arrSteps[0].nBlkFlag = 0;
++	}
++
++	for (index = 0; index < sizeof(arrSteps) / sizeof(arrSteps[0]); index++)
++	{
++		dsc.src_addr = arrSteps[index].lSource;
++		dsc.tgt_addr = arrSteps[index].lTarget;
++		dsc.dsc_cfg.d32 = 0;
++		dsc.dsc_cfg.b.length = arrSteps[index].nLength;
++		dsc.dsc_cfg.b.enc_sha_only = 1;
++		dsc.dsc_cfg.b.mode = cur_ctx->digest_len == 224 ? 7 : 6;
++		dsc.dsc_cfg.b.begin = cur_ctx->tot_len == 0; // first
++		dsc.dsc_cfg.b.end = last_update;
++		dsc.dsc_cfg.b.eoc = 1;
++		dsc.dsc_cfg.b.owner = 1;
++		dsc.dsc_cfg.b.block = arrSteps[index].nBlkFlag;
++
++		flush_dcache_range((unsigned long)&dsc,(unsigned long)&dsc+sizeof(dsc));
++		invalidate_dcache_range((unsigned long)dsc.tgt_addr,(unsigned long)dsc.tgt_addr + 32);
++
++		*P_DMA_STS0 = 0xf;
++		*P_DMA_T0 = (uint64_t)&dsc | 2;
++
++		if (arrSteps[index].nBlkFlag)
++		{
++			cur_ctx->tot_len += arrSteps[index].nLength << 9;
++		}
++		else
++			cur_ctx->tot_len += arrSteps[index].nLength;
++
++		while (*P_DMA_STS0 == 0);
++
++		if (!dsc.dsc_cfg.b.block)
++			return;
++	}
++}
++
++static void SHA2_HW_init(sha2_ctx *ctx, uint32_t digest_len)
++{
++	if (cur_ctx != NULL) {
++		serial_puts("Err:sha4\n");
++		// sha2 usage problem
++		return;
++	}
++	cur_ctx = ctx;
++
++	hw_init(digest_len == 224);
++
++	ctx->len = 0;
++}
++
++static void SHA2_HW_update(sha2_ctx *ctx, const uint8_t *data, uint32_t len)
++{
++	unsigned int fill_len, data_len, rem_len,offset;
++
++	if (cur_ctx != ctx) {
++		serial_puts("Err:sha3\n");
++		// sha2 usage problem
++		return;
++	}
++	/* This method updates the hash for the input data in blocks, except the last
++	 * partial|full block, which is saved in ctx->block.  The last partial|full
++	 * block will be added to the hash in SHA2_final.
++	 */
++	data_len = len;
++	offset = 0;
++	/* fill saved block from beginning of input data */
++	if (ctx->len) {
++		fill_len = SHA256_BLOCK_SIZE - ctx->len;
++		memcpy(&ctx->block[ctx->len], data, fill_len);
++		/* after mempcy,must flush data to ddr */
++		flush_dcache_range((unsigned long)ctx->block,(unsigned long)ctx->block+128);
++		data_len -= fill_len;
++		offset = fill_len;
++		ctx->len += fill_len;
++	}
++	if (ctx->len == SHA256_BLOCK_SIZE && data_len > 0) {
++		/* saved block is full and is not last block, hash it */
++		hw_update(ctx->block, SHA256_BLOCK_SIZE,ctx->buf, 0);
++		ctx->len = 0;
++	}
++	if (data_len > SHA256_BLOCK_SIZE) {
++		/* still have more than 1 block. hash up until last [partial|full] block */
++		rem_len = data_len % SHA256_BLOCK_SIZE;
++
++		if (rem_len == 0) {
++			rem_len = SHA256_BLOCK_SIZE;
++		}
++
++		data_len -= rem_len;
++		hw_update(&data[offset], data_len,ctx->buf, 0);
++		offset += data_len;
++	} else {
++		rem_len = data_len;
++	}
++
++	if (rem_len) {
++		/* save the remaining data */
++		memcpy(ctx->block, &data[offset], rem_len);
++		/* after mempcy,must flush data to ddr */
++		flush_dcache_range((unsigned long)ctx->block,(unsigned long)ctx->block+128);
++		ctx->len = rem_len;
++	}
++}
++
++static uint8_t *SHA2_HW_final(sha2_ctx *ctx)
++{
++	if (cur_ctx != ctx) {
++		serial_puts("Err:sha1\n");
++		// sha2 usage problem
++		return ctx->buf;
++	}
++	if (ctx->len == 0 || ctx->len > SHA256_BLOCK_SIZE) {
++		serial_puts("Err:sha2\n");
++		// internal sha2 problem
++		return ctx->buf;
++	}
++	hw_update(ctx->block, ctx->len,ctx->buf, 1);
++	cur_ctx = NULL;
++	return ctx->buf;
++}
++
++void sha256_starts(sha256_context * ctx)
++{
++	/*if ctx is not null,set zero*/
++	if (ctx)
++		memset(ctx,0,sizeof(sha256_context));
++
++	SHA2_HW_init(ctx, 256);
++}
++
++void sha256_update(sha256_context *ctx, const uint8_t *input, uint32_t length)
++{
++	int nOffset = 0;
++	int nStep = (128<<19) ; //64MB
++
++	if (length > nStep)
++	{
++			for (;nOffset< length;)
++			{
++				SHA2_HW_update(ctx, input+nOffset, nStep);
++				nOffset+=nStep;
++				if ((length - nOffset ) < nStep)
++					nStep = length - nOffset;
++			}
++	}
++	else
++	{
++		SHA2_HW_update(ctx, input, length);
++	}
++}
++
++void sha256_finish(sha256_context * ctx, uint8_t digest[SHA256_SUM_LEN])
++{
++	SHA2_HW_final(ctx);
++	/*before memcpy,must invalidate dcache.so memcpy data from ddr*/
++	invalidate_dcache_range((unsigned long)digest,(unsigned long)(digest+32));
++	invalidate_dcache_range((unsigned long)ctx->buf,(unsigned long)(ctx->buf+32));
++	memcpy(digest,ctx->buf,32);
++}
++
++void sha256_csum_wd(const unsigned char *input, unsigned int ilen,
++		unsigned char *output, unsigned int chunk_sz)
++{
++	flush_dcache_range((unsigned long)input,(unsigned long)input+ilen);
++
++	sha2_ctx sha_ctx;
++
++	sha256_starts(&sha_ctx);
++
++	sha256_update(&sha_ctx, input, ilen);
++
++	sha256_finish(&sha_ctx, output);
++}
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/hw_aes.c b/arch/arm/cpu/armv8/hw_aes.c
+--- a/arch/arm/cpu/armv8/hw_aes.c	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/cpu/armv8/hw_aes.c	2026-02-09 11:25:46.960993564 +0800
+@@ -0,0 +1,155 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * arch/arm/cpu/armv8/hw_aes.c
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#include <common.h>
++#include <asm/hw_aes.h>
++#include <asm/arch/secure_apb.h>
++
++
++
++
++static void *aes_block(void *dst, void *src, uint32_t len,uint16_t AEStype,uint8_t CryptMode)
++{
++	//limitation: len < ((128K -1)/2) KB
++	//block here if len > ((128K - 1) KB ??
++	struct {
++		unsigned long lSource;
++		unsigned long lTarget;
++		int nLength;
++		int nBlkFlag;
++	} arrSteps[2];
++
++	int index;
++	memset(arrSteps, 0, sizeof(arrSteps));
++
++	arrSteps[0].lSource = (unsigned long)src;
++	arrSteps[0].lTarget = (unsigned long)dst;
++
++	if (len > 512)
++	{
++		arrSteps[0].nLength = len >> 9;
++		arrSteps[0].nBlkFlag = 1;
++		arrSteps[1].lSource = arrSteps[0].lSource + (arrSteps[0].nLength << 9);
++		arrSteps[1].lTarget = arrSteps[0].lTarget + (arrSteps[0].nLength << 9);
++		arrSteps[1].nLength = len & 0x1FF;
++	}
++	else
++	{
++		arrSteps[0].nLength = len;
++	}
++	dma_dsc_t dsc;
++
++	for (index=0; index < sizeof(arrSteps) / sizeof(arrSteps[0]); ++index)
++	{
++		dsc.src_addr = arrSteps[index].lSource;
++		dsc.tgt_addr = arrSteps[index].lTarget;
++		dsc.dsc_cfg.d32 = 0;
++		dsc.dsc_cfg.b.length = arrSteps[index].nLength;
++		dsc.dsc_cfg.b.mode = (AEStype>>6)+6;   // 8:aes128  9:aes192  10:aes256
++		dsc.dsc_cfg.b.op_mode = 1; // cbc
++		dsc.dsc_cfg.b.enc_sha_only=CryptMode;   //1:encrypt  0:decrypt
++		dsc.dsc_cfg.b.eoc = 1;
++		dsc.dsc_cfg.b.owner = 1;
++		dsc.dsc_cfg.b.block = arrSteps[index].nBlkFlag;
++
++
++		*P_DMA_STS0 = 0xf;
++		*P_DMA_T0 = (uint64_t)&dsc | 2;
++		while (*P_DMA_STS0 == 0);
++	}
++
++	return dst;
++}
++
++int aes_cbc_crypt(uint8_t *key, uint8_t *iv,
++             uint8_t *ct, uint8_t *pt, uint32_t size, uint16_t AEStype,uint8_t CryptMode)
++{
++    dma_dsc_t dsc[3];
++	unsigned char dcache_flag=0;
++	enum aes_ret_t nReturn = AES_RET_SUCCESS;
++
++	if (NULL == key || NULL == iv || NULL == ct || NULL == pt)
++	{
++		nReturn = AES_RET_ADDR;
++		goto exit;
++	}
++
++	if (0 == size || (64<<20) <= size || 0 != size%16)
++	{
++		nReturn = AES_RET_SIZE;
++		goto exit;
++	}
++
++	if (128 != AEStype && 192 != AEStype && 256 != AEStype)
++	{
++		nReturn = AES_RET_TYPE;
++		goto exit;
++	}
++
++	if (0 != CryptMode && 1 != CryptMode)
++	{
++		nReturn = AES_RET_MODE;
++		goto exit;
++	}
++
++
++	if (dcache_status())
++	{
++		dcache_disable();
++		dcache_flag=1;
++	}
++	else
++	{
++		dcache_flag=0;
++	}
++
++
++    dsc[0].src_addr = (uint64_t)key;
++    dsc[0].tgt_addr = 0;
++    dsc[0].dsc_cfg.d32 = 0;
++    dsc[0].dsc_cfg.b.length = 16;
++    dsc[0].dsc_cfg.b.mode = 1; // key
++    dsc[0].dsc_cfg.b.owner = 1;
++
++    dsc[1].src_addr = (uint64_t)(key+16);
++    dsc[1].tgt_addr = 16;
++    dsc[1].dsc_cfg.d32 = 0;
++    dsc[1].dsc_cfg.b.length = (AEStype>>3)-16;
++    dsc[1].dsc_cfg.b.mode = 1; // key
++    dsc[1].dsc_cfg.b.owner = 1;
++
++
++    dsc[2].src_addr = (uint64_t)iv;
++    dsc[2].tgt_addr = 32;
++    dsc[2].dsc_cfg.d32 = 0;
++    dsc[2].dsc_cfg.b.length = 16;
++	dsc[2].dsc_cfg.b.eoc = 1;
++    dsc[2].dsc_cfg.b.mode = 1; // key
++    dsc[2].dsc_cfg.b.owner = 1;
++
++
++    *P_DMA_STS0 = 0xf;
++    *P_DMA_T0= (uint64_t)dsc | 2;
++	while (*P_DMA_STS0 == 0);
++
++
++	aes_block(pt, ct, size,AEStype,CryptMode);
++
++
++	if (dcache_flag == 1)
++	{
++		dcache_enable();
++	}
++
++exit:
++
++	return nReturn;
++
++}
++
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/Makefile b/arch/arm/cpu/armv8/Makefile
+--- a/arch/arm/cpu/armv8/Makefile	2026-04-02 18:17:40.823486782 +0800
++++ b/arch/arm/cpu/armv8/Makefile	2026-02-09 11:25:46.912990947 +0800
+@@ -14,5 +14,17 @@
+ obj-y	+= cache.o
+ obj-y	+= tlb.o
+ obj-y	+= transition.o
++obj-y	+= cpu_id.o
++obj-y	+= board_id.o
++
++obj-y	+= a32_kernel_pre_entry.o
++obj-$(CONFIG_ARM_SMCCC)	+= smccc-call.o
+ 
+ obj-$(CONFIG_FSL_LSCH3) += fsl-lsch3/
++obj-$(CONFIG_AML_MESON) += $(SOC)/
++
++
++obj-$(CONFIG_AML_HW_SHA2) += hard_sha2.o
++
++
++obj-$(CONFIG_AML_HW_AES) += hw_aes.o
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/smccc-call.S b/arch/arm/cpu/armv8/smccc-call.S
+--- a/arch/arm/cpu/armv8/smccc-call.S	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/cpu/armv8/smccc-call.S	2026-02-09 11:25:46.960993564 +0800
+@@ -0,0 +1,45 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2015, Linaro Limited
++ */
++#include <linux/linkage.h>
++#include <linux/arm-smccc.h>
++#include <generated/asm-offsets.h>
++
++	.section	.text.efi_runtime
++
++	.macro SMCCC instr
++	.cfi_startproc
++	\instr	#0
++	ldr	x4, [sp]
++	stp	x0, x1, [x4, #ARM_SMCCC_RES_X0_OFFS]
++	stp	x2, x3, [x4, #ARM_SMCCC_RES_X2_OFFS]
++	ldr	x4, [sp, #8]
++	cbz	x4, 1f /* no quirk structure */
++	ldr	x9, [x4, #ARM_SMCCC_QUIRK_ID_OFFS]
++	cmp	x9, #ARM_SMCCC_QUIRK_QCOM_A6
++	b.ne	1f
++	str	x6, [x4, ARM_SMCCC_QUIRK_STATE_OFFS]
++1:	ret
++	.cfi_endproc
++	.endm
++
++/*
++ * void arm_smccc_smc(unsigned long a0, unsigned long a1, unsigned long a2,
++ *		  unsigned long a3, unsigned long a4, unsigned long a5,
++ *		  unsigned long a6, unsigned long a7, struct arm_smccc_res *res,
++ *		  struct arm_smccc_quirk *quirk)
++ */
++ENTRY(__arm_smccc_smc)
++	SMCCC	smc
++ENDPROC(__arm_smccc_smc)
++
++/*
++ * void arm_smccc_hvc(unsigned long a0, unsigned long a1, unsigned long a2,
++ *		  unsigned long a3, unsigned long a4, unsigned long a5,
++ *		  unsigned long a6, unsigned long a7, struct arm_smccc_res *res,
++ *		  struct arm_smccc_quirk *quirk)
++ */
++ENTRY(__arm_smccc_hvc)
++	SMCCC	hvc
++ENDPROC(__arm_smccc_hvc)
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/start.S b/arch/arm/cpu/armv8/start.S
+--- a/arch/arm/cpu/armv8/start.S	2026-04-02 18:17:40.823486782 +0800
++++ b/arch/arm/cpu/armv8/start.S	2026-02-09 11:25:46.960993564 +0800
+@@ -11,6 +11,7 @@
+ #include <linux/linkage.h>
+ #include <asm/macro.h>
+ #include <asm/armv8/mmu.h>
++#include <asm/system.h>
+ 
+ /*************************************************************************
+  *
+@@ -82,7 +83,97 @@
+ 	/*
+ 	 * Slave CPUs
+ 	 */
++#ifdef CONFIG_CMD_AML_MTEST
++.extern get_gd_addr
++.extern get_stack_base
++.extern enable_caches
++.extern get_core_entry_fn
++.extern mmu_setup
++#endif
+ slave_cpu:
++#ifdef CONFIG_CMD_AML_MTEST
++	bl get_gd_addr
++	mov x18, x0
++
++	mrs x0, mpidr_el1
++	ubfx x1, x0, #24, 1
++	cbz x1, slave_cpu_next
++	lsr x0, x0, #8
++slave_cpu_next:
++	and	x1, x0, #0xff
++	and	x0, x0, #0xff00
++	add	x0, x1, x0, LSR #6
++
++	bl get_stack_base
++	mov sp, x0
++
++	//bl enable_caches
++	bl __asm_invalidate_icache_all
++	switch_el x1, i3f, i2f, i1f
++i3f:
++	mrs x0, sctlr_el3
++	orr x0, x0, #CR_I
++	msr sctlr_el3, x0
++	isb
++	b i0f
++i2f:
++	mrs x0, sctlr_el2
++	orr x0, x0, #CR_I
++	msr sctlr_el2, x0
++	isb
++	b i0f
++i1f:
++	mrs x0, sctlr_el1
++	orr x0, x0, #CR_I
++	msr sctlr_el1, x0
++	isb
++i0f:
++
++	bl __asm_invalidate_dcache_all
++	bl __asm_invalidate_tlb_all
++	bl mmu_setup
++	switch_el x1, d3f, d2f, d1f
++d3f:
++	mrs x0, sctlr_el3
++	orr x0, x0, #CR_C
++	msr sctlr_el3, x0
++	isb
++	b d0f
++d2f:
++	mrs x0, sctlr_el2
++	orr x0, x0, CR_C
++	msr sctlr_el2, x0
++	isb
++	b d0f
++d1f:
++	mrs x0, sctlr_el1
++	orr x0, x0, CR_C
++	msr sctlr_el1, x0
++	isb
++d0f:
++
++	mrs x0, mpidr_el1
++	ubfx x1, x0, #24, 1
++	cbz x1, slave_cpu_next1
++	lsr x0, x0, #8
++slave_cpu_next1:
++	and	x1, x0, #0xff
++	and	x0, x0, #0xff00
++	add	x0, x1, x0, LSR #6
++	bl get_core_entry_fn
++	mov x2, x0
++	mrs x0, mpidr_el1
++	ubfx x1, x0, #24, 1
++	cbz x1, slave_cpu_next2
++	lsr x0, x0, #8
++slave_cpu_next2:
++	and	x1, x0, #0xff
++	and	x0, x0, #0xff00
++	add	x0, x1, x0, LSR #6
++	br x2
++
++	b .
++#endif
+ 	wfe
+ 	ldr	x1, =CPU_RELEASE_ADDR
+ 	ldr	x0, [x1]
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/cpu/armv8/u-boot.lds b/arch/arm/cpu/armv8/u-boot.lds
+--- a/arch/arm/cpu/armv8/u-boot.lds	2026-04-02 18:17:40.823486782 +0800
++++ b/arch/arm/cpu/armv8/u-boot.lds	2026-02-09 11:25:46.996995529 +0800
+@@ -24,6 +24,10 @@
+ 	}
+ 
+ 	. = ALIGN(8);
++	.__rodata_start :
++	{
++		*(.__rodata_start)
++	}
+ 	.rodata : { *(SORT_BY_ALIGNMENT(SORT_BY_NAME(.rodata*))) }
+ 
+ 	. = ALIGN(8);
+@@ -80,6 +84,8 @@
+ 		KEEP(*(.__bss_end));
+ 	}
+ 
++	ASSERT(_end <= 0x01200000, "bl33 image has exceeded its limit.")
++
+ 	/DISCARD/ : { *(.dynsym) }
+ 	/DISCARD/ : { *(.dynstr*) }
+ 	/DISCARD/ : { *(.dynamic*) }

@@ -1,0 +1,6271 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/aml_emmc_partition.c b/drivers/mmc/aml_emmc_partition.c
+--- a/drivers/mmc/aml_emmc_partition.c	1970-01-01 08:00:00.000000000 +0800
++++ b/drivers/mmc/aml_emmc_partition.c	2026-02-09 11:25:48.413072758 +0800
+@@ -0,0 +1,1625 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * drivers/mmc/aml_emmc_partition.c
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#include <config.h>
++#include <common.h>
++#include <command.h>
++#include <errno.h>
++#include <mmc.h>
++#include <part.h>
++#include <malloc.h>
++#include <linux/list.h>
++#include <div64.h>
++#include "mmc_private.h"
++#include <emmc_partitions.h>
++#include <asm/cpu_id.h>
++#include <part_efi.h>
++
++/* using mbr*/
++#define CONFIG_PTBL_MBR	(0)
++
++#if (CONFIG_PTBL_MBR)
++	/* cmpare partition name? */
++	#define CONFIG_CMP_PARTNAME	(0)
++	/* cmpare partition mask */
++	#define CONFIG_CMP_PARTMASK	(0)
++#else
++	#define CONFIG_CMP_PARTNAME	(1)
++	#define CONFIG_CMP_PARTMASK	(1)
++#endif
++/* debug info*/
++#define CONFIG_MPT_DEBUG 	(0)
++#define GPT_PRIORITY             (1)
++
++#define apt_err(fmt, ...) printf( "%s()-%d: " fmt , \
++                  __func__, __LINE__, ##__VA_ARGS__)
++
++#define apt_wrn(fmt, ...) printf( "%s()-%d: " fmt , \
++                  __func__, __LINE__, ##__VA_ARGS__)
++#if (CONFIG_MPT_DEBUG)
++/* for detail debug info */
++#define apt_info(fmt, ...) printf( "%s()-%d: " fmt , \
++                  __func__, __LINE__, ##__VA_ARGS__)
++#else
++#define apt_info(fmt, ...)
++#endif
++
++/* creat MBR for emmc */
++#define MAX_PNAME_LEN 	(16)
++#define MAX_PART_COUNT	(32)
++
++/*
++  Global offset of reserved partition is 36MBytes
++  since MMC_BOOT_PARTITION_RESERVED is 32MBytes and
++  MMC_BOOT_DEVICE_SIZE is 4MBytes.
++  MMC_RESERVED_SIZE is 64MBytes for now.
++  layout detail inside reserved partition.
++  0x000000 - 0x003fff: partition table
++  0x004000 - 0x03ffff: storage key area	(16k offset & 256k size)
++  0x400000 - 0x47ffff: dtb area  (4M offset & 512k size)
++  0x480000 - 64MBytes: resv for other usage.
++  ...
++ */
++/*
++#define RSV_DTB_OFFSET_GLB	(SZ_1M*40)
++#define RSV_DTB_SIZE		(512*1024UL)
++#define RSV_PTBL_OFFSET		(SZ_1M*0)
++#define RSV_PTBL_SIZE		(16*1024UL)
++#define RSV_SKEY_OFFSET		(16*1024UL)
++#define RSV_SKEY_SIZE		(256*1024UL)
++#define RSV_DTB_OFFSET		(SZ_1M*4)
++*/
++
++/* virtual partitions which are in "reserved" */
++#define MAX_MMC_VIRTUAL_PART_CNT	(5)
++
++
++/* BinaryLayout of partition table stored in rsv area */
++struct ptbl_rsv {
++    char magic[4];				/* MPT */
++    unsigned char version[12];	/* binary version */
++    unsigned int count;	/* partition count in using */
++    int checksum;
++    struct partitions partitions[MAX_MMC_PART_NUM];
++};
++
++/* partition table for innor usage*/
++struct _iptbl {
++	struct partitions *partitions;
++	unsigned int count;	/* partition count in use */
++};
++
++#ifdef CONFIG_AML_NAND
++unsigned device_boot_flag = (unsigned)_AML_DEVICE_BOOT_FLAG_DEFAULT;
++#else
++/*unsigned device_boot_flag = (unsigned)_AML_DEVICE_BOOT_FLAG_DEFAULT;*/
++unsigned device_boot_flag = (unsigned)EMMC_BOOT_FLAG;
++#endif
++bool is_partition_checked = false;
++
++#ifndef CONFIG_AML_MMC_INHERENT_PART
++/* fixme, name should be changed as aml_inherent_ptbl */
++struct partitions emmc_partition_table[] = {
++	PARTITION_ELEMENT(MMC_BOOT_NAME, MMC_BOOT_DEVICE_SIZE, 0),
++	PARTITION_ELEMENT(MMC_RESERVED_NAME, MMC_RESERVED_SIZE, 0),
++	/* prior partitions, same partition name with dts*/
++	/* partition size will be overide by dts*/
++	PARTITION_ELEMENT(MMC_CACHE_NAME, 0, 0),
++	PARTITION_ELEMENT(MMC_ENV_NAME, MMC_ENV_SIZE, 0),
++};
++
++struct virtual_partition virtual_partition_table[] = {
++	/* partition for name idx, off & size will not be used! */
++#if (CONFIG_PTBL_MBR)
++	VIRTUAL_PARTITION_ELEMENT(MMC_MBR_NAME,
++				  MMC_MBR_OFFSET, MMC_MBR_SIZE),
++#endif
++	VIRTUAL_PARTITION_ELEMENT(MMC_BOOT_NAME0, 0, 0),
++	VIRTUAL_PARTITION_ELEMENT(MMC_BOOT_NAME1, 0, 0),
++
++	/* virtual partition in reserved partition, take care off and size */
++	VIRTUAL_PARTITION_ELEMENT(MMC_TABLE_NAME,
++				  MMC_TABLE_OFFSET, MMC_TABLE_SIZE),
++	VIRTUAL_PARTITION_ELEMENT(MMC_KEY_NAME,
++				  EMMCKEY_RESERVE_OFFSET, MMC_KEY_SIZE),
++	VIRTUAL_PARTITION_ELEMENT(MMC_PATTERN_NAME,
++				  CALI_PATTERN_OFFSET, CALI_PATTERN_SIZE),
++	VIRTUAL_PARTITION_ELEMENT(MMC_DTB_NAME,
++				  DTB_OFFSET, DTB_SIZE),
++	VIRTUAL_PARTITION_ELEMENT(MMC_FASTBOOT_CONTEXT_NAME,
++				  FASTBOOT_CONTEXT_OFFSET,
++				  FASTBOOT_CONTEXT_SIZE),
++	VIRTUAL_PARTITION_ELEMENT(MMC_MAGIC_NAME,
++				  MAGIC_OFFSET, MAGIC_SIZE),
++	VIRTUAL_PARTITION_ELEMENT(MMC_RANDOM_NAME,
++				  RANDOM_OFFSET, RANDOM_SIZE),
++	VIRTUAL_PARTITION_ELEMENT(MMC_DDR_PARAMETER_NAME,
++				  DDR_PARAMETER_OFFSET, DDR_PARAMETER_SIZE),
++};
++
++int get_emmc_partition_arraysize(void)
++{
++    return ARRAY_SIZE(emmc_partition_table);
++}
++
++int get_emmc_virtual_partition_arraysize(void)
++{
++    return ARRAY_SIZE(virtual_partition_table);
++}
++
++#endif
++
++void __attribute__((unused)) _dump_part_tbl(struct partitions *p, int count)
++{
++	int i = 0;
++	apt_info("count %d\n", count);
++	while (i < count) {
++		printf("%02d %10s %016llx %016llx\n", i, p[i].name, p[i].offset, p[i].size);
++		i++;
++	}
++	return;
++}
++
++static int _get_part_index_by_name(struct partitions *tbl,
++				   int cnt, const char *name)
++{
++	int i = 0;
++	struct partitions *part = NULL;
++
++	while (i < cnt) {
++		part = &tbl[i];
++		if (!strcmp(name, part->name)) {
++			apt_info("find %s @ tbl[%d]\n", name, i);
++			return i;
++		}
++		i++;
++	};
++
++	return -1;
++}
++
++static struct partitions *_find_partition_by_name(struct partitions *tbl,
++						  int cnt, const char *name)
++{
++	int i = 0;
++	struct partitions *part = NULL;
++
++	while (i < cnt) {
++		part = &tbl[i];
++		if (!strcmp(name, part->name)) {
++			apt_info("find %s @ tbl[%d]\n", name, i);
++			return part;
++		}
++		i++;
++	};
++
++	return NULL;
++}
++
++/* fixme, must called after offset was calculated. */
++ulong _get_inherent_offset(const char *name)
++{
++	struct partitions *part;
++
++	part = _find_partition_by_name(emmc_partition_table,
++			get_emmc_partition_arraysize(), name);
++	if (NULL == part)
++		return -1;
++	else
++		return part->offset;
++}
++
++/* partition table (Emmc Partition Table) */
++struct _iptbl *p_iptbl_ept = NULL;
++
++/* trans byte into lba manner for rsv area read/write */
++static ulong _mmc_rsv_read(struct mmc *mmc, ulong offset, ulong size, void * buffer)
++{
++	lbaint_t _blk, _cnt;
++	if (0 == size)
++		return 0;
++
++	_blk = offset / mmc->read_bl_len;
++	_cnt = size / mmc->read_bl_len;
++	_cnt = mmc->block_dev.block_read(mmc->block_dev.dev, _blk, _cnt, buffer);
++
++	return (ulong)(_cnt * mmc->read_bl_len);
++}
++
++static ulong _mmc_rsv_write(struct mmc *mmc, ulong offset, ulong size, void * buffer)
++{
++	lbaint_t _blk, _cnt;
++	if (0 == size)
++		return 0;
++
++	_blk = offset / mmc->read_bl_len;
++	_cnt = size / mmc->read_bl_len;
++	_cnt = mmc->block_dev.block_write(mmc->block_dev.dev, _blk, _cnt, buffer);
++
++	return (ulong)(_cnt * mmc->read_bl_len);
++}
++
++static struct partitions * get_ptbl_from_dtb(struct mmc *mmc)
++{
++	struct partitions * ptbl = NULL;
++#ifndef DTB_BIND_KERNEL
++	unsigned char * buffer = NULL;
++	ulong ret, offset;
++	struct virtual_partition *vpart = aml_get_virtual_partition_by_name(MMC_DTB_NAME);
++
++	/* try get dtb table from ddr, which may exsit while usb burning */
++	if (NULL == get_partitions()) {
++		/* if failed, try rsv dtb area then. */
++		buffer = malloc(vpart->size * DTB_COPIES);
++		if (NULL == buffer) {
++			apt_err("Can not alloc enough buffer\n");
++			goto _err;
++		}
++		offset = _get_inherent_offset(MMC_RESERVED_NAME) + vpart->offset;
++		ret = _mmc_rsv_read(mmc, offset, (vpart->size * DTB_COPIES), buffer);
++		if (ret != (vpart->size * DTB_COPIES)) {
++			apt_err("Can not alloc enough buffer\n");
++			goto _err1;
++		}
++		/* parse it */
++		if (get_partition_from_dts(buffer)) {
++			apt_err("get partition table from dts faild\n");
++			goto _err1;
++		}
++		/* double check part_table(glb) */
++		if (NULL == get_partitions()) {
++			goto _err1;
++		}
++		apt_info("get partition table from dts successfully\n");
++
++		free(buffer);
++		buffer = NULL;
++	}
++#endif
++	/* asign partition info to *ptbl */
++	ptbl = get_partitions();
++	return ptbl;
++#ifndef DTB_BIND_KERNEL
++_err1:
++	if (buffer)
++		free(buffer);
++_err:
++	free (ptbl);
++	return NULL;
++#endif
++}
++
++static struct partitions *is_prio_partition(struct _iptbl *list, struct partitions *part)
++{
++	int i;
++	struct partitions *plist = NULL;
++
++	if (list->count == 0)
++		goto _out;
++
++	apt_info("count %d\n", list->count);
++	for (i=0; i<list->count; i++) {
++		plist = &list->partitions[i];
++		apt_info("%d: %s, %s\n", i, part->name, plist->name);
++		if (!strcmp(plist->name, part->name)) {
++			apt_info("%s is prio in list[%d]\n", part->name, i);
++			break;
++		}
++	}
++	if (i == list->count)
++		plist = NULL;
++_out:
++	return plist;
++}
++
++/*  calculate offset of each partitions.
++	bottom is a flag for considering
++ */
++static int _calculate_offset(struct mmc *mmc, struct _iptbl *itbl, u32 bottom)
++{
++	int i;
++	struct partitions *part;
++	ulong  gap = PARTITION_RESERVED;
++	int ret = 0;
++
++	if (itbl->count <= 0)
++		return -1;
++	part = itbl->partitions;
++	part->offset = 0;
++#if (CONFIG_MPT_DEBUG)
++	_dump_part_tbl(part, itbl->count);
++#endif
++	if (!strcmp(part->name, MMC_BOOT_NAME)) {
++		gap = MMC_BOOT_PARTITION_RESERVED;
++		if (!is_mainstorage_emmc())
++			sprintf(part->name, "bootloadere");
++	}
++
++	for (i=1; i<itbl->count; i++) {
++		part[i].offset = part[i-1].offset + part[i-1].size + gap;
++		/* check capacity overflow ?*/
++		if (((part[i].offset + part[i].size) > mmc->capacity) ||
++				(part[i].size == -1)) {
++			part[i].size = mmc->capacity - part[i].offset;
++			/* reserv space @ the bottom */
++			if (bottom && (part[i].size > MMC_BOTTOM_RSV_SIZE)) {
++				apt_info("reserv %d bytes at bottom\n", MMC_BOTTOM_RSV_SIZE);
++				part[i].size -= MMC_BOTTOM_RSV_SIZE;
++			}
++			break;
++		}
++		if ((part[i].mask_flags & 0x100) != 0)
++			gap = PARTITION_MIN_RESERVED;
++		else
++			gap = PARTITION_RESERVED;
++	}
++	if (i < (itbl->count - 1)) {
++		apt_err("too large partition table for current emmc, overflow!\n");
++		ret = -1;
++	}
++#if (CONFIG_MPT_DEBUG)
++	_dump_part_tbl(part, itbl->count);
++#endif
++	return ret;
++}
++
++static int _get_version(unsigned char * s)
++{
++	int version = 0;
++	if (!strncmp((char *)s, MMC_MPT_VERSION_2, sizeof(MMC_MPT_VERSION_2)))
++		version = 2;
++	else if (!strncmp((char *)s, MMC_MPT_VERSION_1, sizeof(MMC_MPT_VERSION_1)))
++		version = 1;
++	else
++		version = -1;
++
++	return version;
++}
++
++/*  calc checksum.
++	there's a bug on v1 which did not calculate all the partitions.
++ */
++static int _calc_iptbl_check_v2(struct partitions * part, int count)
++{
++	int ret = 0, i;
++	int size = count * sizeof(struct partitions) >> 2;
++	int *buf = (int *)part;
++
++	for (i = 0; i < size; i++)
++		ret +=buf[i];
++
++	return ret;
++}
++
++static int _calc_iptbl_check_v1(struct partitions *part, int count)
++{
++    int i, j;
++	u32 checksum = 0, *p;
++
++	for (i = 0; i < count; i++) {
++		p = (u32*)part;
++		/*BUG here, do not fix it!!*/
++		for (j = sizeof(struct partitions)/sizeof(checksum); j > 0; j--) {
++			checksum += *p;
++			p++;
++	    }
++    }
++
++	return checksum;
++}
++
++static int _calc_iptbl_check(struct partitions * part, int count, int version)
++{
++	if (1 == version)
++		return _calc_iptbl_check_v1(part, count);
++	else if (2 == version)
++		return _calc_iptbl_check_v2(part, count);
++	else
++		return -1;
++}
++
++/* ept is malloced out side */
++static void compose_ept(struct _iptbl *dtb, struct _iptbl *inh,
++			struct _iptbl *ept)
++{
++	int i;
++	struct partitions *partition = NULL;
++	struct partitions *dst, *src, *prio;
++
++	/* overide inh info by dts */
++	apt_info("dtb %p, inh %p, ept %p\n", dtb, inh, ept);
++	apt_info("ept->partitions %p\n", ept->partitions);
++	partition = ept->partitions;
++	apt_info("partition %p\n", partition);
++	for (i=0; i<MAX_PART_COUNT; i++) {
++		apt_info("i %d, ept->count %d\n", i, ept->count);
++		dst = &partition[ept->count];
++		src = (i < inh->count) ? &inh->partitions[i]:&dtb->partitions[i-inh->count];
++
++		prio = is_prio_partition(ept, src);
++		if (prio) {
++			/* overide prio partition by new */
++			apt_info("override %d: %s\n", ept->count, prio->name);
++			//*prio = *src;
++			dst = prio;
++		} else
++			ept->count ++;
++		*dst = *src;
++		if (-1 == src->size) {
++			apt_info("break! %s\n", src->name);
++			break;
++		}
++	}
++
++	return;
++}
++
++/* get ptbl from rsv area from emmc */
++static int get_ptbl_rsv(struct mmc *mmc, struct _iptbl *rsv)
++{
++	struct ptbl_rsv * ptbl_rsv = NULL;
++	uchar * buffer = NULL;
++	ulong size, offset;
++	int checksum, version, ret = 0;
++	struct virtual_partition *vpart = aml_get_virtual_partition_by_name(MMC_TABLE_NAME);
++
++	size = (sizeof(struct ptbl_rsv) + 511) / 512 * 512;
++	if (vpart->size < size) {
++		apt_err("too much partitions\n");
++		ret = -1;
++		goto _out;
++	}
++	buffer = malloc(size);
++	if (NULL == buffer) {
++		apt_err("no enough memory for ptbl rsv\n");
++		ret = -2;
++		goto _out;
++	}
++	/* read it from emmc. */
++	offset = _get_inherent_offset(MMC_RESERVED_NAME) + vpart->offset;
++	if (size != _mmc_rsv_read(mmc, offset, size, buffer)) {
++		apt_err("read ptbl from rsv failed\n");
++		ret = -3;
++		goto _out;
++	}
++
++	ptbl_rsv = (struct ptbl_rsv *) buffer;
++	apt_info("magic %3.3s, version %8.8s, checksum %x\n", ptbl_rsv->magic,
++			ptbl_rsv->version, ptbl_rsv->checksum);
++	/* fixme, check magic ?*/
++	if (strncmp(ptbl_rsv->magic, MMC_PARTITIONS_MAGIC, sizeof(MMC_PARTITIONS_MAGIC))) {
++		apt_err("magic faild %s, %3.3s\n", MMC_PARTITIONS_MAGIC, ptbl_rsv->magic);
++		ret = -4;
++		goto _out;
++	}
++	/* check version*/
++	version = _get_version(ptbl_rsv->version);
++	if (version < 0) {
++		apt_err("version faild %s, %3.3s\n", MMC_PARTITIONS_MAGIC, ptbl_rsv->magic);
++		ret = -5;
++		goto _out;
++	}
++	if (ptbl_rsv->count > MAX_MMC_PART_NUM) {
++		apt_err("invalid partition count %d\n", ptbl_rsv->count);
++		ret = -1;
++		goto _out;
++	}
++	/* check sum */
++	checksum = _calc_iptbl_check(ptbl_rsv->partitions, ptbl_rsv->count, version);
++	if (checksum != ptbl_rsv->checksum) {
++		apt_err("checksum faild 0x%x, 0x%x\n", ptbl_rsv->checksum, checksum);
++		ret = -6;
++		goto _out;
++	}
++
++	rsv->count = ptbl_rsv->count;
++	memcpy(rsv->partitions, ptbl_rsv->partitions, rsv->count * sizeof(struct partitions));
++
++_out:
++	if (buffer)
++		free (buffer);
++	return ret;
++}
++
++
++/* update partition tables from src
++	if success, return 0;
++	else, return 1
++	*/
++static int update_ptbl_rsv(struct mmc *mmc, struct _iptbl *src)
++{
++	struct ptbl_rsv *ptbl_rsv = NULL;
++	uchar *buffer;
++	ulong size, offset;
++	int ret = 0, version;
++	struct virtual_partition *vpart = aml_get_virtual_partition_by_name(MMC_TABLE_NAME);
++
++	size = (sizeof(struct ptbl_rsv) + 511) / 512 * 512;
++	buffer = malloc(size);
++	if (NULL == buffer) {
++		apt_err("no enough memory for ptbl rsv\n");
++		return -1;
++	}
++	memset(buffer, 0 , size);
++	/* version, magic and checksum */
++	ptbl_rsv = (struct ptbl_rsv *) buffer;
++	strcpy((char *)ptbl_rsv->version, MMC_MPT_VERSION);
++	strcpy(ptbl_rsv->magic, MMC_PARTITIONS_MAGIC);
++	if (src->count > MAX_MMC_PART_NUM) {
++		apt_err("too much partitions\n");
++		ret = -1;
++		goto _err;
++	}
++	ptbl_rsv->count = src->count;
++	memcpy(ptbl_rsv->partitions, src->partitions,
++		sizeof(struct partitions)*src->count);
++	version = _get_version(ptbl_rsv->version);
++	ptbl_rsv->checksum = _calc_iptbl_check(src->partitions, src->count, version);
++	/* write it to emmc. */
++	apt_info("magic %3.3s, version %8.8s, checksum %x\n", ptbl_rsv->magic, ptbl_rsv->version, ptbl_rsv->checksum);
++	offset = _get_inherent_offset(MMC_RESERVED_NAME) + vpart->offset;
++	if (_mmc_rsv_write(mmc, offset, size, buffer) != size) {
++		apt_err("write ptbl to rsv failed\n");
++		ret = -1;
++		goto _err;
++	}
++_err:
++	free (buffer);
++	return ret;
++}
++
++static int _cmp_partition(struct partitions *dst, struct partitions *src, int overide)
++{
++	int ret = 0;
++#if (CONFIG_CMP_PARTNAME)
++	if (strncmp(dst->name, src->name, sizeof(src->name)))
++		ret = -2;
++#endif
++	if (dst->size != src->size)
++		ret = -3;
++	if (dst->offset != src->offset)
++		ret = -4;
++#if (CONFIG_CMP_PARTMASK)
++	if (dst->mask_flags != src->mask_flags)
++		ret = -5;
++#endif
++
++	if (ret && (!overide)) {
++		apt_err("name: %10.10s<->%10.10s\n", dst->name, src->name);
++		apt_err("size: %llx<->%llx\n", dst->size, src->size);
++		apt_err("offset: %llx<->%llx\n", dst->offset, src->offset);
++		apt_err("mask: %08x<->%08x\n", dst->mask_flags, src->mask_flags);
++	}
++
++	if (overide) {
++		*dst = *src;
++		ret = 0;
++	}
++
++	return ret;
++}
++
++/* compare partition tables
++	if same, do nothing then return 0;
++	else, print the diff ones and return -x
++	-1:count
++	-2:name
++	-3:size
++	-4:offset
++	*/
++static int _cmp_iptbl(struct _iptbl * dst, struct _iptbl * src)
++{
++	int ret = 0, i = 0;
++	struct partitions *dstp;
++	struct partitions *srcp;
++
++	if (dst->count != src->count) {
++		apt_err("partition count is not same %d:%d\n", dst->count, src->count);
++		ret = -1;
++		goto _out;
++	}
++
++	while (i < dst->count) {
++		dstp = &dst->partitions[i];
++		srcp = &src->partitions[i];
++		ret = _cmp_partition(dstp, srcp, 0);
++		if (ret) {
++			apt_err("partition %d has changed\n", i);
++			break;
++		}
++		i++;
++	}
++
++_out:
++	return ret;
++}
++
++
++/* iptbl buffer opt. */
++static int _zalloc_iptbl(struct _iptbl **_iptbl)
++{
++	int ret = 0;
++	struct _iptbl *iptbl;
++	struct partitions *partition = NULL;
++
++	partition = malloc(sizeof(struct partitions)*MAX_PART_COUNT);
++	if (NULL == partition) {
++		ret = -1;
++		apt_err("no enough memory for partitions\n");
++		goto _out;
++	}
++
++	iptbl = malloc(sizeof(struct _iptbl));
++	if (NULL == iptbl) {
++		ret = -2;
++		apt_err("no enough memory for ept\n");
++		free(partition);
++		goto _out;
++	}
++	memset(partition, 0, sizeof(struct partitions)*MAX_PART_COUNT);
++	memset(iptbl, 0, sizeof(struct _iptbl));
++
++	iptbl->partitions = partition;
++	apt_info("iptbl %p, partition %p, iptbl->partitions %p\n",
++		iptbl, partition, iptbl->partitions);
++	*_iptbl = iptbl;
++_out:
++	return ret;
++}
++
++static void _free_iptbl(struct _iptbl *iptbl)
++{
++	if (iptbl && iptbl->partitions) {
++		free(iptbl->partitions);
++		iptbl->partitions = NULL;
++	}
++	if (iptbl) {
++		free(iptbl);
++		iptbl = NULL;
++	}
++
++	return;
++}
++/*
++ * fixme, need check space size later.
++ */
++static int _cpy_iptbl(struct _iptbl * dst, struct _iptbl * src)
++{
++	int ret = 0;
++	if (!dst || !src) {
++		apt_err("invalid arg %s\n", !dst ? "dst" : "src");
++		ret = -1;
++		goto _out;
++	}
++	if (!dst->partitions || !src->partitions) {
++		apt_err("invalid arg %s->partitions\n", !dst ? "dst" : "src");
++		ret = -2;
++		goto _out;
++	}
++	if (src->count > MAX_MMC_PART_NUM) {
++		ret = -3;
++		goto _out;
++	}
++
++	dst->count = src->count;
++	memcpy(dst->partitions, src->partitions, sizeof(struct partitions) * src->count);
++
++_out:
++	return ret;
++}
++
++static inline int le32_to_int(unsigned char *le32)
++{
++	return ((le32[3] << 24) +
++	    (le32[2] << 16) +
++	    (le32[1] << 8) +
++	     le32[0]
++	   );
++}
++
++static int test_block_type(unsigned char *buffer)
++{
++	int slot;
++	struct dos_partition *p;
++
++	if ((buffer[DOS_PART_MAGIC_OFFSET + 0] != 0x55) ||
++	    (buffer[DOS_PART_MAGIC_OFFSET + 1] != 0xaa) ) {
++		return (-1);
++	} /* no DOS Signature at all */
++	p = (struct dos_partition *)&buffer[DOS_PART_TBL_OFFSET];
++	for (slot = 0; slot < 3; slot++) {
++		if (p->boot_ind != 0 && p->boot_ind != 0x80) {
++			if (!slot &&
++			    (strncmp((char *)&buffer[DOS_PBR_FSTYPE_OFFSET],
++				     "FAT", 3) == 0 ||
++			     strncmp((char *)&buffer[DOS_PBR32_FSTYPE_OFFSET],
++				     "FAT32", 5) == 0)) {
++				return DOS_PBR; /* is PBR */
++			} else {
++				return -1;
++			}
++		}
++	}
++	return DOS_MBR;	    /* Is MBR */
++}
++
++//DOS_MBR OR DOS_PBR
++/*
++ * re-constructed iptbl from mbr&ebr infos.
++ * memory for  iptbl_mbr must be alloced outside.
++ *
++ */
++static void _construct_ptbl_by_mbr(struct mmc *mmc, struct _iptbl *iptbl_mbr)
++{
++	int ret,i;
++	int flag = 0;
++	lbaint_t read_offset = 0;
++	int part_num = 0;
++	int primary_num = 0;
++	uint64_t logic_start = 0;
++	uint64_t extern_start = 0;
++	struct dos_partition *pt;
++	struct partitions *partitions = iptbl_mbr->partitions;
++
++	apt_info("aml MBR&EBR debug...\n");
++	ALLOC_CACHE_ALIGN_BUFFER(unsigned char, buffer, 512);
++	for (;;) {
++		apt_info("**%02d: read_offset %016llx\n", part_num, (uint64_t)read_offset<<9);
++		ret = mmc->block_dev.block_read(mmc->block_dev.dev, read_offset, 1, buffer);
++		if (read_offset == 0)
++			flag = 1;
++		else
++			flag = 0;
++		/* debug code */
++		// print_buffer(0,buffer,1,512,16);
++		if (ret != 1) {
++			apt_err("ret %d fail to read current ebr&mbr from emmc! \n", ret);
++			break;
++		}
++		ret = test_block_type(buffer);
++		if (ret != 0 && ret != 1) {
++			apt_err("invalid magic value: 0x%02x%02x\n",
++				buffer[DOS_PART_MAGIC_OFFSET], buffer[DOS_PART_MAGIC_OFFSET + 1]);
++			break;
++		}
++
++		pt = (dos_partition_t *)(&buffer[0] + DOS_PART_TBL_OFFSET);
++		for (i = 0; i < 4; i++, pt++) {
++			if ( (pt->boot_ind == 0x00 || pt->boot_ind == 0x80) && pt->sys_ind == 0x83 ) {
++				//emmc_partition[part_num]->name = NULL;
++				partitions[part_num].offset = ((uint64_t)(le32_to_int(pt->start4)+read_offset) << 9ULL);
++				partitions[part_num].size = (uint64_t)le32_to_int(pt->size4) << 9ULL;
++				partitions[part_num].mask_flags = pt->sys_ind;
++
++				apt_info("--partition[%d]: %016llx, %016llx, 0x%08x \n",
++					part_num, partitions[part_num].offset,
++					partitions[part_num].size,
++					le32_to_int(pt->size4));
++				part_num++;
++				if ( flag )
++					primary_num++;
++			}else{/* get the next external partition info */
++				if ( pt->boot_ind == 0x00 && pt->sys_ind == 0x05) {
++					logic_start = (uint64_t)le32_to_int (pt->start4);
++					//logic_size = (uint64_t)le32_to_int (pt->size4);
++				}
++			}
++		}
++		/* mbr & ebr debug infos */
++		apt_info("******%02d: read_offset=%016llx, logic_start=%016llx\n",
++			part_num,(uint64_t)read_offset*512ULL,logic_start*512ULL);
++
++		if (part_num == primary_num) {
++			extern_start = logic_start;
++			read_offset = extern_start;
++		}else
++			read_offset = extern_start + logic_start;
++		if (logic_start == 0)
++			break;
++		logic_start = 0;
++
++	}
++	iptbl_mbr->count = part_num;
++	apt_info("iptbl_mbr->count = %d\n", iptbl_mbr->count);
++
++	return;
++}
++
++static int __attribute__((unused)) _check_ptbl_mbr(struct mmc *mmc, struct _iptbl *ept)
++{
++	int ret = 0;
++	/* re-constructed by mbr */
++	struct _iptbl *iptbl_mbr = NULL;
++	struct partitions *partitions = NULL;
++
++	iptbl_mbr = malloc(sizeof(struct _iptbl));
++	if (NULL == iptbl_mbr) {
++		apt_err("no enough memory for iptbl_mbr\n");
++		return -1;
++	}
++	memset(iptbl_mbr , 0, sizeof(struct _iptbl));
++	partitions = (struct partitions *)malloc(sizeof(struct partitions) * DOS_PARTITION_COUNT);
++	if (NULL == partitions) {
++		apt_err("no enough memory for partitions\n");
++		free(iptbl_mbr);
++		return -1;
++	}
++	memset(partitions, 0, sizeof(struct partitions) * DOS_PARTITION_COUNT);
++	iptbl_mbr->partitions = partitions;
++
++	_construct_ptbl_by_mbr(mmc, iptbl_mbr);
++
++	ret = _cmp_iptbl(iptbl_mbr, ept);
++
++	if (partitions)
++		free(partitions);
++	if (iptbl_mbr)
++		free(iptbl_mbr);
++
++	apt_wrn("MBR is %s\n", ret?"Improper!":"OK!");
++	return ret;
++}
++
++/* construct a partition table entry of EBR */
++static int _construct_ebr_1st_entry(struct _iptbl *p_iptbl,struct dos_partition *p_ebr, int part_num )
++{
++	uint64_t start_offset = 0;
++	uint64_t logic_size = 0;
++
++	p_ebr->boot_ind = 0x00;
++	p_ebr->sys_ind = 0x83;
++	/* Starting = relative offset between this EBR sector and the first sector of the logical partition
++	* the gap between two partition is a fixed value of PARTITION_RESERVED ,otherwise the emmc partiton
++	* is different with reserved */
++	start_offset = PARTITION_RESERVED >> 9;
++	/* Number of sectors = total count of sectors for this logical partition */
++	// logic_size = (p_iptbl->partitions[part_num].size) >> 9ULL;
++	logic_size = lldiv(p_iptbl->partitions[part_num].size, 512);
++	apt_info("*** %02d: size 0x%016llx, logic_size 0x%016llx\n", part_num, p_iptbl->partitions[part_num].size, logic_size);
++	memcpy((unsigned char *)(p_ebr->start4), &start_offset, 4);
++	memcpy((unsigned char *)(p_ebr->size4), &logic_size, 4);
++	return 0;
++}
++
++static int _construct_ebr_2nd_entry(struct _iptbl *p_iptbl, struct dos_partition *p_ebr, int part_num)
++{
++	uint64_t start_offset = 0;
++	uint64_t logic_size = 0;
++
++	if ((part_num+2) > p_iptbl->count)
++		return 0;
++
++	p_ebr->boot_ind = 0x00;
++	p_ebr->sys_ind = 0x05;
++	/* Starting sector = LBA address of next EBR minus LBA address of extended partition's first EBR */
++	start_offset = (p_iptbl->partitions[part_num+1].offset - PARTITION_RESERVED -
++					(p_iptbl->partitions[3].offset - PARTITION_RESERVED)) >> 9;
++	/* total count of sectors for next logical partition, but count starts from the next EBR sector */
++	logic_size = (p_iptbl->partitions[part_num+1].size + PARTITION_RESERVED) >> 9;
++
++	memcpy((unsigned char *)(p_ebr->start4), &start_offset, 4);
++	memcpy((unsigned char *)(p_ebr->size4), &logic_size, 4);
++
++	return 0;
++}
++
++/* construct a partition table entry of MBR OR EBR */
++static int _construct_mbr_entry(struct _iptbl *p_iptbl, struct dos_partition *p_entry, int part_num)
++{
++	uint64_t start_offset = 0;
++	uint64_t primary_size = 0;
++	uint64_t extern_size = 0;
++	int i;
++	/* the entry is active or not */
++	p_entry->boot_ind = 0x00;
++
++	if (part_num == 3) {/* the logic partion entry */
++		/* the entry type */
++		p_entry->sys_ind = 0x05;
++		start_offset = (p_iptbl->partitions[3].offset - PARTITION_RESERVED) >> 9;
++		for ( i = 3;i< p_iptbl->count;i++)
++			extern_size = p_iptbl->partitions[i].size >> 9;
++
++		memcpy((unsigned char *)p_entry->start4, &start_offset, 4);
++		memcpy((unsigned char *)p_entry->size4, &extern_size, 4);
++	}else{/* the primary partion entry */
++		/* the entry type */
++		p_entry->sys_ind = 0x83;
++		start_offset = (p_iptbl->partitions[part_num].offset) >> 9;
++		primary_size = (p_iptbl->partitions[part_num].size)>>9;
++		memcpy((unsigned char *)p_entry->start4, &start_offset, 4);
++		memcpy((unsigned char *)p_entry->size4, &primary_size, 4);
++	}
++
++	return 0;
++}
++
++static int _construct_mbr_or_ebr(struct _iptbl *p_iptbl, struct dos_mbr_or_ebr *p_br,
++	int part_num, int type)
++{
++	int i;
++
++	if (DOS_MBR == type) {
++		/* construct a integral MBR */
++		for (i = 0; i<4 ; i++)
++			_construct_mbr_entry(p_iptbl, &p_br->part_entry[i], i);
++
++	}else{
++		/* construct a integral EBR */
++		p_br->bootstart[DOS_PBR32_FSTYPE_OFFSET] = 'F';
++		p_br->bootstart[DOS_PBR32_FSTYPE_OFFSET + 1] = 'A';
++		p_br->bootstart[DOS_PBR32_FSTYPE_OFFSET + 2] = 'T';
++		p_br->bootstart[DOS_PBR32_FSTYPE_OFFSET + 3] = '3';
++		p_br->bootstart[DOS_PBR32_FSTYPE_OFFSET + 4] = '2';
++
++		_construct_ebr_1st_entry(p_iptbl, &p_br->part_entry[0], part_num);
++		_construct_ebr_2nd_entry(p_iptbl, &p_br->part_entry[1], part_num);
++	}
++
++	p_br->magic[0] = 0x55 ;
++	p_br->magic[1] = 0xAA ;
++	return 0;
++}
++
++static __attribute__((unused)) int _update_ptbl_mbr(struct mmc *mmc, struct _iptbl *p_iptbl)
++{
++	int ret = 0, start_blk = 0, blk_cnt = 1;
++	unsigned char *src;
++	int i;
++	struct dos_mbr_or_ebr *mbr;
++	struct _iptbl *ptb ;
++
++	ptb = p_iptbl;
++	mbr = malloc(sizeof(struct dos_mbr_or_ebr));
++	if (mbr == NULL)
++		return -ENOMEM;
++
++	for (i=0;i<ptb->count;i++) {
++		apt_info("-update MBR-: partition[%02d]: %016llx - %016llx\n",i,
++			ptb->partitions[i].offset, ptb->partitions[i].size);
++	}
++
++	for (i = 0;i < ptb->count;) {
++		memset(mbr ,0 ,sizeof(struct dos_mbr_or_ebr));
++		if (i == 0) {
++			_construct_mbr_or_ebr(ptb, mbr, i, 0);
++			i = i+2;
++		} else
++			_construct_mbr_or_ebr(ptb, mbr, i, 2);
++		src = (unsigned char *)mbr;
++		apt_info("--%s(): %02d(%02d), off %x\n", __func__, i, ptb->count, start_blk);
++		ret = mmc->block_dev.block_write(mmc->block_dev.dev, start_blk, blk_cnt, src);
++		i++;
++		if (ret != blk_cnt) {
++			apt_err("write current MBR failed! ret: %d != cnt: %d\n",ret,blk_cnt);
++			break;
++		}
++		start_blk = (ptb->partitions[i].offset - PARTITION_RESERVED) >> 9;
++	}
++	free(mbr);
++
++	ret = !ret;
++	if (ret)
++		apt_err("write MBR failed!\n");
++
++	return ret;
++}
++
++#ifdef CONFIG_AML_GPT
++int is_gpt_changed(struct mmc *mmc, struct _iptbl *p_iptbl_ept)
++{
++	int i, k;
++	gpt_entry *gpt_pte = NULL;
++	size_t efiname_len;
++	struct _iptbl *ept = p_iptbl_ept;
++	struct partitions *partitions = ept->partitions;
++	int parts_num = ept->count;
++	uint64_t offset;
++	uint64_t size;
++	char name[PARTNAME_SZ];
++	int gpt_changed = 0;
++
++	block_dev_desc_t *dev_desc = &mmc->block_dev;
++	ALLOC_CACHE_ALIGN_BUFFER_PAD(gpt_header, gpt_head, 1, dev_desc->blksz);
++
++	if (!dev_desc) {
++		printf("%s: Invalid Argument(s)\n", __func__);
++		return 1;
++	}
++
++	if (is_gpt_valid(dev_desc, GPT_PRIMARY_PARTITION_TABLE_LBA,
++				gpt_head, &gpt_pte) != 1) {
++		printf("%s: ***ERROR:Invalid GPT ***\n", __func__);
++		if (is_gpt_valid(dev_desc, (dev_desc->lba - 1),
++					gpt_head, &gpt_pte) != 1) {
++			printf("%s: ***ERROR: Invalid Backup GPT ***\n",
++					__func__);
++			return 1;
++		} else {
++			printf("%s: *** Using Backup GPT ***\n",
++					__func__);
++		}
++			return 1;
++	}
++
++	for (i = 0; i < le32_to_cpu(gpt_head->num_partition_entries); i++) {
++		if (!is_pte_valid(&gpt_pte[i]))
++			break;
++
++		offset = le64_to_cpu(gpt_pte[i].starting_lba<<9ULL);
++		if (partitions[i].offset != offset) {
++			printf("Caution! GPT offset had been changed\n");
++			gpt_changed = 1;
++			break;
++		}
++
++		size = ((le64_to_cpu(gpt_pte[i].ending_lba)+1) -
++			le64_to_cpu(gpt_pte[i].starting_lba)) << 9ULL;
++		if (partitions[i].size != size) {
++			printf("Caution! GPT size had been changed\n");
++			gpt_changed = 1;
++			break;
++		}
++
++		/* partition name */
++		efiname_len = sizeof(gpt_pte[i].partition_name)
++			/ sizeof(efi_char16_t);
++
++		memset(name, 0, PARTNAME_SZ);
++		for (k = 0; k < efiname_len; k++)
++			name[k] = (char)gpt_pte[i].partition_name[k];
++		if (strcmp(name, partitions[i].name) != 0) {
++			printf("Caution! GPT name had been changed\n");
++			gpt_changed = 1;
++			break;
++		}
++
++	}
++	if ((i != parts_num) && (gpt_changed == 0)) {
++		gpt_changed = 1;
++		printf("Caution! GPT number had been changed\n");
++	}
++
++	return gpt_changed;
++}
++
++int fill_ept_by_gpt(struct mmc *mmc, struct _iptbl *p_iptbl_ept)
++{
++	block_dev_desc_t *dev_desc = &mmc->block_dev;
++	ALLOC_CACHE_ALIGN_BUFFER_PAD(gpt_header, gpt_head, 1, dev_desc->blksz);
++	gpt_entry *gpt_pte = NULL;
++	int i, k;
++	size_t efiname_len, dosname_len;
++	struct _iptbl *ept = p_iptbl_ept;
++	struct partitions *partitions = ept->partitions;
++
++	if (!dev_desc) {
++		printf("%s: Invalid Argument(s)\n", __func__);
++		return 1;
++	}
++
++	if (is_gpt_valid(dev_desc, GPT_PRIMARY_PARTITION_TABLE_LBA,
++				gpt_head, &gpt_pte) != 1) {
++		printf("%s: ***ERROR:Invalid GPT ***\n", __func__);
++		if (is_gpt_valid(dev_desc, (dev_desc->lba - 1),
++					gpt_head, &gpt_pte) != 1) {
++			printf("%s: ***ERROR: Invalid Backup GPT ***\n",
++					__func__);
++			return 1;
++		} else {
++			printf("%s: *** Using Backup GPT ***\n",
++					__func__);
++		}
++			return 1;
++	}
++
++	for (i = 0; i < le32_to_cpu(gpt_head->num_partition_entries); i++) {
++		if (!is_pte_valid(&gpt_pte[i]))
++			break;
++
++		partitions[i].offset = le64_to_cpu(gpt_pte[i].starting_lba<<9ULL);
++		partitions[i].size = ((le64_to_cpu(gpt_pte[i].ending_lba)+1) -
++			le64_to_cpu(gpt_pte[i].starting_lba)) << 9ULL;
++
++		/* partition name */
++		efiname_len = sizeof(gpt_pte[i].partition_name)
++			/ sizeof(efi_char16_t);
++		dosname_len = sizeof(partitions[i].name);
++
++		memset(partitions[i].name, 0, sizeof(partitions[i].name));
++		for (k = 0; k < min(dosname_len, efiname_len); k++)
++			partitions[i].name[k] = (char)gpt_pte[i].partition_name[k];
++	}
++
++	return 0;
++}
++
++void trans_ept_to_diskpart(struct _iptbl *ept, disk_partition_t *disk_part) {
++	struct partitions *part = ept->partitions;
++	int count = ept->count;
++	int i;
++	for (i = 0; i < count - 1; i++) {
++		disk_part[i].start = part[i + 1].offset >> 9;
++		strcpy((char *)disk_part[i].name, part[i+1].name);
++		strcpy((char *)disk_part[i].type_guid, part[i+1].name);
++		gen_rand_uuid_str(disk_part[i].uuid, UUID_STR_FORMAT_STD);
++		disk_part[i].bootable = 0;
++		if ( i == (count - 2))
++			disk_part[i].size = (part[i + 1].size - 34 * 512) >> 9;
++		else
++			disk_part[i].size = (part[i + 1].size) >> 9;
++	}
++	return;
++}
++
++
++/*********************************
++*
++* note: ept shouldn't empty
++* otherwise this function
++* shouldn't be called
++*
++* *******************************
++*
++* if gpt is empty
++*     construct gpt by ept
++* elif partition table is changed
++*     if ept has higher priority
++*         use ept update gpt
++*     else
++*		   use gpt update ept
++*
++********************************/
++int confirm_gpt(struct mmc *mmc)
++{
++	char *str_disk_guid;
++	int gpt_priority = GPT_PRIORITY;
++	int dcount;
++	int ret = 1;
++	disk_partition_t *disk_partition;
++	block_dev_desc_t *dev_desc = &mmc->block_dev;
++
++	/*remove bootloader partition*/
++	dcount = p_iptbl_ept->count - 1;
++	if (dcount < 1)
++		return 1;
++
++	disk_partition = malloc(PAD_TO_BLOCKSIZE(sizeof(disk_partition_t) * dcount,
++							dev_desc));
++	if (disk_partition == NULL)
++		return -ENOMEM;
++	trans_ept_to_diskpart(p_iptbl_ept, disk_partition);
++
++	str_disk_guid = malloc(UUID_STR_LEN + 1);
++	if (str_disk_guid == NULL) {
++		free(disk_partition);
++		return -ENOMEM;
++	}
++	gen_rand_uuid_str(str_disk_guid, UUID_STR_FORMAT_STD);
++
++	if (test_part_efi(&mmc->block_dev) != 0) {
++		/*gpt is empty write gpt*/
++		ret = gpt_restore(&mmc->block_dev, str_disk_guid, disk_partition, dcount);
++		printf("GPT IS RESTORED %s\n", ret ? "Failed!" : "OK!");
++	} else if (is_gpt_changed(mmc, p_iptbl_ept)) {
++		if (gpt_priority) {
++			/*gpt have higher priority update ept*/
++			ret = fill_ept_by_gpt(mmc, p_iptbl_ept);
++			printf("and gpt has higher priority, so ept had been update\n");
++		} else {
++			/*ept have higher priority update gpt*/
++			ret = gpt_restore(&mmc->block_dev, str_disk_guid, disk_partition, dcount);
++			printf("but ept has higher priority, so gpt had been recover\n");
++		}
++	}
++
++	free(str_disk_guid);
++	free(disk_partition);
++	return ret;
++}
++
++#endif
++
++void __attribute__((unused)) _update_part_tbl(struct partitions *p, int count)
++{
++	int i = 0;
++
++	while (i < count) {
++		if (strcmp(p[i].name, "boot_a") == 0)
++			has_boot_slot = 1;
++		else if (strcmp(p[i].name, "boot") == 0)
++			has_boot_slot = 0;
++
++		if (strcmp(p[i].name, "system_a") == 0)
++			has_system_slot = 1;
++		else if (strcmp(p[i].name, "system") == 0)
++			has_system_slot = 0;
++
++		if (strcmp(p[i].name, "super") == 0) {
++			dynamic_partition = true;
++			setenv("partition_mode", "dynamic");
++		}
++
++		if (strncmp(p[i].name, "vendor_boot", 11) == 0) {
++			vendor_boot_partition = true;
++			setenv("vendor_boot_mode", "true");
++		}
++		i++;
++	}
++}
++
++/***************************************************
++ *	init partition table for emmc device.
++ *	returns 0 means ok.
++ *			other means failure.
++ ***************************************************
++ *  work flows:
++ *	source of logic partition table(LPT) is from dts
++ *	no matter MACRO is on/off
++ *		1. try to get LPT from dtb
++ *			1.1 if dtb exist, compose ept by LPT&inh
++ *			1.2 if not, go ahead
++ *      2. try to get ept from emmc rsv partition
++ *			2.1 if not:
++ * 				2.1.1 when dtb exists
++ *					2.1.1.1 check ept with dtb
++ *					2.1.1.2 update rsv if needed
++ * 				2.1.1 without dtb, exit
++ *			2.2 if got:
++ *				2.2.1 try to reconstruct ept by MBR
++ *				2.2.2 check it with ept
++ *				2.2.3 update MBR if needed
++ ***************************************************
++ *	when normal boot:
++ *		without dtb, with rsv, with MBR
++ *  when blank emmc:
++ *		without dtb, without rsv, without MBR
++ *  when burning MBR on a blank emmc:
++ *		with dtb, without rsv, without MBR
++ *  when burning MBR on a emmc with rsv:
++ *		with dtb, with rsv, without MBR
++ *  when burning MBR on a emmc with rsv&MBR:
++ *		with dtb, with rsv, with MBR
++ ***************************************************/
++int mmc_device_init (struct mmc *mmc)
++{
++	int ret = 1;
++#if (CONFIG_PTBL_MBR)
++	cpu_id_t cpu_id = get_cpu_id();
++#endif
++	/* partition table from dtb/code/emmc rsv */
++	struct _iptbl iptbl_dtb, iptbl_inh;
++	struct _iptbl *p_iptbl_rsv = NULL;
++	int update = 1;
++
++	/* calculate inherent offset */
++	iptbl_inh.count = get_emmc_partition_arraysize();
++	if (iptbl_inh.count) {
++		iptbl_inh.partitions = emmc_partition_table;
++		_calculate_offset(mmc, &iptbl_inh, 0);
++	}
++	apt_info("inh count %d\n",  iptbl_inh.count);
++#if (CONFIG_MPT_DEBUG)
++	apt_info("inherent partition table\n");
++	_dump_part_tbl(iptbl_inh.partitions, iptbl_inh.count);
++#endif
++	/* For re-entry */
++	if (NULL == p_iptbl_ept) {
++		ret = _zalloc_iptbl(&p_iptbl_ept);
++		if (ret)
++			goto _out;
++	} else {
++		p_iptbl_ept->count = 0;
++		memset(p_iptbl_ept->partitions, 0,
++			sizeof(struct partitions)*MAX_PART_COUNT);
++	}
++
++	/* try to get partition table from dtb(ddr or emmc) */
++	iptbl_dtb.partitions = get_ptbl_from_dtb(mmc);
++	/* construct ept by dtb if exist */
++	if (iptbl_dtb.partitions) {
++		iptbl_dtb.count = get_partition_count();
++		apt_info("dtb %p, count %d\n", iptbl_dtb.partitions, iptbl_dtb.count);
++		/* reserved partition must exist! */
++		if (iptbl_inh.count) {
++			compose_ept(&iptbl_dtb, &iptbl_inh, p_iptbl_ept);
++			if (0 == p_iptbl_ept->count) {
++				apt_err("compose partition table failed!\n");
++				goto _out;
++			}
++			/* calculate offset infos. considering GAPs */
++			if (_calculate_offset(mmc, p_iptbl_ept, 1)) {
++				goto _out;
++			}
++		#if (CONFIG_MPT_DEBUG)
++			apt_info("ept partition table\n");
++			_dump_part_tbl(p_iptbl_ept->partitions, p_iptbl_ept->count);
++		#endif
++		} else {
++			/* report fail, because there is no reserved partitions */
++			apt_err("compose partition table failed!\n");
++			ret = -1;
++			goto _out;
++		}
++	} else
++		apt_wrn("get partition table from dtb failed\n");
++
++	/* try to get partiton table from rsv */
++	ret = _zalloc_iptbl(&p_iptbl_rsv);
++	if (ret)
++		goto _out;
++	ret = get_ptbl_rsv(mmc, p_iptbl_rsv);
++	if (p_iptbl_rsv->count) {
++		/* dtb exist, p_iptbl_ept already inited */
++		if (iptbl_dtb.partitions) {
++			ret = _cmp_iptbl(p_iptbl_ept, p_iptbl_rsv);
++			if (!ret) {
++				update = 0;
++			}
++		} else {
++			/* without dtb, update ept with rsv */
++		#if 0
++			p_iptbl_ept->count = p_iptbl_rsv->count;
++			memcpy(p_iptbl_ept->partitions, p_iptbl_rsv->partitions,
++				p_iptbl_ept->count * sizeof(struct partitions));
++		#endif
++			_cpy_iptbl(p_iptbl_ept, p_iptbl_rsv);
++			update = 0;
++		}
++	} else {
++		/* without dtb& rsv */
++		if (!iptbl_dtb.partitions) {
++			apt_err("dtb&rsv are not exist, no LPT source\n");
++			ret = -9;
++			goto _out;
++		}
++	}
++
++	if (update && iptbl_dtb.partitions) {
++		apt_wrn("update rsv with dtb!\n");
++		ret = update_ptbl_rsv(mmc, p_iptbl_ept);
++	}
++	//apt_wrn("ept source is %s\n", (ept_source == p_iptbl_ept)?"ept":"rsv");
++#if (CONFIG_PTBL_MBR)
++	/* 1st sector was reserved by romboot after gxl */
++	if (cpu_id.family_id >= MESON_CPU_MAJOR_ID_GXL) {
++		if (_check_ptbl_mbr(mmc, p_iptbl_ept)) {
++			/*fixme, comaptible for mbr&ebr */
++			ret |= _update_ptbl_mbr(mmc, p_iptbl_ept);
++			apt_wrn("MBR Updated!\n");
++		}
++	}
++#endif
++#ifdef CONFIG_AML_GPT
++	ret = confirm_gpt(mmc);
++#endif
++
++	_update_part_tbl(p_iptbl_ept->partitions, p_iptbl_ept->count);
++
++	/* init part again */
++	init_part(&mmc->block_dev);
++
++_out:
++	if (p_iptbl_rsv)
++		_free_iptbl(p_iptbl_rsv);
++
++	return ret;
++}
++
++struct partitions *find_mmc_partition_by_name (char *name)
++{
++	struct partitions *partition = NULL;
++
++	if (NULL == p_iptbl_ept)
++		goto _out;
++	partition = p_iptbl_ept->partitions;
++	partition = _find_partition_by_name(partition,
++			p_iptbl_ept->count, name);
++_out:
++	return partition;
++}
++
++/*
++ find virtual partition in inherent table.
++*/
++int find_virtual_partition_by_name (char *name, struct partitions *partition)
++{
++	int ret = 0;
++	ulong offset;
++	struct virtual_partition *vpart = aml_get_virtual_partition_by_name(MMC_DTB_NAME);
++	if (NULL == partition)
++		return -1;
++
++	offset = _get_inherent_offset(MMC_RESERVED_NAME);
++	if (-1 == offset) {
++		apt_err("can't find %s in inherent\n", MMC_RESERVED_NAME);
++		return -1;
++	}
++
++	if (!strcmp(name, "dtb")) {
++		strncpy(partition->name, name, 3);
++		partition->offset = offset + vpart->offset;
++		partition->size = (vpart->size * DTB_COPIES);
++	}
++
++	return ret;
++}
++
++int find_dev_num_by_partition_name (char *name)
++{
++	int dev = -1;
++
++	/* card */
++	if (!strcmp(name, MMC_CARD_PARTITION_NAME)) {
++		dev = 0;
++    } else { /* eMMC OR TSD */
++		/* partition name is valid */
++		if (find_mmc_partition_by_name(name)) {
++			dev = 1;
++		}
++	}
++	return dev;
++}
++
++static inline uint64_t get_part_size(struct partitions *part, int num)
++{
++    return part[num].size;
++}
++
++static inline uint64_t get_part_offset(struct partitions *part, int num)
++{
++    return part[num].offset;
++}
++
++static inline char * get_part_name(struct partitions *part, int num)
++{
++    return (char *)part[num].name;
++}
++
++unsigned get_part_tbl_from_ept(int num, char *name)
++{
++    struct partitions *part = NULL;
++
++    if (NULL == p_iptbl_ept)
++        return -1;
++    if (num > (p_iptbl_ept->count-1))
++        return -1;
++
++    part =  p_iptbl_ept->partitions;
++    strcpy(name, get_part_name(part, num));
++
++    return part[num].mask_flags;
++}
++
++int get_part_info_from_tbl(block_dev_desc_t *dev_desc,
++	int num, disk_partition_t *info)
++{
++    int ret = 0;
++    struct partitions *part;
++
++	if (NULL == p_iptbl_ept)
++        return -1;
++	if (num > (p_iptbl_ept->count-1))
++        return -1;
++    part = p_iptbl_ept->partitions;
++
++    /*get partition info by index! */
++    info->start = (lbaint_t)(get_part_offset(part, num)/dev_desc->blksz);
++    info->size = (lbaint_t)(get_part_size(part, num)/dev_desc->blksz);
++	info->blksz = dev_desc->blksz;
++    strcpy((char *)info->name, get_part_name(part, num));
++
++    return ret;
++}
++#if (CONFIG_MPT_DEBUG)
++void show_partition_info(disk_partition_t *info)
++{
++	printf("----------%s----------\n", __func__);
++	printf("name %10s\n", info->name);
++	printf("blksz " LBAFU "\n", info->blksz);
++	printf("sart %ld\n", info->start);
++	printf("size %ld\n", info->size);
++	printf("----------end----------\n");
++}
++#endif
++
++int mmc_boot_size(char *name, uint64_t* size)
++{
++	return get_boot_size(name, size);
++}
++
++struct partitions *aml_get_partition_by_name(const char *name)
++{
++	struct partitions *partition = NULL;
++	partition = _find_partition_by_name(emmc_partition_table,
++			get_emmc_partition_arraysize(), name);
++	if (partition == NULL)
++		apt_wrn("do not find match in inherent table %s\n", name);
++	return partition;
++}
++
++struct virtual_partition *aml_get_virtual_partition_by_name(const char *name)
++{
++	int i = 0, cnt;
++	struct virtual_partition *part = NULL;
++	cnt = get_emmc_virtual_partition_arraysize();
++	while (i < cnt) {
++		part = &virtual_partition_table[i];
++		if (!strcmp(name, part->name)) {
++			apt_info("find %10s @ tbl[%d]\n", name, i);
++			break;
++		}
++		i++;
++	};
++	if (i == cnt) {
++		part = NULL;
++		apt_wrn("do not find match in table %10s\n", name);
++	}
++	return part;
++}
++
++int get_part_info_by_name(block_dev_desc_t *dev_desc,
++	const char *name, disk_partition_t *info)
++{
++	struct partitions *partition = NULL;
++	struct partitions virtual;
++	int ret = 0;
++	cpu_id_t cpu_id = get_cpu_id();
++
++	partition = find_mmc_partition_by_name((char *)name);
++	if (partition) {
++		info->start = (lbaint_t)(partition->offset/dev_desc->blksz);
++		info->size = (lbaint_t)(partition->size/dev_desc->blksz);
++		info->blksz = dev_desc->blksz;
++		strcpy((char *)info->name, partition->name);
++	} else if (!find_virtual_partition_by_name((char *)name, &virtual)) {
++		/* try virtual partitions */
++		apt_wrn("Got %s in virtual table\n", name);
++		info->start = (lbaint_t)(virtual.offset/dev_desc->blksz);
++		info->size = (lbaint_t)(virtual.size/dev_desc->blksz);
++		info->blksz = dev_desc->blksz;
++		strcpy((char *)info->name, virtual.name);
++	} else {
++		/* all partitions were tried, fail */
++		ret = -1;
++		goto _out;
++	}
++	/* for bootloader */
++	if ((0 == info->start) && (cpu_id.family_id >= MESON_CPU_MAJOR_ID_GXL)) {
++		info->start = 1;
++		info->size -= 1;
++	}
++
++#if (CONFIG_MPT_DEBUG)
++	show_partition_info(info);
++#endif
++_out:
++	return ret;
++}
++
++
++/*
++ * get the partition number by name
++ * return value
++ *     < 0 means no partition found
++ *     >= 0 means valid partition
++ */
++__weak int get_partition_num_by_name(char *name)
++{
++	   int ret = -1;
++	   struct partitions *partition = NULL;
++
++       if (NULL == p_iptbl_ept)
++			   goto _out;
++	   partition = p_iptbl_ept->partitions;
++	   ret = _get_part_index_by_name(partition,
++					   p_iptbl_ept->count, name);
++_out:
++	   return ret;
++}
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/aml_hs200_v3.c b/drivers/mmc/aml_hs200_v3.c
+--- a/drivers/mmc/aml_hs200_v3.c	1970-01-01 08:00:00.000000000 +0800
++++ b/drivers/mmc/aml_hs200_v3.c	2026-02-09 11:25:48.413072758 +0800
+@@ -0,0 +1,1436 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * drivers/mmc/aml_hs200_v3.c
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#include <config.h>
++#include <common.h>
++#include <command.h>
++#include <errno.h>
++#include <mmc.h>
++#include <part.h>
++#include <malloc.h>
++#include <linux/list.h>
++#include <div64.h>
++#include "mmc_private.h"
++#include <asm/arch/sd_emmc.h>
++#include <asm/arch/secure_apb.h>
++#include <emmc_partitions.h>
++#include <asm/cpu_id.h>
++#include <linux/compat.h>
++#include <asm/arch/timer.h>
++#include <asm/arch/cpu_sdio.h>
++
++#define MMC_PATTERN_OFFSET ((SZ_1M * (36 + 3)) / 512)
++#define MMC_MAGIC_OFFSET ((SZ_1M * (36 + 3)) / 512)
++#define MMC_RANDOM_OFFSET ((SZ_1M * (36 + 3)) / 512)
++
++
++#ifdef EMMC_DEBUG_ENABLE
++	#define emmc_debug(a...) printf(a);
++#else
++	#define emmc_debug(a...)
++#endif
++#ifdef MMC_HS400_MODE
++u64 align[10];
++
++void print_all_reg(struct mmc *mmc) {
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	printf("sd_emmc_regs->gcfg is %x\n", sd_emmc_regs->gcfg);
++	printf("sd_emmc_regs->gclock is %x\n", sd_emmc_regs->gclock);
++	printf("sd_emmc_regs->gadjust is %x\n", sd_emmc_regs->gadjust);
++	printf("sd_emmc_regs->gdelay is %x\n", sd_emmc_regs->gdelay);
++	printf("sd_emmc_regs->gdelay1 is %x\n", sd_emmc_regs->gdelay1);
++	printf("sd_emmc_regs->gintf3 is %x\n", sd_emmc_regs->gintf3);
++	return;
++}
++
++static int fbinary(u64 x)
++{
++	int i;
++	for (i = 0; i < 64; i++) {
++		if ((x >> i) & 0x1)
++			return i;
++	}
++	return -1;
++}
++//
++//static int mmc_get_status(struct mmc *mmc, int timeout)
++//{
++//	struct mmc_cmd cmd;
++//	int err, retries = 1;
++//
++//	cmd.cmdidx = MMC_CMD_SEND_STATUS;
++//	cmd.resp_type = MMC_RSP_R1;
++//	if (!mmc_host_is_spi(mmc))
++//		cmd.cmdarg = mmc->rca << 16;
++//
++//	do {
++//		err = mmc_send_cmd(mmc, &cmd, NULL);
++//		if (!err) {
++//			if ((cmd.response[0] & MMC_STATUS_RDY_FOR_DATA) &&
++//			    (cmd.response[0] & MMC_STATUS_CURR_STATE) !=
++//			     MMC_STATE_PRG)
++//				break;
++//			else if (cmd.response[0] & MMC_STATUS_MASK) {
++//				return COMM_ERR;
++//			}
++//		} else if (--retries < 0)
++//			return err;
++//		udelay(1000);
++//	} while (timeout--);
++//
++//	if (timeout <= 0) {
++//		return TIMEOUT;
++//	}
++//	if (cmd.response[0] & MMC_STATUS_SWITCH_ERROR)
++//		return SWITCH_ERR;
++//
++//	return 0;
++//}
++
++static int mmc_read_single_block(struct mmc *mmc, void *dst, lbaint_t start)
++{
++	struct mmc_cmd cmd;
++	struct mmc_data data;
++	int ret = 0;
++
++	cmd.cmdidx = MMC_CMD_READ_SINGLE_BLOCK;
++
++	if (mmc->high_capacity)
++		cmd.cmdarg = start;
++	else
++		cmd.cmdarg = start * mmc->read_bl_len;
++
++	cmd.resp_type = MMC_RSP_R1;
++
++	data.dest = dst;
++	data.blocks = 1;
++	data.blocksize = mmc->read_bl_len;
++	data.flags = MMC_DATA_READ;
++
++	ret = mmc_send_cmd(mmc, &cmd, &data);
++	return ret;
++}
++
++static long long para_checksum_calc(struct tuning_para *para)
++{
++	int i = 0;
++	int size = sizeof(struct tuning_para) - 6 * sizeof(unsigned int);
++	unsigned int *buffer;
++	long long checksum = 0;
++
++	size = size >> 2;
++	buffer = (unsigned int *)para;
++	while (i < size)
++		checksum += buffer[i++];
++
++	return checksum;
++}
++
++/*set para on controller register*/
++int aml_set_tuning_para(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct tuning_para *para = aml_priv->para;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	int temp_index;
++	u32 delay1, delay2, intf3;
++
++	if (para->update == 1)
++		return 0;
++
++	temp_index = para->temperature / 10;
++	delay1 = para->hs4[temp_index].delay1;
++	delay2 = para->hs4[temp_index].delay2;
++	intf3 = para->hs4[temp_index].intf3;
++
++	sd_emmc_regs->gdelay = delay1;
++	sd_emmc_regs->gdelay1 = delay2;
++	sd_emmc_regs->gintf3 = intf3;
++	sd_emmc_regs->gstatus = 0x1ff0000;
++	sd_emmc_regs->girq_en = 0x23fff;
++	return 1;
++}
++
++/*save parameter on mmc_host pdata*/
++void aml_save_tuning_para(struct mmc *mmc)
++{
++	long long checksum;
++	int temp_index;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	struct tuning_para *para = aml_priv->para;
++
++	u32 delay1 = sd_emmc_regs->gdelay;
++	u32 delay2 = sd_emmc_regs->gdelay1;
++	u32 intf3 = sd_emmc_regs->gintf3;
++
++	temp_index = para->temperature / 10;
++	if (temp_index < 0 || temp_index > 6) {
++		para->update = 0;
++		printf("temperature is out of index, can't be saved\n");
++		return;
++	}
++
++	para->hs4[temp_index].delay1 = delay1;
++	para->hs4[temp_index].delay2 = delay2;
++	para->hs4[temp_index].intf3 = intf3;
++	para->hs4[temp_index].flag = TUNED_FLAG;
++
++	para->magic = TUNED_MAGIC; /*E~K\0*/
++	para->version = TUNED_VERSION;
++
++	checksum = para_checksum_calc(para);
++	para->checksum = checksum;
++	return;
++}
++
++#ifdef MMC_WRITE_TUNING_PARA
++/*write tuning para on emmc, the offset is 0x14400*/
++static int aml_write_tuning_para(struct mmc *mmc)
++{
++	unsigned int size;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct tuning_para *parameter = aml_priv->para;
++	unsigned int *buf;
++	int para_size;
++	int blocks;
++	int cnt;
++	int offset;
++
++	offset = MMC_TUNING_OFFSET;
++	para_size = sizeof(struct tuning_para);
++	blocks = (para_size - 1)  / 512 + 1;
++	size = blocks << 9;
++
++	buf = (unsigned int *)malloc(size);
++	if (!buf) {
++		printf("malloc buf failed\n");
++		return -1;
++	}
++
++	memset(buf, 0, size);
++	memcpy(buf, parameter, sizeof(struct tuning_para));
++
++	cnt = mmc->block_dev.block_write(1, offset, blocks, buf);
++	if (cnt != blocks)
++		printf("write parameter failed\n");
++
++	free(buf);
++	return 0;
++}
++#endif
++
++int aml_emmc_hs200_tl1(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	struct sd_emmc_clock *vclkc = (struct sd_emmc_clock *)&sd_emmc_regs->gclock;
++
++	u32 clk_bak = 0;
++	u32 delay2 = 0, count = 0;
++	int i, j, err = 0;
++	int retry_times = 1;
++
++	mmc->refix = 1;
++//	clk_bak = vclkc;
++	clk_bak = 0x10100002;
++
++	sd_emmc_regs->gclock = 0x10100004;
++	sd_emmc_regs->gintf3 |= 1 << 22;
++	sd_emmc_regs->gcfg = 0x804892;
++	sd_emmc_regs->gintf3 = 0x4000c8;
++
++	printf("[%s][%d] clk config:0x%x\n",
++		__func__, __LINE__, sd_emmc_regs->gclock);
++	for (i = 0; i < 63; i++) {
++		delay2 += (1 << 24);
++		sd_emmc_regs->gdelay1 = delay2;
++retry:
++		err = emmc_eyetest_log(mmc, 9);
++		if (err)
++			continue;
++		count = fbinary(align[9]);
++		if (((count >= 14) && (count <= 20))
++			|| ((count >= 48) && (count <= 54))) {
++			if (retry_times != 3) {
++				retry_times++;
++				goto retry;
++			} else
++				break;
++		}
++	}
++
++	if (i == 63) {
++		for (j = 0; j < 6; j++) {
++			vclkc->tx_delay++;
++			err = emmc_eyetest_log(mmc, 9);
++			if (err)
++				continue;
++			count = fbinary(align[9]);
++			if (((count >= 14) && (count <= 20))
++				|| ((count >= 48) && (count <= 54)))
++				break;
++		}
++	}
++
++	aml_priv->cmd_c = (delay2 >> 24);
++	sd_emmc_regs->gdelay1 = 0;
++	sd_emmc_regs->gclock = clk_bak;
++	delay2 = 0;
++	for (i = 0; i < 63; i++) {
++		retry_times = 0;
++		delay2 += (1 << 24);
++		sd_emmc_regs->gdelay1 = delay2;
++retry1:
++		err = emmc_eyetest_log(mmc, 9);
++		if (err)
++			continue;
++
++		count = fbinary(align[9]);
++		if (count >= 8 && count <= 56) {
++			if (retry_times != 3) {
++				retry_times++;
++				goto retry1;
++			} else
++				break;
++		}
++	}
++
++	printf("[%s][%d] clk config:0x%x\n",
++		__func__, __LINE__, sd_emmc_regs->gclock);
++	mmc->refix = 0;
++	return 0;
++}
++
++void select_clock_src(void) {
++	void* buf;
++	unsigned long  addr;
++	int size;
++	u64 writeval;
++	unsigned int clock_src = 0;
++	unsigned long byte;
++	cpu_id_t cpu_id = get_cpu_id();
++
++	if (cpu_id.family_id == MESON_CPU_MAJOR_ID_TL1
++			|| cpu_id.family_id == MESON_CPU_MAJOR_ID_T5)
++		clock_src = 0x880;
++	else if (cpu_id.family_id >= MESON_CPU_MAJOR_ID_G12B)
++		clock_src = 0x880;
++	else
++		clock_src = 0xe80;
++
++	size = 4;
++	byte = size;
++	addr = CLKSRC_BASE + 0x25c;
++	writeval = clock_src;
++	buf = map_sysmem(addr, byte);
++	*((u32 *)buf) = (u32)writeval;
++	unmap_sysmem(buf);
++
++	writel(0x17ff, PAD_PULL_UP_REG0);
++	writel(0xffffffff, PAD_DS_REG0A);
++}
++
++int mmc_set_hs200_mode(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	int err = 0;
++
++	if (aml_priv->sd_emmc_port != 2)
++		return err;
++
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++			EXT_CSD_BUS_WIDTH, 2);
++	if (err) {
++		printf("mmc switch buswidth failed\n");
++		return err;
++	}
++
++	mmc_set_bus_width(mmc, MMC_MODE_8BIT);
++
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++			EXT_CSD_HS_TIMING, EXT_CSD_TIMING_HS200);
++	if (err) {
++		printf("mmc switch HS200 failed\n");
++		return err;
++	}
++
++	return err;
++}
++
++static int emmc_send_deselect(struct mmc *mmc)
++{
++	struct mmc_cmd cmd = {0};
++	u32 err = 0;
++
++	cmd.cmdidx = MMC_CMD_SELECT_CARD;
++	cmd.cmdarg = 0;
++	cmd.resp_type = MMC_RSP_NONE;
++
++	err = mmc_send_cmd(mmc, &cmd, NULL);
++	if (err) {
++		printf("[%s][%d] cmd:0x%x send error\n",
++				__func__, __LINE__, cmd.cmdidx);
++		return err;
++	}
++	return err;
++}
++
++static int emmc_send_select(struct mmc *mmc)
++{
++	struct mmc_cmd cmd = {0};
++	u32 err = 0;
++
++	cmd.cmdidx = MMC_CMD_SELECT_CARD;
++	cmd.resp_type = MMC_RSP_R1;
++	cmd.cmdarg = 1 << 16;
++	err = mmc_send_cmd(mmc, &cmd, NULL);
++
++//	if (err) {
++//		printf("[%s][%d] cmd:0x%x send error\n",
++//				__func__, __LINE__, cmd.cmdidx);
++//		return err;
++//	}
++	return err;
++}
++
++static int emmc_send_cid(struct mmc *mmc)
++{
++	struct mmc_cmd cmd = {0};
++	u32 err = 0;
++
++	cmd.cmdidx = MMC_CMD_SEND_CID;
++	cmd.cmdarg = (1 << 16);
++	cmd.resp_type = MMC_RSP_R2;
++
++	err = mmc_send_cmd(mmc, &cmd, NULL);
++//	if (err) {
++//		printf("[%s][%d] cmd:0x%x send error\n",
++//				__func__, __LINE__, cmd.cmdidx);
++//		return err;
++//	}
++	return err;
++}
++
++static int aml_sd_emmc_cmd_v3(struct mmc *mmc)
++{
++	int i;
++	int ret;
++	ret = mmc_send_status(mmc, 1000);
++	ret |= emmc_send_deselect(mmc);
++	for (i = 0; i < 2; i++)
++		ret |= emmc_send_cid(mmc);
++	ret |= emmc_send_select(mmc);
++	return ret;
++}
++
++static int emmc_detect_base_line(u64 *arr)
++{
++	u32 i = 0, first[10] = {0};
++	u32  max = 0, l_max = 0xff;
++	for (i = 0; i < 8; i++) {
++		first[i] = fbinary(arr[i]);
++		if (first[i] > max) {
++			l_max = i;
++			max = first[i];
++		}
++	}
++	printf("%s [%d] detect line:%d, max: %u\n",
++			__func__, __LINE__, l_max, max);
++	return max;
++}
++
++/**************** start all data align ********************/
++static int emmc_all_data_line_alignment(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 delay1 = 0, delay2 = 0;
++	int result;
++	int temp = 0, base_line = 0, line_x = 0;
++
++	base_line = emmc_detect_base_line(align);
++	for (line_x = 0; line_x < 9; line_x++) {
++		if (line_x == 8)
++			continue;
++		if (align[line_x] & 0xf)
++			continue;
++		temp = fbinary(align[line_x]);
++		result = base_line - temp;
++		emmc_debug("*****line_x: %d, result: %d\n",
++				line_x, result);
++	    if (line_x < 5)
++			delay1 |= result << (6 * line_x);
++	    else
++			delay2 |= result << (6 * (line_x - 5));
++	}
++	sd_emmc_regs->gdelay += delay1;
++	sd_emmc_regs->gdelay1 += delay2;
++	emmc_debug("gdelay: 0x%x, gdelay1: 0x%x\n",
++			sd_emmc_regs->gdelay, sd_emmc_regs->gdelay1);
++	return 0;
++}
++
++int emmc_eyetest_log(struct mmc *mmc, u32 line_x)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	u32 adjust = sd_emmc_regs->gadjust;
++	struct sd_emmc_adjust_v3 *gadjust =
++		(struct sd_emmc_adjust_v3 *)&adjust;
++	u32 eyetest_log = 0;
++	struct eyetest_log *geyetest_log = (struct eyetest_log *)&(eyetest_log);
++	u32 eyetest_out0 = 0, eyetest_out1 = 0;
++	u32 intf3 = sd_emmc_regs->gintf3;
++	struct intf3 *gintf3 = (struct intf3 *)&(intf3);
++	/*u32 vcfg = sd_emmc_regs->gcfg;*/
++	int retry = 3;
++	u64 tmp = 0;
++	unsigned long phy_addr = 0x1080000;
++	void *addr =  (void*)phy_addr;
++	int i;
++	lbaint_t start = 1;
++	//((SZ_1M*(26+3))/ 512);
++
++	/****** calculate  line_x ***************************/
++	/******* init eyetest register ************************/
++	gadjust->cali_enable = 1;
++	gadjust->cali_sel = line_x;
++	sd_emmc_regs->gadjust = adjust;
++	if (line_x < 9)
++		gintf3->eyetest_exp = 7;
++	else
++		gintf3->eyetest_exp = 3;
++RETRY:
++
++	gintf3->eyetest_on = 1;
++	sd_emmc_regs->gintf3 = intf3;
++
++	/*****test start*************/
++	udelay(5);
++	if (line_x < 9)
++		for (i = 0; i< 2; i++)
++			mmc_bread(1, start, 256, addr);
++	else
++		aml_sd_emmc_cmd_v3(mmc);
++	udelay(1);
++	eyetest_log = sd_emmc_regs->geyetest_log;
++
++	if (!(geyetest_log->eyetest_done & 0x1)) {
++		printf("testint eyetest times: 0x%x, out: 0x%x, 0x%x\n",
++				geyetest_log->eyetest_times,
++				eyetest_out0, eyetest_out1);
++		gintf3->eyetest_on = 0;
++		sd_emmc_regs->gintf3 = intf3;
++		retry--;
++
++		if (retry == 0) {
++			printf("[%s][%d] retry eyetest failed\n",
++					__func__, __LINE__);
++			return 1;
++		}
++		goto RETRY;
++	}
++	eyetest_out0 = sd_emmc_regs->geyetest_out0;
++	eyetest_out1 = sd_emmc_regs->geyetest_out1;
++	gintf3->eyetest_on = 0;
++	sd_emmc_regs->gintf3 = intf3;
++	align[line_x] = ((tmp | eyetest_out1) << 32) | eyetest_out0;
++	printf("d1:0x%x,d2:0x%x,u64eyet:0x%016llx,l_x:%d\n",
++			sd_emmc_regs->gdelay, sd_emmc_regs->gdelay1,
++			align[line_x], line_x);
++	return 0;
++}
++
++static int emmc_ds_data_alignment(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 delay1 = sd_emmc_regs->gdelay;
++	u32 delay2 = sd_emmc_regs->gdelay1;
++	int i, line_x, temp = 0;
++
++	for (line_x = 0; line_x < 8; line_x++) {
++		temp = fbinary(align[line_x]);
++		if (temp <= 4)
++			continue;
++		for (i = 0; i < 64; i++) {
++			emmc_debug("i = %d,delay1:0x%x,delay2:0x%x\n",
++				i, sd_emmc_regs->gdelay,
++				sd_emmc_regs->gdelay1);
++			if (line_x < 5)
++				delay1 += 1<<(6*line_x);
++			else
++				delay2 += 1<<(6*(line_x-5));
++			sd_emmc_regs->gdelay = delay1;
++			sd_emmc_regs->gdelay1 = delay2;
++			emmc_eyetest_log(mmc, line_x);
++			if (align[line_x] & 0xf0)
++				break;
++		}
++		if (i == 64) {
++			printf("%s [%d] Don't find line delay which aligned with DS\n",
++				__func__, __LINE__);
++			return 1;
++		}
++	}
++	return 0;
++}
++
++static unsigned int get_emmc_cmd_win(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 delay2 = sd_emmc_regs->gdelay1;
++	u32 max = 0, i, temp;
++	u32 str[64] = {0};
++	int best_start = -1, best_size = -1;
++	int cur_start = -1, cur_size = 0;
++
++	for (i = 0; i < 64; i++) {
++		delay2 &= ~(0x3f << 24);
++		delay2 |= (i << 24);
++		sd_emmc_regs->gdelay1 = delay2;
++		emmc_eyetest_log(mmc, 9);
++		temp = fbinary(align[9]);
++		str[i] = temp;
++		if (max < temp)
++			max = temp;
++	}
++	for (i = 0; i < 64; i++) {
++		if (str[i] >= 4) {
++			if (cur_start < 0)
++				cur_start = i;
++			cur_size++;
++		} else {
++			if (cur_start >= 0) {
++				if (best_start < 0) {
++					best_start = cur_start;
++					best_size = cur_size;
++				} else {
++					if (best_size < cur_size) {
++						best_start = cur_start;
++						best_size = cur_size;
++					}
++				}
++				cur_start = -1;
++				cur_size = 0;
++			}
++		}
++	}
++	if (cur_start >= 0) {
++		if (best_start < 0) {
++			best_start = cur_start;
++			best_size = cur_size;
++		} else if (best_size < cur_size) {
++			best_start = cur_start;
++			best_size = cur_size;
++		}
++		cur_start = -1;
++		cur_size = -1;
++	}
++	delay2 &= ~(0x3f << 24);
++	delay2 |= ((best_start + (best_size * 3 / 4)) << 24);
++	sd_emmc_regs->gdelay1 = delay2;
++	emmc_eyetest_log(mmc, 9);
++	return max;
++}
++
++/* first step*/
++static int emmc_ds_core_align(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	u32 delay1 = sd_emmc_regs->gdelay;
++	u32 delay2 = sd_emmc_regs->gdelay1;
++	u32 delay2_bak = delay2;
++	u32 count = 0, ds_count = 0, cmd_count = 0;
++	ds_count = fbinary(align[8]);
++	if (ds_count == 0)
++		if ((align[8] & 0x1e0) == 0)
++			goto out_cmd;
++	emmc_debug("ds_count:%d,delay1:0x%x,delay2:0x%x\n",
++			ds_count, sd_emmc_regs->gdelay, sd_emmc_regs->gdelay1);
++	if (ds_count < 20) {
++		delay2 += ((20 - ds_count) << 18);
++		sd_emmc_regs->gdelay1 = delay2;
++	} else
++		sd_emmc_regs->gdelay1 += (1<<18);
++	emmc_eyetest_log(mmc, 8);
++	while (!(align[8] & 0xf)) {
++		sd_emmc_regs->gdelay1 += (1<<18);
++		emmc_eyetest_log(mmc, 8);
++	}
++	delay1 = sd_emmc_regs->gdelay;
++	delay2 = sd_emmc_regs->gdelay1;
++	count = ((delay2>>18) & 0x3f) - ((delay2_bak>>18) & 0x3f);
++
++	delay1 += (count<<0)|(count<<6)|(count<<12)|(count<<18)|(count<<24);
++	delay2 += (count<<0)|(count<<6)|(count<<12);
++
++	sd_emmc_regs->gdelay = delay1;
++	sd_emmc_regs->gdelay1 = delay2;
++out_cmd:
++	cmd_count = get_emmc_cmd_win(mmc);
++	printf("ds_count %u, count: %d, cmd_count:%u\n", ds_count, count, cmd_count);
++
++	return 0;
++}
++
++void update_all_line_eyetest(struct mmc *mmc)
++{
++	int line_x;
++
++	for (line_x = 0; line_x < 10; line_x++) {
++		emmc_eyetest_log(mmc, line_x);
++	}
++}
++
++
++/*
++static int emmc_test_bus(struct mmc *mmc)
++{
++	unsigned long phy_addr = 0x1080000;
++	void * addr = (void*) phy_addr;
++	int ret = 0;
++	ret = mmc_bread(1, MMC_PATTERN_OFFSET, 40, addr);
++	if (ret)
++		return ret;
++	ret = mmc_bread(1, MMC_MAGIC_OFFSET, 80, addr);
++	if (ret)
++		return ret;
++	ret = mmc_bread(1, MMC_RANDOM_OFFSET, 40, addr);
++	if (ret)
++		return ret;
++	return ret;
++}
++*/
++int emmc_ds_manual_sht(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	u32 intf3 = sd_emmc_regs->gintf3;
++	struct intf3 *gintf3 = (struct intf3 *)&(intf3);
++	int i, cnt = 0;
++	int match[64];
++	int best_start = -1, best_size = -1;
++	int cur_start = -1, cur_size = 0;
++	unsigned long phy_addr = 0x1080000;
++	void * addr = (void*) phy_addr;
++	u32 begin_time, end_time;
++	u32 capacity = mmc->capacity >> 9;
++	u32 offset;
++
++//	sd_emmc_regs->gintf3 = 0x4000c8;
++	sd_emmc_regs->gintf3 = 0x400000;
++	intf3 = sd_emmc_regs->gintf3;
++	begin_time = get_time();
++	gintf3->ds_sht_m = 0;
++	offset = (u32)rand() % capacity;
++	for (i = 0; i < 64; i++) {
++		cnt = mmc_bread(1, offset, 200, addr);
++		if (cnt == 200)
++			match[i] = 0;
++		else
++			match[i] = 1;
++		gintf3->ds_sht_m += 1;
++		sd_emmc_regs->gintf3 = intf3;
++	}
++	end_time = get_time();
++	printf("spend time is  %dus.\n", end_time - begin_time);
++
++	for (i = 0; i < 64; i++) {
++		if (match[i] == 0) {
++			if (cur_start < 0)
++				cur_start = i;
++			cur_size++;
++		} else {
++			if (cur_start >= 0) {
++				if (best_start < 0) {
++					best_start = cur_start;
++					best_size = cur_size;
++				} else {
++					if (best_size < cur_size) {
++						best_start = cur_start;
++						best_size = cur_size;
++					}
++				}
++				cur_start = -1;
++				cur_size = 0;
++			}
++		}
++	}
++	if (cur_start >= 0) {
++		if (best_start < 0) {
++			best_start = cur_start;
++			best_size = cur_size;
++		} else if (best_size < cur_size) {
++			best_start = cur_start;
++			best_size = cur_size;
++		}
++		cur_start = -1;
++		cur_size = -1;
++	}
++
++	gintf3->ds_sht_m = best_start + best_size / 2;
++	sd_emmc_regs->gintf3 = intf3;
++	aml_priv->win_start = best_start;
++	printf("ds_sht:%u, window:%d, intf3:0x%x, clock:0x%x, cfg: 0x%x\n",
++			gintf3->ds_sht_m, best_size,
++			sd_emmc_regs->gintf3,
++			sd_emmc_regs->gclock,
++			sd_emmc_regs->gcfg);
++	return best_size;
++}
++
++static ulong mmc_write_single_blocks(struct mmc *mmc, lbaint_t start,
++		const void *src)
++{
++	struct mmc_cmd cmd;
++	struct mmc_data data;
++	int timeout = 1000;
++	int ret;
++
++	udelay(100);
++	if ((start + 1) > mmc->block_dev.lba) {
++		printf("MMC: block number 0x" LBAF " exceeds max(0x" LBAF ")\n",
++		       start + 1, mmc->block_dev.lba);
++		return 0;
++	}
++
++	cmd.cmdidx = MMC_CMD_WRITE_SINGLE_BLOCK;
++
++	if (mmc->high_capacity)
++		cmd.cmdarg = start;
++	else
++		cmd.cmdarg = start * mmc->write_bl_len;
++
++	cmd.resp_type = MMC_RSP_R1;
++
++	data.src = src;
++	data.blocks = 1;
++	data.blocksize = mmc->write_bl_len;
++	data.flags = MMC_DATA_WRITE;
++
++	ret = mmc_send_cmd(mmc, &cmd, &data);
++	if (ret) {
++		goto _out;
++	}
++
++_out:
++	/* Waiting for the ready status */
++	if (mmc_send_status(mmc, timeout))
++		return 0;
++	if (ret)
++		return 0;
++	return 1;
++}
++
++int auto_set_tx_delay(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	u32 clock = sd_emmc_regs->gclock;
++	struct sd_emmc_clock *gclock = (struct sd_emmc_clock *)&(clock);
++	int i;
++	int match[64];
++	int best_start = -1, best_size = -1;
++	int cur_start = -1, cur_size = 0;
++	unsigned long phy_addr = 0x1080000;
++	void * addr = (void*) phy_addr;
++	lbaint_t start = ((SZ_1M*(36+3))/512);
++	int success_count=0;
++	int count;
++
++	if (mmc_bread(1, start, 1, addr) != 1) {
++		return 0;
++	}
++
++	gclock->tx_delay = 0;
++	printf("tx sample result:");
++	for (i = 0; i < 64; i++) {
++		gclock->tx_delay = i;
++		sd_emmc_regs->gclock = clock;
++		success_count = 0;
++
++		for (count = 0; count < 256; count++) {
++			if (mmc_write_single_blocks(mmc, start, addr))
++				success_count++;
++		}
++		if (success_count == 256)
++			printf("Y");
++		else
++			printf("N");
++		if (success_count == 256)
++			match[i] = 0;
++		else
++			match[i] = -1;
++	}
++	printf("\n");
++	for (i = 0; i < 64; i++) {
++		if (match[i] == 0) {
++			if (cur_start < 0)
++				cur_start = i;
++			cur_size++;
++		} else {
++			if (cur_start >= 0) {
++				if (best_start < 0) {
++					best_start = cur_start;
++					best_size = cur_size;
++				} else {
++					if (best_size < cur_size) {
++						best_start = cur_start;
++						best_size = cur_size;
++					}
++				}
++				cur_start = -1;
++				cur_size = 0;
++			}
++		}
++	}
++	if (cur_start >= 0) {
++		if (best_start < 0) {
++			best_start = cur_start;
++			best_size = cur_size;
++		} else if (best_size < cur_size) {
++			best_start = cur_start;
++			best_size = cur_size;
++		}
++		cur_start = -1;
++		cur_size = -1;
++	}
++	if (best_size == -1) {
++		printf("meson-mmc: can not find tx_delay\n");
++		return 0;
++	}
++	gclock->tx_delay = best_start + best_size / 2;
++	sd_emmc_regs->gclock = clock;
++	printf("meson-mmc: tx_delay:%u\n", gclock->tx_delay);
++	return 0;
++}
++
++unsigned int aml_sd_emmc_clktest(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	u32 intf3 = sd_emmc_regs->gintf3;
++	struct intf3 *gintf3 = (struct intf3 *)&(intf3);
++	u32 clktest = 0, delay_cell = 0, clktest_log = 0, count = 0;
++	u32 vcfg = sd_emmc_regs->gcfg;
++
++	int i = 0;
++	unsigned int cycle = 0;
++
++	sd_emmc_regs->gadjust = 0;
++
++	/* one cycle = xxx(ps) */
++	cycle = (1000000000 / mmc->clock) * 1000;
++	vcfg &= ~(1 << 23);
++	vcfg = 0x4896;
++
++	sd_emmc_regs->gcfg = vcfg;
++	sd_emmc_regs->gdelay = 0;
++	sd_emmc_regs->gdelay1 = 0;
++
++	gintf3->clktest_exp = 8;
++	gintf3->clktest_on_m = 1;
++	sd_emmc_regs->gintf3 = intf3;
++
++	clktest_log = sd_emmc_regs->gclktest_log;
++	clktest = sd_emmc_regs->gclktest_out;;
++	while (!(clktest_log & 0x80000000)) {
++		mdelay(1);
++		i++;
++		clktest_log = sd_emmc_regs->gclktest_log;
++		clktest = sd_emmc_regs->gclktest_out;
++		if (i > 4) {
++			printf("[%s] [%d] emmc clktest error\n",
++				__func__, __LINE__);
++			break;
++		}
++	}
++	if (clktest_log & 0x80000000) {
++		clktest = sd_emmc_regs->gclktest_out;
++		count = clktest / (1 << 8);
++		if (vcfg & 0x4)
++			delay_cell = ((cycle / 2) / count);
++		else
++			delay_cell = (cycle / count);
++	}
++	printf("%s [%d] clktest : %u, delay_cell: %d, count: %u\n",
++		__func__, __LINE__, clktest, delay_cell, count);
++	intf3 = sd_emmc_regs->gintf3;
++	gintf3->clktest_on_m = 0;
++	sd_emmc_regs->gintf3 = intf3;
++	vcfg = sd_emmc_regs->gcfg;
++	vcfg |= (1 << 23);
++	sd_emmc_regs->gcfg = vcfg;
++	return count;
++}
++
++static void tl1_emmc_line_timing(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 delay1 = 0, delay2 = 0, count = 12;
++
++	delay2 = sd_emmc_regs->gdelay1;
++	delay1  = (count<<0)|(count<<6)|(count<<12)
++		|(count<<18)|(count<<24);
++	delay2 |= (count<<0)|(count<<6)|(count<<12);
++	sd_emmc_regs->gdelay = delay1;
++	sd_emmc_regs->gdelay1 = delay2;
++	return;
++
++}
++
++static u32 emmc_search_cmd_delay(char *str, int repeat_times)
++{
++	int best_start = -1, best_size = -1;
++	int cur_start = -1, cur_size = 0;
++	u32 cmd_delay;
++	int i;
++
++	for (i = 0; i < 64; i++) {
++		if (str[i] == repeat_times) {
++			cur_size += 1;
++			if (cur_start == -1)
++				cur_start = i;
++		} else {
++			cur_size = 0;
++			cur_start = -1;
++		}
++
++		if (cur_size > best_size) {
++			best_size = cur_size;
++			best_start = cur_start;
++		}
++	}
++
++	cmd_delay = (best_start + best_size / 2) << 24;
++	printf("best_start 0x%x, best_size %d, cmd_delay is 0x%x\n",
++			best_start, best_size, cmd_delay >> 24);
++	return cmd_delay;
++}
++
++static void emmc_show_cmd_window(char *str, int repeat_times)
++{
++	int pre_status = 0;
++	int status = 0;
++	int single = 0;
++	int start = 0;
++	int i;
++
++	printf(">>>>>>>>>>>>>>scan command window>>>>>>>>>>>>>>>\n");
++	for (i = 0; i < 64; i++) {
++		if (str[i] == repeat_times)
++			status = 1;
++		else
++			status = -1;
++
++		if (i != 0 && pre_status != status) {
++			if (pre_status == 1 && single == 1)
++				printf(">>cmd delay [ 0x%x ] is ok\n", i - 1);
++			else if (pre_status == 1 && single != 1)
++				printf(">>cmd delay [ 0x%x -- 0x%x ] is ok\n",
++						start, i - 1);
++			else if (pre_status != 1 &&  single == 1)
++				printf(">>cmd delay [ 0x%x ] is nok\n", i - 1);
++			else if (pre_status != 1 && single != 1)
++				printf(">>cmd delay [ 0x%x -- 0x%x ] is nok\n",
++						start, i - 1);
++			start = i;
++			single = 1;
++		} else
++			single++;
++
++		if (i == 63) {
++			if (status == 1 && pre_status == 1)
++				printf(">>cmd delay [ 0x%x -- 0x%x ] is ok\n",
++						start, i);
++			else if (status != 1 && pre_status == -1)
++				printf(">>cmd delay [ 0x%x -- 0x%x ] is nok\n",
++						start, i);
++			else if (status == 1 && pre_status != 1)
++				printf(">>cmd delay [ 0x%x ] is ok\n", i);
++			else if (status != 1 && pre_status == 1)
++				printf(">>cmd delay [ 0x%x ] is nok\n", i);
++		}
++		pre_status = status;
++	}
++	printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n");
++}
++
++static u32 scan_emmc_cmd_win(struct mmc *mmc, int send_status)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 delay2 = sd_emmc_regs->gdelay1;
++	u32 cmd_delay = 0;
++	u32 delay2_bak = delay2;
++	u32 i, j, err;
++	int repeat_times = 100;
++	char str[64] = {0};
++	u32 capacity = mmc->capacity >> 9;
++	unsigned long phy_addr = 0x1080000;
++	void * addr = (void*) phy_addr;
++	u32 offset;
++	u32 begin_time, end_time;
++
++	addr = (void *)malloc(512 *sizeof(char));
++	if (!addr)
++		return -1;
++
++	delay2 &= ~(0xff << 24);
++
++	begin_time = get_time();
++
++	for (i = 0; i < 64; i++) {
++		sd_emmc_regs->gdelay1 = delay2;
++		offset = (u32)rand() % capacity;
++		for (j = 0; j < repeat_times; j++) {
++			if (send_status)
++				err = aml_sd_emmc_cmd_v3(mmc);
++			else
++				err = mmc_read_single_block(mmc, addr, offset);
++			if (!err)
++				str[i]++;
++			else
++				break;
++		}
++		delay2 += (1 << 24);
++	}
++	end_time = get_time();
++	printf("spend time is  %dus.\n", end_time - begin_time);
++
++	sd_emmc_regs->gdelay1 = delay2_bak;
++	cmd_delay = emmc_search_cmd_delay(str, repeat_times);
++	if (!send_status)
++		emmc_show_cmd_window(str, repeat_times);
++
++	return cmd_delay;
++}
++
++static void set_emmc_cmd_delay(struct mmc *mmc, int send_status)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 delay2 = sd_emmc_regs->gdelay1;
++	u32 cmd_delay = 0;
++
++	delay2 &= ~(0xff << 24);
++	cmd_delay = scan_emmc_cmd_win(mmc, send_status);
++	delay2 |= cmd_delay;
++	sd_emmc_regs->gdelay1 = delay2;
++}
++
++static void aml_emmc_hs400_tl1(struct mmc *mmc)
++{
++	set_emmc_cmd_delay(mmc, 1);
++	tl1_emmc_line_timing(mmc);
++	emmc_ds_manual_sht(mmc);
++	set_emmc_cmd_delay(mmc, 0);
++}
++
++static void aml_emmc_hs400_general(struct mmc *mmc) {
++	update_all_line_eyetest(mmc);
++	emmc_ds_core_align(mmc);
++	update_all_line_eyetest(mmc);
++	emmc_all_data_line_alignment(mmc);
++	update_all_line_eyetest(mmc);
++	emmc_ds_data_alignment(mmc);
++	update_all_line_eyetest(mmc);
++	emmc_ds_manual_sht(mmc);
++}
++
++static int emmc_data_alignment(struct mmc *mmc, int best_size)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 delay1 = sd_emmc_regs->gdelay;
++	u32 delay2 = sd_emmc_regs->gdelay1;
++	u32 intf3 = sd_emmc_regs->gintf3;
++	struct intf3 *gintf3 = (struct intf3 *)&(intf3);
++	u32 delay1_bak = delay1;
++	u32 delay2_bak = delay2;
++	u32 intf3_bak = intf3;
++	int line_x, i, cnt = 0, win_new;
++	u32 d[8];
++	int blk = 200;
++	unsigned long phy_addr = 0x1080000;
++	void *addr =  (void*)phy_addr;
++	lbaint_t offset = 0;
++	//((SZ_1M*(26+3))/ 512);
++
++	gintf3->ds_sht_m = aml_priv->win_start + 4;
++	sd_emmc_regs->gintf3 = intf3;
++	for (line_x = 0; line_x < 8; line_x++) {
++		for (i = 0; i < 20; i++) {
++			if (line_x < 5) {
++				delay1 += (1 << 6 * line_x);
++				sd_emmc_regs->gdelay = delay1;
++			} else {
++				delay2 += (1 << 6 * (line_x - 5));
++				sd_emmc_regs->gdelay1 = delay2;
++			}
++			cnt = mmc_bread(1, offset, blk, addr);
++			if (cnt != blk) {
++		//		printf("[%s]adjust line_x[%d]:%d\n",
++		//				__func__, line_x, i);
++				d[line_x] = i;
++				delay1 = delay1_bak;
++				delay2 = delay2_bak;
++				sd_emmc_regs->gdelay = delay1_bak;
++				sd_emmc_regs->gdelay1 = delay2_bak;
++				break;
++			}
++		}
++		if (i == 20) {
++			printf("[%s][%d] return set default value",
++					__func__, __LINE__);
++			sd_emmc_regs->gdelay = delay1_bak;
++			sd_emmc_regs->gdelay1 = delay2_bak;
++			sd_emmc_regs->gintf3 = intf3_bak;
++			return -1;
++		}
++	}
++
++	delay1 += (d[0]<<0)|(d[1]<<6)|(d[2]<<12)|(d[3]<<18)|(d[4]<<24);
++	delay2 += (d[5]<<0)|(d[6]<<6)|(d[7]<<12);
++	sd_emmc_regs->gdelay = delay1;
++	sd_emmc_regs->gdelay1 = delay2;
++	printf("delay1:0x%x, delay2:0x%x\n",
++		sd_emmc_regs->gdelay,
++		sd_emmc_regs->gdelay1);
++	gintf3->ds_sht_m = 0;
++	sd_emmc_regs->gintf3 = intf3;
++	win_new = emmc_ds_manual_sht(mmc);
++	if (win_new < best_size) {
++		printf("[%s][%d] win_new:%d < win_old:%d,set default!",
++			__func__, __LINE__, win_new, best_size);
++		sd_emmc_regs->gdelay = delay1_bak;
++		sd_emmc_regs->gdelay1 = delay2_bak;
++		sd_emmc_regs->gintf3 = intf3_bak;
++		printf("intf3:0x%x, delay1:0x%x, delay2:0x%x\n",
++				sd_emmc_regs->gdelay = delay1_bak,
++				sd_emmc_regs->gdelay1 = delay2_bak,
++				sd_emmc_regs->gintf3 = intf3_bak);
++	}
++
++	return 0;
++}
++
++int aml_emmc_hs400_Revb(struct mmc *mmc) {
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	int win_size = 0;
++
++	sd_emmc_regs->gintf3 = 0x4000c8;
++	set_emmc_cmd_delay(mmc, 1);
++
++	printf("[%s], delay1: 0x%x, delay2: 0x%x\n",
++			__func__, sd_emmc_regs->gdelay,
++			sd_emmc_regs->gdelay1);
++	win_size = emmc_ds_manual_sht(mmc);
++	emmc_data_alignment(mmc, win_size);
++	set_emmc_cmd_delay(mmc, 0);
++	return 0;
++}
++
++int aml_post_hs400_timming(struct mmc *mmc)
++{
++	int i;
++
++	cpu_id_t cpu_id = get_cpu_id();
++	for (i = 0; i < 9; i++)
++		align[i] = 0;
++	mmc->refix = 1;
++	aml_sd_emmc_clktest(mmc);
++#ifdef MMC_SET_TUNING_PARA
++	if (aml_set_tuning_para(mmc))
++		return 0;
++#endif
++
++	if (cpu_id.family_id == MESON_CPU_MAJOR_ID_G12B)
++		aml_emmc_hs400_Revb(mmc);
++	else if (cpu_id.family_id > MESON_CPU_MAJOR_ID_G12B)
++		aml_emmc_hs400_tl1(mmc);
++	else
++		aml_emmc_hs400_general(mmc);
++
++#ifdef MMC_WRITE_TUNING_PARA
++	aml_save_tuning_para(mmc);
++	aml_write_tuning_para(mmc);
++#endif
++	mmc->refix = 0;
++	return 0;
++}
++
++void mmc_set_clock_phase(struct mmc *mmc, int hs_mode)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 clock = sd_emmc_regs->gclock;
++	struct sd_emmc_clock *gclock = (struct sd_emmc_clock *) &clock;
++
++	if (hs_mode) {
++		gclock->core_phase = MMC_HS_COPHASE;
++		sd_emmc_regs->gclock = clock;
++	} else {
++		gclock->core_phase = MMC_HS4_COPHASE;
++		gclock->tx_delay = MMC_HS400_TXDELAY;
++		sd_emmc_regs->gclock = clock;
++	}
++	return;
++}
++
++void mmc_set_txdelay(struct mmc *mmc, unsigned int tx_delay)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	sd_emmc_regs->gclock &= ~(0x1f << Cfg_tx_delay);
++	sd_emmc_regs->gclock |= (tx_delay << Cfg_tx_delay);
++
++	return;
++}
++void mmc_set_ddr_mode(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u8 clk_div;
++
++	clk_div = 0x3f & sd_emmc_regs->gclock;
++	if (clk_div & 1)
++		 clk_div = (clk_div + 1) >> 1 ;
++	else
++		clk_div = clk_div >> 1;
++
++	sd_emmc_regs->gclock &= ~(0x3f & sd_emmc_regs->gclock);
++	sd_emmc_regs->gclock |= 0x3f & clk_div;
++
++	sd_emmc_regs->gcfg |= 1 << 2;
++
++	return;
++}
++
++void mmc_set_ds_enable(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++
++	sd_emmc_regs->gadjust |= 1 << 15;
++
++	return ;
++}
++
++void mmc_set_clock_div(struct mmc *mmc, u32 src_speed) {
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	u32 clock = sd_emmc_regs->gclock;
++	struct sd_emmc_clock *gclock = (struct sd_emmc_clock *) &clock;
++	u32 clock_speed = src_speed / 4;
++
++	cpu_id_t cpu_id = get_cpu_id();
++
++	mmc_set_clock(mmc, clock_speed);
++
++	if (cpu_id.family_id >= MESON_CPU_MAJOR_ID_G12B) {
++		gclock->div = 2;
++		gclock->tx_delay = MMC_HS400_TXDELAY;
++	} else {
++		gclock->div = 1;
++		gclock->tx_delay =12;//MMC_HS400_TXDELAY;
++	}
++	gclock->core_phase = MMC_HS4_COPHASE;
++	gclock->src = 0;
++	sd_emmc_regs->gclock = clock;
++	mmc->tran_speed = src_speed / 4;
++	printf("clock is 0x%x\n", clock);
++
++	return ;
++}
++
++/*
++ * Function to enable HS400 mode
++ * 1. Set the HS_TIMING on ext_csd 185 to 0x01
++ * 2. Set the clock frequency to 52MHz
++ * 3. Set the bus width to 8 bit DDR as supported by the target & host
++ * 4. Set the HS_TIMING to 0x03
++ * 5. Set the clock frequency to 200 MHZ
++ */
++uint32_t mmc_set_hs400_mode(struct mmc *mmc)
++{
++	uint32_t err = 0;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	cpu_id_t cpu_id = get_cpu_id();
++
++	if (aml_priv->sd_emmc_port != 2)
++		return err;
++
++	/* set HS_TIMING TO 0X01 */
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++			EXT_CSD_HS_TIMING, EXT_CSD_TIMING_HS);
++
++	if (err) {
++		printf("Switch cmd returned failure %d\n", __LINE__);
++		return err;
++	}
++	/* Set Clock @ 52MHZ */
++	mmc_set_clock(mmc, 50000000);
++
++	/* Set 8 bit DDR bus width */
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++				      EXT_CSD_BUS_WIDTH, 6);
++
++	if (err) {
++		printf("Switch cmd returned failure %d\n", __LINE__);
++		return err;
++	}
++	/* Setting HS400 in HS_TIMING using EXT_CSD (CMD6) */
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++				      EXT_CSD_HS_TIMING, 3);
++
++	if (err) {
++		printf("Switch cmd returned failure %d\n", __LINE__);
++		return err;
++	}
++
++	mmc_set_ddr_mode(mmc);
++	mmc_set_ds_enable(mmc);
++
++	mmc_set_clock_phase(mmc, 0);
++
++	select_clock_src();
++
++	aml_priv->cfg.f_max = 200000000;
++	/* Set Clock @ 400 MHZ */
++	if (cpu_id.family_id == MESON_CPU_MAJOR_ID_TL1)
++		mmc_set_clock_div(mmc, 792000000);
++	else if (cpu_id.family_id == MESON_CPU_MAJOR_ID_T5 ||
++			cpu_id.family_id == MESON_CPU_MAJOR_ID_T5D)
++		mmc_set_clock_div(mmc, 768000000);
++	else if (cpu_id.family_id >= MESON_CPU_MAJOR_ID_G12B)
++		mmc_set_clock_div(mmc, 800000000);
++	else
++		mmc_set_clock_div(mmc, 400000000);
++
++	if (cpu_id.family_id == MESON_CPU_MAJOR_ID_G12B)
++		aml_emmc_hs200_tl1(mmc);
++	aml_post_hs400_timming(mmc);
++
++	return err;
++}
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/aml_sd_emmc.c b/drivers/mmc/aml_sd_emmc.c
+--- a/drivers/mmc/aml_sd_emmc.c	1970-01-01 08:00:00.000000000 +0800
++++ b/drivers/mmc/aml_sd_emmc.c	2026-02-09 11:25:48.413072758 +0800
+@@ -0,0 +1,1132 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * drivers/mmc/aml_sd_emmc.c
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#include <common.h>
++#include <malloc.h>
++#include <errno.h>
++//#include <asm/dma-mapping.h>
++#include <asm/io.h>
++#include <mmc.h>
++#include <asm/arch/sd_emmc.h>
++#include <asm/arch/cpu_sdio.h>
++#ifdef CONFIG_STORE_COMPATIBLE
++#include <storage.h>
++#endif
++#include <asm/cpu_id.h>
++//#define SD_DEBUG_ENABLE
++
++#ifdef SD_DEBUG_ENABLE
++	#define sd_debug(a...) printf(a);
++#else
++	#define sd_debug(a...)
++#endif
++
++//#define EMMC_DEBUG_ENABLE
++#ifdef EMMC_DEBUG_ENABLE
++	#define emmc_debug(a...) printf(a);
++#else
++	#define emmc_debug(a...)
++#endif
++
++extern bool aml_is_emmc_tsd (struct mmc *mmc);
++/*
++ * **********************************************************************************************
++ * board relative
++ * **********************************************************************************************
++ */
++
++unsigned long sd_emmc_base_addr[3] = {SD_EMMC_BASE_A,
++										SD_EMMC_BASE_B,
++										SD_EMMC_BASE_C};
++
++static struct aml_card_sd_info aml_sd_emmc_ports[]={
++	{ .sd_emmc_port=SDIO_PORT_A,.name="SDIO Port A"},
++	{ .sd_emmc_port=SDIO_PORT_B,.name="SDIO Port B"},
++	{ .sd_emmc_port=SDIO_PORT_C,.name="SDIO Port C"},
++};
++
++/*The default source clock is 1GMHZ, tx_phase is 0*/
++#define MMC_CLOCK_MAX	2
++static struct fixed_adj_table calc_fixed_adj[]={
++	{40000000, 20},
++	{50000000, 18},
++};
++
++struct aml_card_sd_info * cpu_sd_emmc_get(unsigned port)
++{
++	if (port<SDIO_PORT_C+1)
++		return &aml_sd_emmc_ports[port];
++	return NULL;
++}
++
++int aml_fixdiv_calc(struct mmc *mmc)
++{
++	int ret = 0;
++	unsigned int full_div, source_cycle;    /* in ns*/
++	unsigned int sdclk_idx, todly_idx_max, todly_idx_min;
++	unsigned inv_idx_min, inv_idx_max;
++	unsigned int val_idx_min, val_idx_max, val_idx_win, val_idx_sta;
++
++	if (mmc->clk_lay.core == mmc->clk_lay.old_core)
++		return 1;
++	mmc->clk_lay.old_core = mmc->clk_lay.core;
++
++	printf(">>>calc: source clk %d, core clk %d\n", mmc->clk_lay.source, mmc->clk_lay.core);
++	full_div = mmc->clk_lay.source / mmc->clk_lay.core;
++	sdclk_idx = full_div / 2;
++	sdclk_idx -= full_div % 2 ? 0 : 1;
++
++	printf("full_div %d, sdclk_idx %d\n", full_div, sdclk_idx);
++	/* ns */
++	source_cycle = 1000000000 / mmc->clk_lay.source;
++	printf("cycle of source clock is %d \n", source_cycle);
++	if (source_cycle < TODLY_MAX_NS) {
++		todly_idx_max = (TODLY_MAX_NS + source_cycle - 1) / source_cycle;
++		todly_idx_min = TODLY_MIN_NS / source_cycle;
++		printf("todly_idx_min %d, todly_idx_max %d\n", todly_idx_min, todly_idx_max);
++		inv_idx_min = todly_idx_min + sdclk_idx;
++		inv_idx_max = todly_idx_max + sdclk_idx;
++		printf("inv_idx_min %d, inv_idx_max %d\n", inv_idx_min, inv_idx_max);
++		inv_idx_min = inv_idx_min % full_div;
++		inv_idx_max = inv_idx_max % full_div;
++		printf("ROUND: inv_idx_min %d, inv_idx_max %d\n", inv_idx_min, inv_idx_max);
++
++		if (inv_idx_min > inv_idx_max) {
++			val_idx_min = inv_idx_max + 1;
++			val_idx_max = inv_idx_min - 1;
++			val_idx_sta = val_idx_min;
++			val_idx_win = val_idx_max - val_idx_min;
++		} else if (inv_idx_min <= inv_idx_max) {
++			val_idx_max = inv_idx_max + 1;
++			val_idx_min = inv_idx_min - 1;
++			val_idx_sta = val_idx_max;
++			val_idx_win = (full_div + val_idx_min) -  val_idx_max;
++		}
++	} else {
++		val_idx_max = sdclk_idx + 1;
++		val_idx_min = sdclk_idx - 1;
++		val_idx_sta = val_idx_max;
++		val_idx_win = full_div / 2;
++		//val_idx_win = (full_div + val_idx_min) - val_idx_max;
++	}
++
++	printf("val_idx_sta %d, val_idx_win %d\n", val_idx_sta, val_idx_win);
++	mmc->fixdiv = val_idx_sta + (val_idx_win >> 1);
++
++	printf("fixdiv = %d\n", mmc->fixdiv);
++	return ret;
++}
++
++void aml_sd_cfg_swth(struct mmc *mmc)
++{
++	unsigned sd_emmc_clkc =	0,clk,clk_src,clk_div = 0;
++	unsigned vconf;
++	unsigned bus_width=(mmc->bus_width == 1)?0:mmc->bus_width/4;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_reg = aml_priv->sd_emmc_reg;
++	struct sd_emmc_config* sd_emmc_cfg = (struct sd_emmc_config*)&vconf;
++	emmc_debug("mmc->clock=%d; clk_div=%d\n",mmc->clock ,clk_div);
++	unsigned int adj = 0;
++
++	/* reset gdelay , gadjust register */
++	sd_emmc_reg->gdelay = 0;
++	sd_emmc_reg->gadjust = 0;
++
++	if (mmc->clock > 12000000) {
++		clk = SD_EMMC_CLKSRC_DIV2;
++		clk_src = 1;
++	}else{
++		clk = SD_EMMC_CLKSRC_24M;
++		clk_src = 0;
++	}
++
++	if (mmc->clock<mmc->cfg->f_min)
++		mmc->clock=mmc->cfg->f_min;
++	if (mmc->clock>mmc->cfg->f_max)
++		mmc->clock=mmc->cfg->f_max;
++
++	clk_div= clk / mmc->clock;
++#if CONFIG_EMMC_DDR52_EN
++	if (mmc->ddr_mode) {
++		clk_div /= 2;
++		sd_debug("DDR: \n");
++	}
++#endif
++
++
++	sd_emmc_clkc =((0 << Cfg_irq_sdio_sleep_ds) |
++						(0 << Cfg_irq_sdio_sleep) |
++						(1 << Cfg_always_on) |
++						(0 << Cfg_rx_delay) |
++						(0 << Cfg_tx_delay) |
++						(0 << Cfg_sram_pd) |
++						(0 << Cfg_rx_phase) |
++						(0 << Cfg_tx_phase) |
++						(2 << Cfg_co_phase) |
++						(clk_src << Cfg_src) |
++						(clk_div << Cfg_div));
++
++
++	sd_emmc_reg->gclock = sd_emmc_clkc;
++	vconf = sd_emmc_reg->gcfg;
++
++	sd_emmc_cfg->bus_width = bus_width;    //1bit mode
++	sd_emmc_cfg->bl_len = 9;               //512byte block length
++	sd_emmc_cfg->resp_timeout = 7;         //64 CLK cycle, here 2^8 = 256 clk cycles
++	sd_emmc_cfg->rc_cc = 4;                //1024 CLK cycle, Max. 100mS.
++#if CONFIG_EMMC_DDR52_EN
++	sd_emmc_cfg->ddr = mmc->ddr_mode;
++#endif
++	sd_emmc_reg->gcfg = vconf;
++
++	sd_emmc_para_config(sd_emmc_reg, mmc->clock, aml_priv->sd_emmc_port);
++
++	if (mmc->cfg->ops->calc && (!strcmp(mmc->cfg->name, "SDIO Port C"))) {
++		mmc->clk_lay.source = mmc->clock * clk_div;
++		mmc->clk_lay.core = mmc->clock;
++		if (!mmc->cfg->ops->calc(mmc)) {
++			sd_emmc_clkc = sd_emmc_reg->gclock;
++			sd_emmc_clkc &= ~(3 << Cfg_tx_phase);
++			sd_emmc_clkc &= ~(3 << Cfg_co_phase);
++			sd_emmc_clkc |= (2 << Cfg_tx_phase);
++			sd_emmc_reg->gclock = sd_emmc_clkc;
++			adj |= (mmc->fixdiv << 16);
++			adj |= (1 << 13);
++			sd_emmc_reg->gadjust = adj;
++			printf("fixdiv calc done: clk = 0x%x, adj = 0x%x\n", sd_emmc_clkc, adj);
++		}
++	}
++
++	printf("co-phase 0x%x, tx-dly %d, clock %d\n",
++		(sd_emmc_reg->gclock >> Cfg_co_phase) & 3,
++		(sd_emmc_reg->gclock >> Cfg_tx_delay) & 0x3f,
++		mmc->clock);
++
++	emmc_debug("bus_width=%d; tclk_div=%d; tclk=%d;sd_clk=%d\n",
++		bus_width,clk_div,clk,mmc->clock);
++	emmc_debug("port=%d act_clk=%d\n",aml_priv->sd_emmc_port,clk/clk_div);
++	return;
++}
++
++static int sd_inand_check_insert(struct	mmc	*mmc)
++{
++	int level;
++	struct aml_card_sd_info *sd_inand_info = mmc->priv;
++
++	level = sd_inand_info->sd_emmc_detect(sd_inand_info->sd_emmc_port);
++
++	if (level) {
++
++		if (sd_inand_info->init_retry) {
++			sd_inand_info->sd_emmc_pwr_off(sd_inand_info->sd_emmc_port);
++			sd_inand_info->init_retry = 0;
++		}
++		if (sd_inand_info->inited_flag) {
++			sd_inand_info->sd_emmc_pwr_off(sd_inand_info->sd_emmc_port);
++			sd_inand_info->removed_flag = 1;
++			sd_inand_info->inited_flag = 0;
++		}
++		return 0;				//No card is inserted
++	} else {
++		return 1;				//A	card is	inserted
++	}
++}
++
++//Clear response data buffer
++static void sd_inand_clear_response(unsigned * res_buf)
++{
++	int i;
++	if (res_buf == NULL)
++		return;
++
++	for (i = 0; i < MAX_RESPONSE_BYTES; i++)
++		res_buf[i]=0;
++}
++
++/*
++static int sd_inand_check_response(struct mmc_cmd *cmd)
++{
++	int ret = SD_NO_ERROR;
++	SD_Response_R1_t *r1 = (SD_Response_R1_t *)cmd->response;
++	switch (cmd->resp_type) {
++	case MMC_RSP_R1:
++	case MMC_RSP_R1b:
++		if (r1->card_status.OUT_OF_RANGE)
++			return SD_ERROR_OUT_OF_RANGE;
++		else if (r1->card_status.ADDRESS_ERROR)
++			return SD_ERROR_ADDRESS;
++		else if (r1->card_status.BLOCK_LEN_ERROR)
++			return SD_ERROR_BLOCK_LEN;
++		else if (r1->card_status.ERASE_SEQ_ERROR)
++			return SD_ERROR_ERASE_SEQ;
++		else if (r1->card_status.ERASE_PARAM)
++			return SD_ERROR_ERASE_PARAM;
++		else if (r1->card_status.WP_VIOLATION)
++			return SD_ERROR_WP_VIOLATION;
++		else if (r1->card_status.CARD_IS_LOCKED)
++			return SD_ERROR_CARD_IS_LOCKED;
++		else if (r1->card_status.LOCK_UNLOCK_FAILED)
++			return SD_ERROR_LOCK_UNLOCK_FAILED;
++		else if (r1->card_status.COM_CRC_ERROR)
++			return SD_ERROR_COM_CRC;
++		else if (r1->card_status.ILLEGAL_COMMAND)
++			return SD_ERROR_ILLEGAL_COMMAND;
++		else if (r1->card_status.CARD_ECC_FAILED)
++			return SD_ERROR_CARD_ECC_FAILED;
++		else if (r1->card_status.CC_ERROR)
++			return SD_ERROR_CC;
++		else if (r1->card_status.ERROR)
++			return SD_ERROR_GENERAL;
++		else if (r1->card_status.CID_CSD_OVERWRITE)
++			return SD_ERROR_CID_CSD_OVERWRITE;
++		else if (r1->card_status.AKE_SEQ_ERROR)
++			return SD_ERROR_AKE_SEQ;
++		break;
++	default:
++		break;
++	}
++	return ret;
++}*/
++extern unsigned sd_debug_board_1bit_flag;
++static int sd_inand_staff_init(struct mmc *mmc)
++{
++	struct aml_card_sd_info * sdio=mmc->priv;
++	//unsigned base;
++
++	sd_debug("");
++	sdio->sd_emmc_pwr_prepare(sdio->sd_emmc_port);
++	sd_debug("power off");
++	sdio->sd_emmc_pwr_off(sdio->sd_emmc_port);
++	//try to init mmc controller clock firstly
++	mmc->clock = 400000;
++	aml_sd_cfg_swth(mmc);
++	//only power ctrl for external tf card
++	if (sdio->sd_emmc_port == SDIO_PORT_B) {
++		//base=get_timer(0);
++#if defined(CONFIG_VLSI_EMULATOR)
++		//while (get_timer(base)<1) ;
++#else
++		//while (get_timer(base)<200) ;
++#endif
++	}
++	sdio->sd_emmc_pwr_on(sdio->sd_emmc_port);
++	sdio->sd_emmc_init(sdio->sd_emmc_port);
++	if (sd_debug_board_1bit_flag == 1) {
++		struct mmc_config *cfg;
++		cfg = &((struct aml_card_sd_info *)mmc->priv)->cfg;
++		cfg->host_caps = MMC_MODE_HS;
++		mmc->cfg = cfg;
++	}
++	//only power ctrl for external tf card
++	if (sdio->sd_emmc_port == SDIO_PORT_B) {
++		//base=get_timer(0);
++#if defined(CONFIG_VLSI_EMULATOR)
++		//while (get_timer(base)<1) ;
++#else
++		//while (get_timer(base)<200) ;
++#endif
++	}
++	if (!sdio->inited_flag)
++		sdio->inited_flag = 1;
++	return SD_NO_ERROR;
++}
++
++/*
++ * **********************************************************************************************
++ * u-boot interface function
++ * **********************************************************************************************
++ */
++int aml_sd_send_cmd_ffu(struct mmc *mmc, struct mmc_cmd *cmd, struct mmc_data *data)
++{
++	int ret = SD_NO_ERROR;
++	u32 resp_buffer;
++	u32 vstart = 0;
++	u32 status_irq = 0;
++	u32 *write_buffer = NULL;
++	struct sd_emmc_status *status_irq_reg = (void *)&status_irq;
++	struct sd_emmc_start *desc_start = (struct sd_emmc_start*)&vstart;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_reg = aml_priv->sd_emmc_reg;
++	struct cmd_cfg *des_cmd_cur = NULL;
++	struct sd_emmc_desc_info *desc_cur = (struct sd_emmc_desc_info*)aml_priv->desc_buf;
++	u32 blks = 0, desc_cnt = 0;
++
++	memset(desc_cur, 0, (NEWSD_MAX_DESC_MUN>>2)*sizeof(struct sd_emmc_desc_info));
++
++	des_cmd_cur = (struct cmd_cfg *)&(desc_cur->cmd_info);
++	des_cmd_cur->cmd_index = 0x80 | cmd->cmdidx; //bit:31 owner = 1 bit:24-29 cmdidx
++	desc_cur->cmd_arg = cmd->cmdarg;
++
++	sd_inand_clear_response(cmd->response);
++
++	//check response type
++	if (cmd->resp_type & MMC_RSP_PRESENT) {
++		resp_buffer = (unsigned long)cmd->response;
++		des_cmd_cur->no_resp = 0;
++
++		//save Resp into Resp addr, and check response from register for RSP_136
++		if (cmd->resp_type & MMC_RSP_136)
++			des_cmd_cur->resp_128 = 1;
++
++		if (cmd->resp_type & MMC_RSP_BUSY)
++			des_cmd_cur->r1b = 1;    //check data0 busy after R1 reponse
++
++		if (!(cmd->resp_type & MMC_RSP_CRC))
++			des_cmd_cur->resp_nocrc = 1;
++
++		des_cmd_cur->resp_num = 0;
++		desc_cur->resp_addr = resp_buffer;
++	} else
++		des_cmd_cur->no_resp = 1;
++
++	if (data) {
++		des_cmd_cur->data_io = 1; // cmd has data read or write
++		if (data->flags == MMC_DATA_WRITE) {
++			write_buffer = (u32 *)malloc(data->blocks * data->blocksize);
++			if (!write_buffer) {
++				printf("%s: No memory for write_buffer\n", __func__);
++				return -ENOMEM;
++			}
++			memset(write_buffer, 0, data->blocks * data->blocksize);
++			memcpy(write_buffer, (u32 *)data->src, data->blocks*data->blocksize);
++			flush_dcache_range((unsigned)(long)write_buffer,(unsigned long)(write_buffer+data->blocks*data->blocksize));
++			if (data->blocks > 1) {
++				blks = data->blocks;
++				desc_cnt = 0;
++				while (blks) {
++					des_cmd_cur = (struct cmd_cfg *)&(desc_cur->cmd_info);
++					des_cmd_cur->block_mode = 1;
++					if (blks > 511) {
++						des_cmd_cur->length = 511;
++						blks -= 511;
++					} else {
++						des_cmd_cur->length = blks;
++						blks = 0;
++					}
++					if (desc_cnt != 0) {
++						des_cmd_cur->no_resp = 1;
++						des_cmd_cur->no_cmd = 1;
++					}
++					des_cmd_cur->data_num = 0;
++					des_cmd_cur->data_io = 1; // cmd has data read or write
++					des_cmd_cur->owner = 1;
++					des_cmd_cur->data_wr = 1;
++					desc_cur->data_addr = ((unsigned long)(write_buffer) + (desc_cnt * 511 * 512));
++					desc_cur->data_addr &= ~(1<<0);   //DDR
++					if (blks) {
++						desc_cur++;
++						desc_cnt++;
++						memset(desc_cur, 0, sizeof(struct sd_emmc_desc_info));
++					}
++				}
++			} else {
++				printf("data blks < 1\n");
++				free(write_buffer);
++				return 1;
++			}
++		} else {
++			printf("ffu (flags == read) error\n");
++			return 1;
++		}
++	}
++
++	/*Prepare desc for config register*/
++	des_cmd_cur->end_of_chain = 1; //the end flag of descriptor chain
++	sd_emmc_reg->gstatus = NEWSD_IRQ_ALL;
++
++	invalidate_dcache_range((unsigned long)aml_priv->desc_buf,
++			(unsigned long)(aml_priv->desc_buf+NEWSD_MAX_DESC_MUN*(sizeof(struct sd_emmc_desc_info))));
++	//start transfer cmd
++	desc_start->init = 0;
++	desc_start->busy = 1;
++	desc_start->addr = (unsigned long)aml_priv->desc_buf >> 2;
++
++	sd_emmc_reg->gstart = vstart;
++
++	while (1) {
++		status_irq = sd_emmc_reg->gstatus;
++		if (status_irq_reg->end_of_chain)
++			break;
++	}
++
++	if (status_irq_reg->rxd_err) {
++		ret |= SD_EMMC_RXD_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd read error, cmd%d, status=0x%x\n",
++					cmd->cmdidx, status_irq);
++	}
++	if (status_irq_reg->txd_err) {
++		ret |= SD_EMMC_TXD_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd write error, cmd%d, status=0x%x\n",
++					cmd->cmdidx, status_irq);
++	}
++	if (status_irq_reg->desc_err) {
++		ret |= SD_EMMC_DESC_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd descriptor error, cmd%d, status=0x%x\n",
++					cmd->cmdidx, status_irq);
++	}
++	if (status_irq_reg->resp_err) {
++		ret |= SD_EMMC_RESP_CRC_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd response crc error, cmd%d, status=0x%x\n",
++					cmd->cmdidx, status_irq);
++	}
++	if (status_irq_reg->resp_timeout) {
++		ret |= SD_EMMC_RESP_TIMEOUT_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd response timeout, cmd%d, status=0x%x\n",
++					cmd->cmdidx, status_irq);
++	}
++	if (status_irq_reg->desc_timeout) {
++		ret |= SD_EMMC_DESC_TIMEOUT_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd descriptor timeout, cmd%d, status=0x%x\n",
++					cmd->cmdidx, status_irq);
++	}
++
++	if (cmd->resp_type & MMC_RSP_136) {
++		cmd->response[0] = sd_emmc_reg->gcmd_rsp3;
++		cmd->response[1] = sd_emmc_reg->gcmd_rsp2;
++		cmd->response[2] = sd_emmc_reg->gcmd_rsp1;
++		cmd->response[3] = sd_emmc_reg->gcmd_rsp0;
++	} else {
++		cmd->response[0] = sd_emmc_reg->gcmd_rsp0;
++	}
++
++	sd_debug("cmd->cmdidx = %d, cmd->cmdarg=0x%x, ret=0x%x\n",cmd->cmdidx,cmd->cmdarg,ret);
++	sd_debug("cmd->response[0]=0x%x;\n",cmd->response[0]);
++	sd_debug("cmd->response[1]=0x%x;\n",cmd->response[1]);
++	sd_debug("cmd->response[2]=0x%x;\n",cmd->response[2]);
++	sd_debug("cmd->response[3]=0x%x;\n",cmd->response[3]);
++	if (des_cmd_cur->data_wr == 1) {
++		free(write_buffer);
++		write_buffer = NULL;
++	}
++	if (ret) {
++		if (status_irq_reg->resp_timeout)
++			return TIMEOUT;
++		else
++			return ret;
++	}
++
++	return SD_NO_ERROR;
++}
++
++/*
++ * Sends a command out on the bus. Takes the mmc pointer,
++ * a command pointer, and an optional data pointer.
++ */
++int aml_sd_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd, struct mmc_data *data)
++{
++	int ret = SD_NO_ERROR;
++	//u32 vconf;
++	u32 buffer = 0;
++	u32 resp_buffer;
++	u32 vstart = 0;
++	u32 status_irq = 0;
++	//u32 inalign = 0;
++	u32 *write_buffer = NULL;
++	struct sd_emmc_status *status_irq_reg = (void *)&status_irq;
++	struct sd_emmc_start *desc_start = (struct sd_emmc_start*)&vstart;
++	//struct sd_emmc_config* sd_emmc_cfg = (struct sd_emmc_config*)&vconf;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_reg = aml_priv->sd_emmc_reg;
++	struct cmd_cfg *des_cmd_cur = NULL;
++	struct sd_emmc_desc_info *desc_cur = (struct sd_emmc_desc_info*)aml_priv->desc_buf;
++
++	//vconf = sd_emmc_reg->gcfg;
++
++	memset(desc_cur, 0, (NEWSD_MAX_DESC_MUN>>2)*sizeof(struct sd_emmc_desc_info));
++
++	des_cmd_cur = (struct cmd_cfg *)&(desc_cur->cmd_info);
++	des_cmd_cur->cmd_index = 0x80 | cmd->cmdidx; //bit:31 owner = 1 bit:24-29 cmdidx
++	desc_cur->cmd_arg = cmd->cmdarg;
++
++	sd_inand_clear_response(cmd->response);
++
++	//check response type
++	if (cmd->resp_type & MMC_RSP_PRESENT) {
++		resp_buffer = (unsigned long)cmd->response;//dma_map_single((void*)cmd->response,sizeof(uint)*4,DMA_FROM_DEVICE);
++		des_cmd_cur->no_resp = 0;
++
++		//save Resp into Resp addr, and check response from register for RSP_136
++		if (cmd->resp_type & MMC_RSP_136)
++			des_cmd_cur->resp_128 = 1;
++
++		if (cmd->resp_type & MMC_RSP_BUSY)
++			des_cmd_cur->r1b = 1;    //check data0 busy after R1 reponse
++
++		if (!(cmd->resp_type & MMC_RSP_CRC))
++			des_cmd_cur->resp_nocrc = 1;
++
++		des_cmd_cur->resp_num = 0;
++		desc_cur->resp_addr = resp_buffer;
++	} else
++		des_cmd_cur->no_resp = 1;
++
++	if (data) {
++		des_cmd_cur->data_io = 1; // cmd has data read or write
++		if (data->flags == MMC_DATA_READ) {
++			des_cmd_cur->data_wr = 0;  //read data from sd/emmc
++			buffer = (unsigned long)data->dest;//dma_map_single((void*)data->dest,data->blocks*data->blocksize,DMA_FROM_DEVICE);
++			invalidate_dcache_range((unsigned long)data->dest, (unsigned long)(data->dest+data->blocks*data->blocksize));
++		} else {
++			des_cmd_cur->data_wr = 1;
++			//buffer = (unsigned long)data->src;//dma_map_single((void*)data->src,data->blocks*data->blocksize,DMA_TO_DEVICE);//(char *)data->src;
++			write_buffer = (u32 *)malloc(data->blocks * data->blocksize);
++			if (!write_buffer) {
++				printf("%s: No memory for write_buffer\n", __func__);
++				return -ENOMEM;
++			}
++			memset(write_buffer, 0 ,data->blocks * data->blocksize);
++			memcpy(write_buffer, (u32 *)data->src, data->blocks*data->blocksize);
++			flush_dcache_range((unsigned)(long)write_buffer,(unsigned long)(write_buffer+data->blocks*data->blocksize));
++		}
++
++		if (data->blocks > 1) {
++			des_cmd_cur->block_mode = 1;
++			des_cmd_cur->length = data->blocks;
++		} else {
++			des_cmd_cur->block_mode = 0;
++			des_cmd_cur->length = data->blocksize;
++		}
++		des_cmd_cur->data_num = 0;
++		if (des_cmd_cur->data_wr == 1)
++			desc_cur->data_addr = (unsigned long)write_buffer;
++		else
++			desc_cur->data_addr = buffer;
++		desc_cur->data_addr &= ~(1<<0);   //DDR
++
++	}
++	if (data) {
++		if ((data->blocks*data->blocksize <0x200) && (data->flags == MMC_DATA_READ)) {
++			desc_cur->data_addr = (unsigned long)sd_emmc_reg->gping;
++			desc_cur->data_addr |= 1<<0;
++		}
++		//des_cmd_cur->timeout = 7;
++	}
++	/*Prepare desc for config register*/
++	des_cmd_cur->owner = 1;
++	des_cmd_cur->end_of_chain = 0;
++
++	//sd_emmc_reg->gcfg = vconf;
++
++	des_cmd_cur->end_of_chain = 1; //the end flag of descriptor chain
++
++	sd_emmc_reg->gstatus = NEWSD_IRQ_ALL;
++
++	invalidate_dcache_range((unsigned long)aml_priv->desc_buf,
++					(unsigned long)(aml_priv->desc_buf+NEWSD_MAX_DESC_MUN*(sizeof(struct sd_emmc_desc_info))));
++	//start transfer cmd
++	desc_start->init = 0;
++	desc_start->busy = 1;
++	desc_start->addr = (unsigned long)aml_priv->desc_buf >> 2;
++#if 0
++	sd_emmc_reg->gstart = vstart;
++#else
++	sd_emmc_reg->gcmd_cfg = desc_cur->cmd_info;
++	sd_emmc_reg->gcmd_dat = desc_cur->data_addr;
++	sd_emmc_reg->gcmd_arg = desc_cur->cmd_arg;
++#endif
++	//waiting end of chain
++//	mmc->refix = 0;
++	while (1) {
++		status_irq = sd_emmc_reg->gstatus;
++		if (status_irq_reg->end_of_chain)
++			break;
++	}
++	if (status_irq_reg->rxd_err) {
++		ret |= SD_EMMC_RXD_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd read error, cmd%d, cmd->cmdarg=0x%x, status=0x%x\n",
++				cmd->cmdidx, cmd->cmdarg, status_irq);
++	}
++	if (status_irq_reg->txd_err) {
++		ret |= SD_EMMC_TXD_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd write error, cmd%d, cmd->cmdarg=0x%x, status=0x%x\n",
++				cmd->cmdidx, cmd->cmdarg, status_irq);
++	}
++	if (status_irq_reg->desc_err) {
++		ret |= SD_EMMC_DESC_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd descriptor error, cmd%d, cmd->cmdarg=0x%x, status=0x%x\n",
++				cmd->cmdidx, cmd->cmdarg, status_irq);
++	}
++	if (status_irq_reg->resp_err) {
++		ret |= SD_EMMC_RESP_CRC_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd response crc error, cmd%d, cmd->cmdarg=0x%x, status=0x%x\n",
++				cmd->cmdidx, cmd->cmdarg, status_irq);
++	}
++	if (status_irq_reg->resp_timeout) {
++		ret |= SD_EMMC_RESP_TIMEOUT_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd response timeout, cmd%d, cmd->cmdarg=0x%x, status=0x%x\n",
++				cmd->cmdidx, cmd->cmdarg, status_irq);
++	}
++	if (status_irq_reg->desc_timeout) {
++		ret |= SD_EMMC_DESC_TIMEOUT_ERROR;
++		if (!mmc->refix)
++			printf("emmc/sd descriptor timeout, cmd%d, cmd->cmdarg=0x%x, status=0x%x\n",
++				cmd->cmdidx, cmd->cmdarg, status_irq);
++	}
++	if (data) {
++		if ((data->blocks*data->blocksize <0x200) && (data->flags == MMC_DATA_READ)) {
++			memcpy(data->dest, (const void *)sd_emmc_reg->gping,data->blocks*data->blocksize);
++		}
++	}
++	/*we get response [0]:bit0~31
++	 *		  response [1]:bit32~63
++	 *		  response [2]:bit64~95
++	 *		  response [3]:bit96~127
++	 * actually mmc driver definition is:
++	 *		 response [0]:bit96~127
++	 *		  response [1]:bit64~95
++	 *		  response [2]:bit32~63
++	 *		  response [3]:bit0~31
++	 */
++
++	if (cmd->resp_type & MMC_RSP_136) {
++		cmd->response[0] = sd_emmc_reg->gcmd_rsp3;
++		cmd->response[1] = sd_emmc_reg->gcmd_rsp2;
++		cmd->response[2] = sd_emmc_reg->gcmd_rsp1;
++		cmd->response[3] = sd_emmc_reg->gcmd_rsp0;
++	} else {
++		cmd->response[0] = sd_emmc_reg->gcmd_rsp0;
++	}
++
++	sd_debug("cmd->cmdidx = %d, cmd->cmdarg=0x%x, ret=0x%x\n",cmd->cmdidx,cmd->cmdarg,ret);
++	sd_debug("cmd->response[0]=0x%x;\n",cmd->response[0]);
++	sd_debug("cmd->response[1]=0x%x;\n",cmd->response[1]);
++	sd_debug("cmd->response[2]=0x%x;\n",cmd->response[2]);
++	sd_debug("cmd->response[3]=0x%x;\n",cmd->response[3]);
++	if (des_cmd_cur->data_wr == 1) {
++		free(write_buffer);
++		write_buffer = NULL;
++	}
++	if (ret) {
++		if (status_irq_reg->resp_timeout)
++			return TIMEOUT;
++		else
++			return ret;
++	}
++
++	return SD_NO_ERROR;
++}
++
++int aml_sd_init(struct mmc *mmc)
++{
++	struct aml_card_sd_info *sdio=mmc->priv;
++
++	if (sdio->inited_flag) {
++		sdio->sd_emmc_init(sdio->sd_emmc_port);
++		mmc->cfg->ops->set_ios(mmc);
++		return 0;
++	}
++
++	if (sd_inand_check_insert(mmc)) {
++		sd_inand_staff_init(mmc);
++		return 0;
++	} else
++		return 1;
++}
++
++#define MAX_CALI_RETRY	(3)
++#define MAX_DELAY_CNT	(16)
++#define CALI_BLK_CNT	(10)
++#define REFIX_BLK_CNT	(100)
++#define CALI_PATTERN_ADDR	(0x13800)
++u8 line_x, cal_time;
++u8 dly_tmp;
++u8 max_index;
++
++int aml_send_calibration_blocks(struct mmc *mmc, char *buffer, u32 start_blk, u32 cnt)
++{
++	int err = 0, ret = 0;
++	struct mmc_cmd cmd = {0};
++	struct mmc_cmd stop = {0};
++	struct mmc_data data = {{0}, 0};
++
++	stop.cmdidx = MMC_CMD_STOP_TRANSMISSION;
++	stop.cmdarg = 0;
++	stop.resp_type = MMC_RSP_R1b;
++
++	if (cnt > 1)
++		cmd.cmdidx = MMC_CMD_READ_MULTIPLE_BLOCK;
++	else
++		cmd.cmdidx = MMC_CMD_READ_SINGLE_BLOCK;
++	cmd.cmdarg = start_blk;			 //start address = 0
++	cmd.resp_type = MMC_RSP_R1;
++
++	data.dest = buffer;
++	data.blocks = cnt;
++	data.blocksize = mmc->read_bl_len;
++	data.flags = MMC_DATA_READ;
++
++	err = aml_sd_send_cmd(mmc, &cmd, &data);
++	if (err)
++		emmc_debug("%s [%d] send calibration read blocks error %d cnt = %d\n", __func__, __LINE__, err, cnt);
++	if (cnt > 1 || err) {
++		ret = aml_sd_send_cmd(mmc, &stop, NULL);
++		if (ret)
++		emmc_debug("%s [%d] send calibration stop blocks error %d\n", __func__, __LINE__, ret);
++	}
++	if (ret || err)
++		return -1;
++	return 0;
++}
++
++int __attribute__((unused)) sd_emmc_test_adj(struct mmc *mmc)
++{
++	int err = 0, ret = 0;
++	struct mmc_cmd cmd = {0};
++	struct mmc_cmd stop = {0};
++	struct mmc_data data = {{0}, 0};
++	char *blk_test = NULL;
++
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_reg = aml_priv->sd_emmc_reg;
++	u32 adjust = sd_emmc_reg->gadjust;
++	struct sd_emmc_adjust *gadjust = (struct sd_emmc_adjust *)&adjust;
++	u32 vclk, clk_div, retry;
++	struct sd_emmc_clock *clkc = (struct sd_emmc_clock *)&(vclk);
++	vclk = sd_emmc_reg->gclock;
++	clk_div = clkc->div;
++	retry = clk_div;
++
++	blk_test = malloc(0x400 * mmc->read_bl_len);
++	if (!blk_test)
++		return -1;
++
++	stop.cmdidx = MMC_CMD_STOP_TRANSMISSION;
++	stop.cmdarg = 0;
++	stop.resp_type = MMC_RSP_R1b;
++
++	cmd.cmdarg = 0x14000;
++	cmd.cmdidx = MMC_CMD_READ_MULTIPLE_BLOCK;
++	cmd.resp_type = MMC_RSP_R1;
++
++	data.dest = blk_test;
++	data.blocks = 0x400;
++	data.blocksize = mmc->read_bl_len;
++	data.flags = MMC_DATA_READ;
++
++__Retry:
++	err = aml_sd_send_cmd(mmc, &cmd, &data);
++	if (err)
++		emmc_debug("%s [%d] send test read blocks error %d\n", __func__, __LINE__, err);
++	ret = aml_sd_send_cmd(mmc, &stop, NULL);
++	if (ret)
++		emmc_debug("%s [%d] send test stop blocks error %d\n", __func__, __LINE__, ret);
++
++	if (ret || err) {
++		if (retry == 0) {
++			free(blk_test);
++			return 1;
++		}
++		retry--;
++		gadjust->adj_delay--;
++		sd_emmc_reg->gadjust = adjust;
++		printf("adj retry sampling point:(%d)->(%d)",
++			gadjust->adj_delay+1, gadjust->adj_delay);
++		emmc_debug("%s [%d]:  delay = 0x%x  gadjust =0x%x\n",
++			__func__, __LINE__, sd_emmc_reg->gdelay, sd_emmc_reg->gadjust);
++		goto __Retry;
++	}
++	free(blk_test);
++	return 0;
++}
++
++int set_emmc_calc_fixed_adj(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_reg = aml_priv->sd_emmc_reg;
++	u32 adjust = sd_emmc_reg->gadjust;
++	struct sd_emmc_adjust *gadjust = (struct sd_emmc_adjust *)&adjust;
++	u32 clk_num;
++
++	gadjust->adj_enable = 1;
++	for (clk_num = 0; clk_num < MMC_CLOCK_MAX; clk_num++) {
++		if (mmc->clock == calc_fixed_adj[clk_num].clk) {
++			gadjust->adj_delay = calc_fixed_adj[clk_num].fixed_adj;
++			sd_emmc_reg->gadjust = adjust;
++			printf("[%s][%d]find fixed adj_delay=%d\n",
++					__func__, __LINE__, gadjust->adj_delay);
++			break;
++		}
++	}
++	if (clk_num == MMC_CLOCK_MAX) {
++		printf("[%s][%d] no find fixed adj value\n", __func__, __LINE__);
++		return -1;
++	}
++	return 0;
++}
++
++int aml_sd_retry_refix(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_reg = aml_priv->sd_emmc_reg;
++	u32 start_blk = 0;
++	u32 vclk, clk_div;
++	struct sd_emmc_clock *clkc = (struct sd_emmc_clock *)&(vclk);
++	u32 adjust = sd_emmc_reg->gadjust;
++	struct sd_emmc_adjust *gadjust = (struct sd_emmc_adjust *)&adjust;
++	int err = 0, ret = 0, adj_delay = 0;
++	char *blk_test = NULL;
++#ifdef MMC_HS400_MODE
++	int pre_status = 0;
++	int start = 0;
++#endif
++	emmc_debug("tuning..................\n");
++
++	//const u8 *blk_pattern = tuning_data->blk_pattern;
++	//u8 *blk_test;
++	//unsigned int blksz = tuning_data->blksz;
++	//int ret = 0;
++	int n, nmatch, ntries = 10;
++	int wrap_win_start = -1, wrap_win_size = 0;
++	int best_win_start = -1, best_win_size = -1;
++	int curr_win_start = -1, curr_win_size = 0;
++	u8 rx_tuning_result[25/SAMPLE_STEP_COUNT] = { 0 };
++
++	blk_test = malloc(REFIX_BLK_CNT * mmc->read_bl_len);
++	if (!blk_test)
++		return -1;
++	vclk = sd_emmc_reg->gclock;
++	clk_div = clkc->div;
++
++	for (adj_delay = 0; adj_delay < clk_div; adj_delay+=SAMPLE_STEP_COUNT) {
++		// Perform tuning ntries times per clk_div increment
++		gadjust->adj_delay = adj_delay;
++		gadjust->adj_enable = 1;
++		gadjust->cali_enable = 0;
++		gadjust->cali_rise = 0;
++		sd_emmc_reg->gadjust = adjust;
++		start_blk = CALI_PATTERN_ADDR;
++		emmc_debug("%s [%d]: gadjust =0x%x\n",
++			__func__, __LINE__, sd_emmc_reg->gadjust);
++		for (n = 0, nmatch = 0; n < ntries; n++) {
++
++			memset(blk_test, 0, REFIX_BLK_CNT);
++
++			err = aml_send_calibration_blocks(mmc, blk_test, start_blk, REFIX_BLK_CNT);
++
++			if (!err && !ret)
++				nmatch++;
++			else {
++				emmc_debug("refix error: adj_delay=%d nmatch=%d err=%d ret=%d\n",adj_delay, nmatch, err, ret);
++				break;
++			}
++		}
++
++		if (adj_delay < sizeof(rx_tuning_result) / sizeof (rx_tuning_result[0]))
++			rx_tuning_result[adj_delay] = nmatch;
++
++		if (nmatch == ntries) {
++			if (adj_delay == 0)
++				wrap_win_start = adj_delay;
++
++			if (wrap_win_start >= 0)
++				wrap_win_size += SAMPLE_STEP_COUNT;
++
++			if (curr_win_start < 0)
++				curr_win_start = adj_delay;
++
++			curr_win_size += SAMPLE_STEP_COUNT;
++		} else {
++			if (curr_win_start >= 0) {
++				if (best_win_start < 0) {
++					best_win_start = curr_win_start;
++					best_win_size = curr_win_size;
++				}
++				else {
++					if (best_win_size < curr_win_size) {
++						best_win_start = curr_win_start;
++						best_win_size = curr_win_size;
++					}
++				}
++
++				wrap_win_start = -1;
++				curr_win_start = -1;
++				curr_win_size = 0;
++			}
++		}
++		emmc_debug("adj_delay:[%d]\n", adj_delay);
++		emmc_debug("curr_win_start=%d, curr_win_size=%d\n",curr_win_start, curr_win_size);
++		emmc_debug("wrap_win_start=%d, wrap_win_size=%d\n",wrap_win_start, wrap_win_size);
++		emmc_debug("best_win_start=%d, best_win_size=%d\n\n",best_win_start, best_win_size);
++	}
++
++#if 0
++	for (n = 0; n <= clkc->div; n++) {
++		if (n < sizeof(rx_tuning_result) / sizeof (rx_tuning_result[0]))
++			printf("RX[%d]=%d\n", n, rx_tuning_result[n]);
++	}
++#endif
++
++	if (curr_win_start >= 0) {
++		if (best_win_start < 0) {
++			best_win_start = curr_win_start;
++			best_win_size = curr_win_size;
++		} else if (wrap_win_size > 0) {
++			// Wrap around case
++			if (curr_win_size + wrap_win_size > best_win_size) {
++				best_win_start = curr_win_start;
++				best_win_size = curr_win_size + wrap_win_size;
++			}
++		} else if (best_win_size < curr_win_size) {
++			best_win_start = curr_win_start;
++			best_win_size = curr_win_size;
++		}
++
++		curr_win_start = -1;
++		curr_win_size = 0;
++	}
++
++
++	if (best_win_start < 0) {
++		printf("Tuning failed to find a valid window, using default rx phase\n");
++		ret = -1;
++		//writel(vclk2_bak, host->base + SDHC_CLK2);
++	} else {
++		adj_delay = best_win_start + (best_win_size / 2);
++		if (adj_delay >= clkc->div)
++			adj_delay -= clkc->div;
++
++		gadjust->adj_enable = 1;
++		gadjust->cali_enable = 0;
++		gadjust->cali_rise = 0;
++		gadjust->adj_delay = adj_delay;
++		sd_emmc_reg->gadjust = adjust;
++	}
++	printf("%s[%d]:delay = 0x%x,gadjust =0x%x\n",
++		__func__, __LINE__, sd_emmc_reg->gdelay, sd_emmc_reg->gadjust);
++	emmc_debug("%s [%d]: adj_delay = %d\n", __func__, __LINE__, adj_delay);
++	free(blk_test);
++
++#ifdef MMC_HS400_MODE
++	for (n = 0; n < clkc->div; n++) {
++		if (n == clkc->div - 1) {
++			if (rx_tuning_result[n] == ntries && pre_status == 1)
++				printf("meson-mmc: emmc: [ %d -- %d ] is ok\n", start, n);
++			else if (rx_tuning_result[n] != ntries && pre_status == -1)
++				printf("meson-mmc: emmc: [ %d -- %d ] is nok\n", start, n);
++			else if (rx_tuning_result[n] == ntries && pre_status != 1)
++				printf("meson-mmc: emmc: [ %d ] is ok\n", n);
++			else if (rx_tuning_result[n] != ntries && pre_status == 1)
++				printf("meson-mmc: emmc: [ %d ] is nok\n", n);
++		}
++		if (rx_tuning_result[n] == ntries) {
++			if (pre_status == -1) {
++				if (start == n - 1)
++					printf("meson-mmc: emmc: [ %d ] is nok\n", start);
++				else
++					printf("meson-mmc: emmc: [ %d -- %d] is nok\n", start, n-1);
++			} else if (pre_status == 1)
++				continue;
++			start = n;
++			pre_status = 1;
++		} else if (rx_tuning_result[n] != ntries) {
++			if (pre_status == 1) {
++				if (start == n - 1)
++					printf("meson-mmc: emmc: [ %d ] is ok\n", start);
++				else
++					printf("meson-mmc: emmc: [ %d -- %d ] is ok\n", start, n-1);
++			} else if (pre_status == -1)
++				continue;
++			start = n;
++			pre_status = -1;
++		}
++	}
++
++	printf("meson-mmc: emmc: %s[%d]:delay1 = 0x%x, gadjust =0x%x\n",
++		__func__, __LINE__, sd_emmc_reg->gdelay,
++		sd_emmc_reg->gadjust);
++	printf("meson-mmc: emmc: %s [%d]: adj_delay = %d\n", __func__, __LINE__,
++			adj_delay);
++#endif
++/* test adj sampling point*/
++	/*ret = sd_emmc_test_adj(mmc);*/
++
++	return ret;
++}
++
++int aml_sd_calibration(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_reg = aml_priv->sd_emmc_reg;
++	cpu_id_t cpu_id = get_cpu_id();
++	if (cpu_id.family_id == MESON_CPU_MAJOR_ID_GXBB)
++		sd_emmc_reg->gdelay = 0x85854055;
++	else if (cpu_id.family_id == MESON_CPU_MAJOR_ID_GXTVBB)
++		sd_emmc_reg->gdelay = 0x10101331;
++	return 0;
++}
++
++static const struct mmc_ops aml_sd_emmc_ops = {
++	.send_cmd	= aml_sd_send_cmd,
++	.set_ios	= aml_sd_cfg_swth,
++	.init		= aml_sd_init,
++//	.getcd		= ,
++//	.getwp		= ,
++#ifdef MMC_ADJ_FIXED
++	.calibration = aml_sd_calibration,
++	.refix = aml_sd_retry_refix,
++	.calc_fixed_adj = set_emmc_calc_fixed_adj,
++#endif
++#ifdef MMC_ADJ_FIX_CALC
++	.calc = aml_fixdiv_calc,
++#endif
++};
++
++void sd_emmc_register(struct aml_card_sd_info * aml_priv)
++{
++	struct mmc_config *cfg;
++
++	aml_priv->removed_flag = 1;
++	aml_priv->inited_flag = 0;
++	aml_priv->sd_emmc_reg = (struct sd_emmc_global_regs *)sd_emmc_base_addr[aml_priv->sd_emmc_port];
++
++	cfg = &aml_priv->cfg;
++	cfg->name = aml_priv->name;
++	cfg->ops = &aml_sd_emmc_ops;
++
++	cfg->voltages = MMC_VDD_33_34|MMC_VDD_32_33|MMC_VDD_31_32|MMC_VDD_165_195;
++	cfg->host_caps = MMC_MODE_8BIT|MMC_MODE_4BIT | MMC_MODE_HS_52MHz | MMC_MODE_HS |
++#if CONFIG_EMMC_DDR52_EN
++				 MMC_MODE_HC | MMC_MODE_DDR_52MHz;
++#else
++				 MMC_MODE_HC;
++#endif
++	cfg->f_min = 400000;
++	cfg->f_max = 40000000;
++	/**
++	 * For blank emmc, part-type should be unknown.
++	 * But fastboot will not happy about this when
++	 * gpt or mbr are being flashed.
++	 * a predefined parttype had to be added here
++	 * to satisfy the fastboot.
++	 */
++#ifdef CONFIG_AML_GPT
++	cfg->part_type = PART_TYPE_EFI;
++#else
++	cfg->part_type = PART_TYPE_AML;
++#endif
++	cfg->b_max = 256;
++	mmc_create(cfg,aml_priv);
++}
++
++bool aml_is_emmc_tsd (struct mmc *mmc) // is eMMC OR TSD
++{
++	struct aml_card_sd_info * sdio=mmc->priv;
++
++	return ((sdio->sd_emmc_port == SDIO_PORT_C));
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/Makefile b/drivers/mmc/Makefile
+--- a/drivers/mmc/Makefile	2026-04-02 18:17:41.343477671 +0800
++++ b/drivers/mmc/Makefile	2026-02-09 11:25:48.413072758 +0800
+@@ -34,7 +34,9 @@
+ obj-$(CONFIG_SPEAR_SDHCI) += spear_sdhci.o
+ obj-$(CONFIG_TEGRA_MMC) += tegra_mmc.o
+ obj-$(CONFIG_ZYNQ_SDHCI) += zynq_sdhci.o
+-
++obj-$(CONFIG_AML_SD_EMMC) += aml_sd_emmc.o
++obj-$(CONFIG_AML_SD_EMMC) += aml_hs200_v3.o
++obj-$(CONFIG_AML_SD_EMMC) += aml_emmc_partition.o
+ ifdef CONFIG_SPL_BUILD
+ obj-$(CONFIG_SPL_MMC_BOOT) += fsl_esdhc_spl.o
+ else
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/mmc.c b/drivers/mmc/mmc.c
+--- a/drivers/mmc/mmc.c	2026-04-02 18:17:41.343477671 +0800
++++ b/drivers/mmc/mmc.c	2026-02-09 11:25:48.417072977 +0800
+@@ -17,10 +17,79 @@
+ #include <linux/list.h>
+ #include <div64.h>
+ #include "mmc_private.h"
++#include <asm/cpu_id.h>
++#include <asm/arch/cpu_sdio.h>
++#include <asm/arch/sd_emmc.h>
++
++#include <emmc_partitions.h>
++#ifdef CONFIG_STORE_COMPATIBLE
++#include <partition_table.h>
++#endif
++#include <amlogic/secure_storage.h>
++
++#define CONFIG_DISABLE_USER_WP
++#define CONFIG_DISABLE_PERM_USER_WP 1
++#define USER_WP_VALUE  ((1<<4)|(1<<6))
++//#define CONFIG_MMC_TRACE 1
++
++#define stamp_after(a, b) ((int)(b) - (int)(a) < 0)
++
++#define KEY_BACKUP
+ 
+ static struct list_head mmc_devices;
+ static int cur_dev_num = -1;
+ 
++int amlmmc_is_inited(void) {
++	return device_boot_flag;
++}
++
++struct aml_pattern aml_pattern_table[] = {
++	AML_PATTERN_ELEMENT(MMC_PATTERN_NAME, CALI_PATTERN),
++	AML_PATTERN_ELEMENT(MMC_MAGIC_NAME, MAGIC_PATTERN),
++	AML_PATTERN_ELEMENT(MMC_RANDOM_NAME, RANDOM_PATTERN),
++};
++
++#ifdef KEY_BACKUP
++static struct aml_key_info key_infos[2] = { {0, 0, 0}, {0, 0, 0} };
++#endif
++
++bool emmckey_is_access_range_legal (struct mmc *mmc, ulong start, lbaint_t blkcnt) {
++#ifdef CONFIG_STORE_COMPATIBLE
++	ulong key_start_blk, key_end_blk;
++	u64 key_glb_offset;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++#ifdef KEY_BACKUP
++	int cpy = KEY_COPIES;
++#endif
++#endif
++	if (aml_is_emmc_tsd(mmc)) {
++#ifdef CONFIG_STORE_COMPATIBLE
++		vpart = aml_get_virtual_partition_by_name(MMC_KEY_NAME);
++		part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++		key_glb_offset = part->offset + vpart->offset;
++		key_start_blk = (key_glb_offset / MMC_BLOCK_SIZE);
++#ifdef KEY_BACKUP
++		key_end_blk = ((key_glb_offset + vpart->size * cpy) / MMC_BLOCK_SIZE - 1) + 2;
++#else
++		key_end_blk = ((key_glb_offset + vpart->size) / MMC_BLOCK_SIZE - 1);
++#endif
++		if (!(info_disprotect & DISPROTECT_KEY)) {
++			if ((key_start_blk <= (start + blkcnt -1))
++				&& (key_end_blk >= start)
++				&& (blkcnt != start)) {
++				printf("%s, keys %ld, keye %ld, start %ld, blkcnt %ld\n", __func__,
++					key_start_blk, key_end_blk, start, blkcnt);
++				printf("Emmckey: Access range is illegal!\n");
++				return 0;
++			}
++		}
++#endif
++	}
++
++	return 1;
++}
++
+ __weak int board_mmc_getwp(struct mmc *mmc)
+ {
+ 	return -1;
+@@ -87,6 +156,7 @@
+ 				ptr = (u8 *)&cmd->response[i];
+ 				ptr += 3;
+ 				for (j = 0; j < 4; j++)
++
+ 					printf("%02X ", *ptr--);
+ 				printf("\n");
+ 			}
+@@ -100,7 +170,7 @@
+ 			break;
+ 	}
+ #else
+-	ret = mmc->cfg->ops->send_cmd(mmc, cmd, data);
++		ret = mmc->cfg->ops->send_cmd(mmc, cmd, data);
+ #endif
+ 	return ret;
+ }
+@@ -176,7 +246,6 @@
+ 
+ 	list_for_each(entry, &mmc_devices) {
+ 		m = list_entry(entry, struct mmc, link);
+-
+ 		if (m->block_dev.dev == dev_num)
+ 			return m;
+ 	}
+@@ -193,6 +262,19 @@
+ {
+ 	struct mmc_cmd cmd;
+ 	struct mmc_data data;
++	int ret = 0, err = 0, err_flag = 0, retries = 0;
++
++__RETRY:
++#ifdef MMC_CMD23
++	if (blkcnt > 1) {
++		cmd.cmdidx = MMC_CMD_SET_BLOCK_COUNT;
++		cmd.cmdarg = blkcnt & 0xFFFF;
++		cmd.resp_type = MMC_RSP_R1;
++		err = mmc_send_cmd(mmc, &cmd, NULL);
++		if (err)
++			printf("mmc set blkcnt failed\n");
++	}
++#endif
+ 
+ 	if (blkcnt > 1)
+ 		cmd.cmdidx = MMC_CMD_READ_MULTIPLE_BLOCK;
+@@ -211,25 +293,40 @@
+ 	data.blocksize = mmc->read_bl_len;
+ 	data.flags = MMC_DATA_READ;
+ 
+-	if (mmc_send_cmd(mmc, &cmd, &data))
+-		return 0;
+-
++	ret = mmc_send_cmd(mmc, &cmd, &data);
++#ifndef MMC_CMD23
+ 	if (blkcnt > 1) {
+ 		cmd.cmdidx = MMC_CMD_STOP_TRANSMISSION;
+ 		cmd.cmdarg = 0;
+ 		cmd.resp_type = MMC_RSP_R1b;
+-		if (mmc_send_cmd(mmc, &cmd, NULL)) {
++		err = mmc_send_cmd(mmc, &cmd, NULL);
++		if (err) {
+ #if !defined(CONFIG_SPL_BUILD) || defined(CONFIG_SPL_LIBCOMMON_SUPPORT)
+ 			printf("mmc fail to send stop cmd\n");
+ #endif
+-			return 0;
+ 		}
+ 	}
++#endif
++	if ((ret || err) && mmc->refix == 1)
++		return 0;
+ 
++	if (ret || err) {
++		if (err_flag == 0) {
++			err_flag = 1;
++			retries = 5;
++		}
++		if (retries) {
++			printf("retry read, count: %d\n", retries);
++			retries--;
++			goto __RETRY;
++		}
++		printf("retry read error !!!\n");
++		return 0;
++	}
+ 	return blkcnt;
+ }
+ 
+-static ulong mmc_bread(int dev_num, lbaint_t start, lbaint_t blkcnt, void *dst)
++ulong mmc_bread(int dev_num, lbaint_t start, lbaint_t blkcnt, void *dst)
+ {
+ 	lbaint_t cur, blocks_todo = blkcnt;
+ 
+@@ -247,9 +344,12 @@
+ #endif
+ 		return 0;
+ 	}
+-
++	if (!emmckey_is_access_range_legal(mmc, start, blkcnt))
++		return 0;
++#ifndef MMC_HS400_MODE
+ 	if (mmc_set_blocklen(mmc, mmc->read_bl_len))
+ 		return 0;
++#endif
+ 
+ 	do {
+ 		cur = (blocks_todo > mmc->cfg->b_max) ?
+@@ -377,24 +477,27 @@
+ 
+ static int mmc_send_op_cond(struct mmc *mmc)
+ {
+-	struct mmc_cmd cmd;
+-	int err, i;
++//	struct mmc_cmd cmd;
++//	int err, i;
+ 
+ 	/* Some cards seem to need this */
+ 	mmc_go_idle(mmc);
+ 
+  	/* Asking to the card its capabilities */
+ 	mmc->op_cond_pending = 1;
+-	for (i = 0; i < 2; i++) {
+-		err = mmc_send_op_cond_iter(mmc, &cmd, i != 0);
+-		if (err)
+-			return err;
+ 
+-		/* exit if not busy (flag seems to be inverted) */
+-		if (mmc->op_cond_response & OCR_BUSY)
+-			return 0;
+-	}
+ 	return IN_PROGRESS;
++/*
++ *	for (i = 0; i < 2; i++) {
++ *		err = mmc_send_op_cond_iter(mmc, &cmd, i != 0);
++ *		if (err)
++ *			return err;
++ *
++ *		if (mmc->op_cond_response & OCR_BUSY)
++ *			return 0;
++ *	}
++ *	return IN_PROGRESS;
++ */
+ }
+ 
+ static int mmc_complete_op_cond(struct mmc *mmc)
+@@ -457,8 +560,30 @@
+ 	return err;
+ }
+ 
++#ifdef CONFIG_DISABLE_USER_WP
++int mmc_switch_by_bit(struct mmc *mmc, u8 set, u8 index, u8 value)
++{
++	struct mmc_cmd cmd;
++	int timeout = 1000;
++	int ret;
++
++	cmd.cmdidx = MMC_CMD_SWITCH;
++	cmd.resp_type = MMC_RSP_R1b;
++	cmd.cmdarg = (MMC_SWITCH_MODE_SET_BITS << 24) |
++						(index << 16) |
++						(value << 8);
++
++	ret = mmc_send_cmd(mmc, &cmd, NULL);
++
++	/* Waiting for the ready status */
++	if (!ret)
++		ret = mmc_send_status(mmc, timeout);
+ 
+-static int mmc_switch(struct mmc *mmc, u8 set, u8 index, u8 value)
++	return ret;
++}
++#endif
++
++int mmc_switch(struct mmc *mmc, u8 set, u8 index, u8 value)
+ {
+ 	struct mmc_cmd cmd;
+ 	int timeout = 1000;
+@@ -480,6 +605,238 @@
+ 
+ }
+ 
++int mmc_hwpart_config(struct mmc *mmc,
++		      const struct mmc_hwpart_conf *conf,
++		      enum mmc_hwpart_conf_mode mode)
++{
++	u8 part_attrs = 0;
++	u32 enh_size_mult;
++	u32 enh_start_addr;
++	u32 gp_size_mult[4];
++	u32 max_enh_size_mult;
++	u32 tot_enh_size_mult = 0;
++	u8 wr_rel_set;
++	int i, pidx, err;
++	ALLOC_CACHE_ALIGN_BUFFER(u8, ext_csd, MMC_MAX_BLOCK_LEN);
++
++	if (mode < MMC_HWPART_CONF_CHECK || mode > MMC_HWPART_CONF_COMPLETE)
++		return -EINVAL;
++
++	if (IS_SD(mmc) || (mmc->version < MMC_VERSION_4_41)) {
++		printf("eMMC >= 4.4 required for enhanced user data area\n");
++		return -EMEDIUMTYPE;
++	}
++
++	if (!(mmc->part_support & PART_SUPPORT)) {
++		printf("Card does not support partitioning\n");
++		return -EMEDIUMTYPE;
++	}
++
++	if (!mmc->hc_wp_grp_size) {
++		printf("Card does not define HC WP group size\n");
++		return -EMEDIUMTYPE;
++	}
++
++	/* check partition alignment and total enhanced size */
++	if (conf->user.enh_size) {
++		if (conf->user.enh_size % mmc->hc_wp_grp_size ||
++		    conf->user.enh_start % mmc->hc_wp_grp_size) {
++			printf("User data enhanced area not HC WP group "
++			       "size aligned\n");
++			return -EINVAL;
++		}
++		part_attrs |= EXT_CSD_ENH_USR;
++		enh_size_mult = conf->user.enh_size / mmc->hc_wp_grp_size;
++		if (mmc->high_capacity) {
++			enh_start_addr = conf->user.enh_start;
++		} else {
++			enh_start_addr = (conf->user.enh_start << 9);
++		}
++	} else {
++		enh_size_mult = 0;
++		enh_start_addr = 0;
++	}
++	tot_enh_size_mult += enh_size_mult;
++
++	for (pidx = 0; pidx < 4; pidx++) {
++		if (conf->gp_part[pidx].size % mmc->hc_wp_grp_size) {
++			printf("GP%i partition not HC WP group size "
++			       "aligned\n", pidx+1);
++			return -EINVAL;
++		}
++		gp_size_mult[pidx] = conf->gp_part[pidx].size / mmc->hc_wp_grp_size;
++		if (conf->gp_part[pidx].size && conf->gp_part[pidx].enhanced) {
++			part_attrs |= EXT_CSD_ENH_GP(pidx);
++			tot_enh_size_mult += gp_size_mult[pidx];
++		}
++	}
++
++	if (part_attrs && ! (mmc->part_support & ENHNCD_SUPPORT)) {
++		printf("Card does not support enhanced attribute\n");
++		return -EMEDIUMTYPE;
++	}
++
++	err = mmc_send_ext_csd(mmc, ext_csd);
++	if (err)
++		return err;
++
++	max_enh_size_mult =
++		(ext_csd[EXT_CSD_MAX_ENH_SIZE_MULT+2] << 16) +
++		(ext_csd[EXT_CSD_MAX_ENH_SIZE_MULT+1] << 8) +
++		ext_csd[EXT_CSD_MAX_ENH_SIZE_MULT];
++	if (tot_enh_size_mult > max_enh_size_mult) {
++		printf("Total enhanced size exceeds maximum (%u > %u)\n",
++		       tot_enh_size_mult, max_enh_size_mult);
++		return -EMEDIUMTYPE;
++	}
++
++	/* The default value of EXT_CSD_WR_REL_SET is device
++	 * dependent, the values can only be changed if the
++	 * EXT_CSD_HS_CTRL_REL bit is set. The values can be
++	 * changed only once and before partitioning is completed. */
++	wr_rel_set = ext_csd[EXT_CSD_WR_REL_SET];
++	if (conf->user.wr_rel_change) {
++		if (conf->user.wr_rel_set)
++			wr_rel_set |= EXT_CSD_WR_DATA_REL_USR;
++		else
++			wr_rel_set &= ~EXT_CSD_WR_DATA_REL_USR;
++	}
++	for (pidx = 0; pidx < 4; pidx++) {
++		if (conf->gp_part[pidx].wr_rel_change) {
++			if (conf->gp_part[pidx].wr_rel_set)
++				wr_rel_set |= EXT_CSD_WR_DATA_REL_GP(pidx);
++			else
++				wr_rel_set &= ~EXT_CSD_WR_DATA_REL_GP(pidx);
++		}
++	}
++
++	if (wr_rel_set != ext_csd[EXT_CSD_WR_REL_SET] &&
++	    !(ext_csd[EXT_CSD_WR_REL_PARAM] & EXT_CSD_HS_CTRL_REL)) {
++		puts("Card does not support host controlled partition write "
++		     "reliability settings\n");
++		return -EMEDIUMTYPE;
++	}
++
++	if (ext_csd[EXT_CSD_PARTITION_SETTING] &
++	    EXT_CSD_PARTITION_SETTING_COMPLETED) {
++		printf("Card already partitioned\n");
++		puts("\tUser Enhanced Start: ");
++		u64 temp,  j;
++		for (j = 0, temp = 0; j < 4; j++) {
++			temp |= ext_csd[EXT_CSD_ENH_START_ADDR + 3 - j];
++			temp = temp << 8;
++		}
++		print_size(temp << 9, "\n");
++		puts("\tUser Enhanced Size: ");
++		for (j = 0, temp = 0; j < 3; j++) {
++			temp |= ext_csd[EXT_CSD_ENH_SIZE_MULT + 2 - j];
++			temp = temp << 8;
++		}
++		temp *= mmc->hc_wp_grp_size;
++		print_size(temp << 9, "\n");
++		return -EPERM;
++	}
++
++	if (mode == MMC_HWPART_CONF_CHECK)
++		return 0;
++
++	/* Partitioning requires high-capacity size definitions */
++	if (!(ext_csd[EXT_CSD_ERASE_GROUP_DEF] & 0x01)) {
++		err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++				 EXT_CSD_ERASE_GROUP_DEF, 1);
++
++		if (err)
++			return err;
++
++		ext_csd[EXT_CSD_ERASE_GROUP_DEF] = 1;
++
++		mmc->erase_grp_size =
++			ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE] * 1024;
++
++	}
++
++	/* all OK, write the configuration */
++	for (i = 0; i < 4; i++) {
++		err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++				 EXT_CSD_ENH_START_ADDR+i,
++				 (enh_start_addr >> (i*8)) & 0xFF);
++		if (err)
++			return err;
++	}
++	for (i = 0; i < 3; i++) {
++		err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++				 EXT_CSD_ENH_SIZE_MULT+i,
++				 (enh_size_mult >> (i*8)) & 0xFF);
++		if (err)
++			return err;
++	}
++	for (pidx = 0; pidx < 4; pidx++) {
++		for (i = 0; i < 3; i++) {
++			err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++					 EXT_CSD_GP_SIZE_MULT+pidx*3+i,
++					 (gp_size_mult[pidx] >> (i*8)) & 0xFF);
++			if (err)
++				return err;
++		}
++	}
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++			 EXT_CSD_PARTITIONS_ATTRIBUTE, part_attrs);
++	if (err)
++		return err;
++
++	if (mode == MMC_HWPART_CONF_SET)
++		return 0;
++
++	/* The WR_REL_SET is a write-once register but shall be
++	 * written before setting PART_SETTING_COMPLETED. As it is
++	 * write-once we can only write it when completing the
++	 * partitioning. */
++	if (wr_rel_set != ext_csd[EXT_CSD_WR_REL_SET]) {
++		err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++				 EXT_CSD_WR_REL_SET, wr_rel_set);
++		if (err)
++			return err;
++	}
++
++	/* Setting PART_SETTING_COMPLETED confirms the partition
++	 * configuration but it only becomes effective after power
++	 * cycle, so we do not adjust the partition related settings
++	 * in the mmc struct. */
++
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL,
++			 EXT_CSD_PARTITION_SETTING,
++			 EXT_CSD_PARTITION_SETTING_COMPLETED);
++	if (err)
++		return err;
++
++	return 0;
++}
++
++u8 ext_csd_w[] = {191, 187, 185, 183, 179, 178, 177, 175,
++					173, 171, 169, 167, 165, 164, 163, 162,
++					161, 156, 155, 143, 140, 136, 134, 133,
++					132, 131, 62, 59, 56, 52, 37, 34,
++					33, 32, 31, 30, 29, 22, 17, 16, 15};
++
++int mmc_set_ext_csd(struct mmc *mmc, u8 index, u8 value)
++{
++	int ret = SWITCH_ERR, i;
++
++	for (i = 0; i < sizeof(ext_csd_w); i++) {
++		if (ext_csd_w[i] == index)
++			break;
++	}
++	if (i != sizeof(ext_csd_w))
++		ret = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL, index, value);
++
++	return ret;
++}
++
++int mmc_get_ext_csd(struct mmc *mmc, u8 *ext_csd)
++{
++	return mmc_send_ext_csd(mmc, ext_csd);
++}
++
+ static int mmc_change_freq(struct mmc *mmc)
+ {
+ 	ALLOC_CACHE_ALIGN_BUFFER(u8, ext_csd, MMC_MAX_BLOCK_LEN);
+@@ -582,7 +939,6 @@
+ 	return 0;
+ }
+ 
+-
+ int mmc_switch_part(int dev_num, unsigned int part_num)
+ {
+ 	struct mmc *mmc = find_mmc_device(dev_num);
+@@ -733,7 +1089,7 @@
+ 
+ 	/*
+ 	 * If the host doesn't support SD_HIGHSPEED, do not switch card to
+-	 * HIGHSPEED mode even if the card support SD_HIGHSPPED.
++	 * HIGHSPEED mode even if the card support SD_HIGHSPEED.
+ 	 * This can avoid furthur problem when the card runs in different
+ 	 * mode between the host.
+ 	 */
+@@ -789,6 +1145,25 @@
+ 		mmc->cfg->ops->set_ios(mmc);
+ }
+ 
++int aml_emmc_refix(struct mmc *mmc)
++{
++	int ret = 0;
++	mmc->refix = 1;
++	if (0)
++		mmc->cfg->ops->calibration(mmc);
++	if (mmc->cfg->ops->calc_fixed_adj != NULL)
++		mmc->cfg->ops->calc_fixed_adj(mmc);
++	else if (mmc->cfg->ops->refix != NULL) {
++		ret = mmc->cfg->ops->refix(mmc);
++		if (!ret)
++			printf("[%s] mmc refix success\n", __func__);
++		else
++			printf("[%s] mmc refix error\n", __func__);
++	}
++	mmc->refix = 0;
++	return ret;
++}
++
+ void mmc_set_clock(struct mmc *mmc, uint clock)
+ {
+ 	if (clock > mmc->cfg->f_max)
+@@ -802,13 +1177,40 @@
+ 	mmc_set_ios(mmc);
+ }
+ 
+-static void mmc_set_bus_width(struct mmc *mmc, uint width)
++void mmc_set_bus_width(struct mmc *mmc, uint width)
+ {
+ 	mmc->bus_width = width;
+ 
+ 	mmc_set_ios(mmc);
+ }
+ 
++//#ifdef CONFIG_DISABLE_USER_WP
++int mmc_disable_usr_wp(struct mmc *mmc, u8 *ext_csd)
++{
++	int err= 0;
++	u8 cur_ext_csd_171 = 0;
++	u8 user_wp_disable = 0;
++	cur_ext_csd_171 = (u8)ext_csd[171];
++	printf("original ext_csd[171] USE_WP field value is %02x\n",cur_ext_csd_171);
++	user_wp_disable = (cur_ext_csd_171^USER_WP_VALUE)&USER_WP_VALUE;
++	printf("user_wp_disable is %d\n",user_wp_disable);
++	if (user_wp_disable) {
++		err = mmc_switch_by_bit(mmc,MMC_SWITCH_MODE_SET_BITS,EXT_CSD_USER_WP,user_wp_disable);
++		if (err)
++		    printf("mmc_switch mistake when disable user_wp, err value is %d\n",err);
++
++		err = mmc_get_ext_csd(mmc,ext_csd);
++		if (err)
++			printf("mmc get ext csd mistake in %d\n",err);
++		else
++			printf("ext_csd[171] USER_WP filed value after switch is %02x\n",ext_csd[171]);
++	}
++	else {
++		printf("Disable bits in ext_csd[171] USE_WP field has been set to \"1\"\n");
++	}
++	return err;
++}
++
+ static int mmc_startup(struct mmc *mmc)
+ {
+ 	int err, i;
+@@ -976,10 +1378,10 @@
+ 			 * ext_csd's capacity is valid if the value is more
+ 			 * than 2GB
+ 			 */
+-			capacity = ext_csd[EXT_CSD_SEC_CNT] << 0
++			capacity = (u64)(ext_csd[EXT_CSD_SEC_CNT] << 0
+ 					| ext_csd[EXT_CSD_SEC_CNT + 1] << 8
+ 					| ext_csd[EXT_CSD_SEC_CNT + 2] << 16
+-					| ext_csd[EXT_CSD_SEC_CNT + 3] << 24;
++					| ext_csd[EXT_CSD_SEC_CNT + 3] << 24);
+ 			capacity *= MMC_MAX_BLOCK_LEN;
+ 			if ((capacity >> 20) > 2 * 1024)
+ 				mmc->capacity_user = capacity;
+@@ -1004,8 +1406,17 @@
+ 		case 7:
+ 			mmc->version = MMC_VERSION_5_0;
+ 			break;
++		case 8:
++			mmc->version = MMC_VERSION_5_1;
++			break;
+ 		}
+ 
++		/* dev life time estimate type A/B */
++		mmc->dev_lifetime_est_typ_a
++			= ext_csd[EXT_CSD_DEV_LIFETIME_EST_TYP_A];
++		mmc->dev_lifetime_est_typ_b
++			= ext_csd[EXT_CSD_DEV_LIFETIME_EST_TYP_B];
++
+ 		/*
+ 		 * Host needs to enable ERASE_GRP_DEF bit if device is
+ 		 * partitioned. This bit will be lost every time after a reset
+@@ -1023,8 +1434,7 @@
+ 
+ 			/* Read out group size from ext_csd */
+ 			mmc->erase_grp_size =
+-				ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE] *
+-					MMC_MAX_BLOCK_LEN * 1024;
++				ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE] * 1024;
+ 			/*
+ 			 * if high capacity and partition setting completed
+ 			 * SEC_COUNT is valid even if it is smaller than 2 GiB
+@@ -1033,10 +1443,10 @@
+ 			if (mmc->high_capacity &&
+ 			    (ext_csd[EXT_CSD_PARTITION_SETTING] &
+ 			     EXT_CSD_PARTITION_SETTING_COMPLETED)) {
+-				capacity = (ext_csd[EXT_CSD_SEC_CNT]) |
++				capacity = (u64)((ext_csd[EXT_CSD_SEC_CNT]) |
+ 					(ext_csd[EXT_CSD_SEC_CNT + 1] << 8) |
+ 					(ext_csd[EXT_CSD_SEC_CNT + 2] << 16) |
+-					(ext_csd[EXT_CSD_SEC_CNT + 3] << 24);
++					(ext_csd[EXT_CSD_SEC_CNT + 3] << 24));
+ 				capacity *= MMC_MAX_BLOCK_LEN;
+ 				mmc->capacity_user = capacity;
+ 			}
+@@ -1066,6 +1476,11 @@
+ 				ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE];
+ 			mmc->capacity_gp[i] *= ext_csd[EXT_CSD_HC_WP_GRP_SIZE];
+ 		}
++		mmc->hc_wp_grp_size = 1024
++			* ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE]
++			* ext_csd[EXT_CSD_HC_WP_GRP_SIZE];
++
++		mmc->part_support = ext_csd[EXT_CSD_PARTITIONING_SUPPORT];
+ 	}
+ 
+ 	err = mmc_set_capacity(mmc, mmc->part_num);
+@@ -1080,6 +1495,10 @@
+ 	if (err)
+ 		return err;
+ 
++#ifdef CONFIG_DISABLE_USER_WP
++//	mmc_disable_usr_wp(mmc,ext_csd);
++#endif
++
+ 	/* Restrict card's capabilities by what the host can do */
+ 	mmc->card_caps &= mmc->cfg->host_caps;
+ 
+@@ -1153,7 +1572,6 @@
+ 
+ 			mmc->ddr_mode = (caps & MMC_MODE_DDR_52MHz) ? 1 : 0;
+ 			mmc_set_bus_width(mmc, widths[idx]);
+-
+ 			err = mmc_send_ext_csd(mmc, test_csd);
+ 
+ 			if (err)
+@@ -1188,6 +1606,12 @@
+ 
+ 	mmc_set_clock(mmc, mmc->tran_speed);
+ 
++	if (mmc->card_caps & MMC_MODE_HS_52MHz) {
++		err = aml_emmc_refix(mmc);
++		if (err)
++			return err;
++	}
++
+ 	/* Fix the block length for DDR mode */
+ 	if (mmc->ddr_mode) {
+ 		mmc->read_bl_len = MMC_MAX_BLOCK_LEN;
+@@ -1376,6 +1800,67 @@
+ 	return err;
+ }
+ 
++void mmc_write_cali_mattern(void *addr, struct aml_pattern *table)
++{
++	int i = 0;
++	unsigned int s = 10;
++	u32 *mattern = (u32 *)addr;
++	struct virtual_partition *vpart =
++		aml_get_virtual_partition_by_name(table->name);
++	for (i = 0;i < (vpart->size)/4 - 1;i++) {
++		if (!strcmp(table->name, "random"))
++			mattern[i] = rand_r(&s);
++		else
++			mattern[i] = table->pattern;
++	}
++	mattern[i] = crc32(0, (u8 *)addr, (vpart->size - 4));
++	return;
++}
++
++int mmc_pattern_check(struct mmc *mmc, struct aml_pattern *table)
++{
++	void *addr = NULL;
++	int dev = EMMC_DTB_DEV;
++	u64 cnt = 0, n = 0, blk = 0;
++	u32 *buf = NULL;
++	u32 crc32_s = 0;
++	struct partitions *part = NULL;
++	struct virtual_partition *vpart = NULL;
++	vpart = aml_get_virtual_partition_by_name(MMC_KEY_NAME);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++
++	addr = (void *)malloc(vpart->size);
++	if (!addr) {
++		printf("pattern malloc failed\n");
++		return 1;
++	}
++	vpart = aml_get_virtual_partition_by_name(table->name);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	blk = (part->offset + vpart->offset) / mmc->read_bl_len;
++	cnt = vpart->size / mmc->read_bl_len;
++	n = mmc_bread(dev, blk, cnt, addr);
++	if (n != cnt) {
++		printf("read pattern failed\n");
++		free(addr);
++		return 1;
++	} else {
++		buf = (u32 *)addr;
++		crc32_s = crc32(0, (u8 *)addr, (vpart->size - 4));
++		if (crc32_s != buf[vpart->size/4 - 1]) {
++			printf("check %s failed,need to write\n",
++						table->name);
++			mmc_write_cali_mattern(addr, table);
++			n = mmc_bwrite(dev, blk, cnt, addr);
++			printf("several 0x%x pattern blocks write %s\n",
++				table->pattern, (n == cnt) ? "OK" : "ERROR");
++		}
++		printf("crc32_s:0x%x == storage crc_pattern:0x%x!!!\n",
++				crc32_s, buf[vpart->size/4 - 1]);
++	}
++	free(addr);
++	return (n == cnt) ? 0 : 1;
++}
++
+ static int mmc_complete_init(struct mmc *mmc)
+ {
+ 	int err = 0;
+@@ -1393,13 +1878,260 @@
+ 	return err;
+ }
+ 
++#ifdef MMC_WRITE_CHIP_ID
++/* 1. read board chip_id
++ * 2. read chip_id writed on emmc
++ * 3. compare two chip_id
++ * 4. compare vddee
++ *	if same return
++ *	else write chip_id or vddee on emmc
++ */
++int aml_write_chip_id(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct tuning_para *parameter = aml_priv->para;
++	struct tuning_para *para;
++	uint8_t chip_id[16];
++	void *buf;
++	int same_para = 1;
++	int i, blk, off;
++	int n;
++	int para_size;
++	int size;
++	unsigned int vddee = CONFIG_VDDEE_INIT_VOLTAGE;
++
++	para_size = sizeof(struct tuning_para);
++	blk = (para_size - 1) / 512 + 1;
++	size = blk * 512;
++
++	buf = (void *)malloc(size);
++	if (!buf) {
++		printf("buffer malloc failed\n");
++		return 1;
++	}
++	memset(buf, 0, size);
++
++	if (get_chip_id(&chip_id[0], sizeof(chip_id)) != 0) {
++		printf("get chip id error\n");
++		free(buf);
++		return 1;
++	}
++
++	off = MMC_TUNING_OFFSET;
++	n = mmc->block_dev.block_read(1, off, blk, buf);
++	if (n == blk) {
++		para = (struct tuning_para *)buf;
++		for (i = 0; i < sizeof(chip_id); i++) {
++			if (para->chip_id[i] != chip_id[i]) {
++				same_para = 0;
++				break;
++			}
++		}
++
++		if (vddee != para->vddee)
++			same_para = 0;
++
++		if (same_para == 0) {
++			printf("chip_id is 0x:");
++			memset(para, 0, para_size);
++			para->vddee = vddee;
++			for (i = 0; i < sizeof(chip_id); i++) {
++				para->chip_id[i] = chip_id[i];
++				printf("%02x ", para->chip_id[i]);
++			}
++			printf("\n");
++			mmc->block_dev.block_write(1, off, blk, buf);
++		}
++	}
++	memcpy(parameter, buf, para_size);
++	free(buf);
++	return 0;
++}
++#endif
++
++#ifdef MMC_HS400_MODE
++void reset_all_reg(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct sd_emmc_global_regs *sd_emmc_regs = aml_priv->sd_emmc_reg;
++	void *buf;
++	unsigned long  addr;
++	int size;
++	u64 writeval;
++	unsigned long byte;
++
++	if (aml_priv->sd_emmc_port != 2)
++		return;
++	sd_emmc_regs->gcfg = 0x4791;
++	sd_emmc_regs->gclock = 0x1000204;
++	sd_emmc_regs->gadjust = 0;
++	sd_emmc_regs->gdelay = 0;
++	sd_emmc_regs->gdelay1 = 0;
++	sd_emmc_regs->gintf3 = 0;
++
++	aml_priv->cfg.f_max = 40000000;
++
++	size = 4;
++	byte = size;
++	addr = CLKSRC_BASE + 0x25c;
++	writeval = 0x080;
++	buf = map_sysmem(addr, byte);
++	*((u32 *)buf) = (u32)writeval;
++	unmap_sysmem(buf);
++}
++
++static long long para_checksum_calc(struct tuning_para *para)
++{
++	int i = 0;
++	int size = sizeof(struct tuning_para) - 6 * sizeof(unsigned int);
++	unsigned int *buffer;
++	long long checksum = 0;
++
++	size = size >> 2;
++	buffer = (unsigned int *)para;
++	while (i < size)
++		checksum += buffer[i++];
++
++	return checksum;
++}
++
++static int mmc_read_single_block(struct mmc *mmc, void *dst, lbaint_t start)
++{
++	struct mmc_cmd cmd;
++	struct mmc_data data;
++	int ret = 0;
++
++	cmd.cmdidx = MMC_CMD_READ_SINGLE_BLOCK;
++
++	if (mmc->high_capacity)
++		cmd.cmdarg = start;
++	else
++		cmd.cmdarg = start * mmc->read_bl_len;
++
++	cmd.resp_type = MMC_RSP_R1;
++
++	data.dest = dst;
++	data.blocks = 1;
++	data.blocksize = mmc->read_bl_len;
++	data.flags = MMC_DATA_READ;
++
++	ret = mmc_send_cmd(mmc, &cmd, &data);
++	return ret;
++}
++
++/*
++ * check if tuning parameter is exist
++ * check if temperature is in the 0~69
++ * check if the parameter has been tuning
++ *		under the current temperature
++ * check if the data had been broken by  checksum
++ *
++ * if all four condition above is yes, the tuning parameter
++ *		could be use directly
++ * otherwise returning and save parameter
++ */
++int aml_para_is_exist(struct mmc *mmc)
++{
++	int temperature;
++	int temp_index;
++	long long checksum;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct tuning_para *para = aml_priv->para;
++	int ret;
++
++	para->update = 1;
++	ret = r1p1_temp_read(1, &temperature);
++	if (ret == -1) {
++		para->update = 0;
++		printf("get temperature failed\n");
++		return 0;
++	}
++
++	checksum = para_checksum_calc(para);
++	if (checksum != para->checksum) {
++		printf("warning: checksum is not match\n");
++		return 0;
++	}
++
++	if (para->magic != TUNED_MAGIC) {
++		printf("[%s] magic is not match\n", __func__);
++		return 0;
++	}
++
++	if (para->version != TUNED_VERSION) {
++		printf("[%s] VERSION is not match\n", __func__);
++		return 0;
++	}
++
++	printf("current temperature is %d\n", temperature);
++	temp_index = temperature  / 10;
++	para->temperature = temperature;
++	/* temperature range is 0 ~ 69 */
++	if (temp_index < 0 || temp_index > 6) {
++		printf("temperature is out of normal range\n");
++		return 0;
++	}
++
++	if (para->hs4[temp_index].flag != TUNED_FLAG) {
++		printf("current temperature %d degree not tuning yet\n",
++			temperature / 10);
++		return 0;
++	}
++
++	printf("the hs400 parameter is useful\n");
++	para->update = 0;
++	return 1;
++}
++
++/*
++ * read tuning para from reserved partition
++ * and copy it to pdata->para
++ */
++int aml_read_tuning_para(struct mmc *mmc)
++{
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	struct tuning_para *para = aml_priv->para;
++	int offset, blk;
++	int ret;
++	int para_size;
++	void *addr;
++
++	para_size = sizeof(struct tuning_para);
++
++	blk = (para_size - 1) / 512 + 1;
++	offset = MMC_TUNING_OFFSET;
++	addr = malloc(blk * 512);
++	if (!addr)
++		return -1;
++
++	memset(addr, 0, blk * 512);
++
++	if (blk == 1)
++		ret = mmc_read_single_block(mmc, addr, offset);
++	else
++		ret = mmc_bread(1, offset, blk, addr);
++	if (ret) {
++		printf("read tuning parameter failed\n");
++		free(addr);
++		return ret;
++	}
++	memcpy(para, addr, para_size);
++	free(addr);
++	return ret;
++}
++#endif
++
+ int mmc_init(struct mmc *mmc)
+ {
+-	int err = IN_PROGRESS;
++	struct aml_card_sd_info *aml_priv = mmc->priv;
++	int err = IN_PROGRESS, i;
+ 	unsigned start;
+ 
+ 	if (mmc->has_init)
+ 		return 0;
++#ifdef MMC_HS400_MODE
++	reset_all_reg(mmc);
++#endif
+ 
+ 	start = get_timer(0);
+ 
+@@ -1409,9 +2141,208 @@
+ 	if (!err || err == IN_PROGRESS)
+ 		err = mmc_complete_init(mmc);
+ 	debug("%s: %d, time %lu\n", __func__, err, get_timer(start));
++	if (err)
++		return err;
++	printf("[%s] mmc init success\n", __func__);
++	if (mmc->block_dev.dev == CONFIG_SYS_MMC_ENV_DEV)  {
++		device_boot_flag = EMMC_BOOT_FLAG;
++		secure_storage_set_info(STORAGE_DEV_EMMC);
++
++	}
++#ifdef CONFIG_STORE_COMPATIBLE
++	info_disprotect |= DISPROTECT_KEY;
++	if (aml_is_emmc_tsd(mmc)) { // eMMC OR TSD
++		if (!is_partition_checked) {
++			if (mmc_device_init(mmc) == 0) {
++				is_partition_checked = true;
++				printf("eMMC/TSD partition table have been checked OK!\n");
++				for (i = 0; i < ARRAY_SIZE(aml_pattern_table); i++)
++					mmc_pattern_check(mmc, &aml_pattern_table[i]);
++			}
++		}
++	}
++	info_disprotect &= ~DISPROTECT_KEY;
++
++#endif
++
++	if (aml_priv->sd_emmc_port != 2)
++		return err;
++
++#ifdef MMC_WRITE_CHIP_ID
++	err = aml_write_chip_id(mmc);
++	if (err)
++		printf("write chip id and vddee failed\n");
++#endif
++
++#ifdef MMC_HS400_MODE
++	err = aml_read_tuning_para(mmc);
++	if (err)
++		printf("read tuning parameter failed\n");
++
++#ifdef MMC_SET_TUNING_PARA
++	if (aml_para_is_exist(mmc) == 0)
++		return err;
++#endif
++
++	err = mmc_set_hs200_mode(mmc);
++	if (err) {
++		printf("set hs200 mode failed\n");
++		return err;
++	}
++	err = mmc_set_hs400_mode(mmc);
++	if (err) {
++		printf("set hs400 mode failed\n");
++		return err;
++	}
++#endif
++
+ 	return err;
+ }
+ 
++int mmc_ffu_op(int dev, u64 ffu_ver, void *addr, u64 cnt)
++{
++	int err, i, supported_modes, fw_cfg, ffu_status;
++	u64 fw_ver = 0, n;
++	u8 ext_csd_ffu[512] = {0};
++	lbaint_t ffu_addr=0;
++	struct mmc *mmc = find_mmc_device(dev);
++	if (!mmc)
++		return -ENODEV;
++
++	printf("ffu update start\n");
++	/* check Manufacturer MID */
++	if ((mmc->cid[0] >> 24) == SAMSUNG_MID) {
++		ffu_addr = SAMSUNG_FFU_ADDR;
++	} else if ((mmc->cid[0] >> 24) == KINGSTON_MID) {
++		ffu_addr = KINGSTON_FFU_ADDR;
++	} else if ((mmc->cid[0] >> 24) == BIWIN_MID) {
++		ffu_addr = BIWIN_FFU_ADDR;
++	} else if ((mmc->cid[0] >> 24) == TOSHIBA_MID) {
++		ffu_addr = TOSHIBA_FFU_ADDR;
++	} else {
++		printf("FFU update for this manufacturer not support yet\n");
++		return -1;
++	}
++
++	/*
++	 * check FFU Supportability
++	 * check FFU Prohibited or not
++	 * check current firmware version
++	 */
++	memset(ext_csd_ffu, 0, 512);
++	err = mmc_get_ext_csd(mmc, ext_csd_ffu);
++	if (err)
++		return err;
++
++	supported_modes = ext_csd_ffu[EXT_CSD_SUPPORTED_MODES] & 0x1;
++	fw_cfg = ext_csd_ffu[EXT_CSD_FW_CFG] & 0x1;
++	for (i = 0; i < 8; i++) {
++		fw_ver |= ext_csd_ffu[EXT_CSD_FW_VERSION + 7 - i];
++		if (i < 7)
++			fw_ver <<= 8;
++	}
++	if ((mmc->cid[0] >> 24) == BIWIN_MID)
++		fw_ver = ((fw_ver >> 16) & 0xffffffff);
++	printf("old fw_ver = %llx\n", fw_ver);
++	if (!supported_modes || fw_cfg || (fw_ver >= ffu_ver))
++		return -1;
++
++	/* Set FFU Mode */
++	err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_MODE_CFG, 1);
++	if (err) {
++		printf("Failed: set FFU mode\n");
++		return err;
++	}
++
++	/* Write patch file at one write command */
++	n = mmc_ffu_write(dev, ffu_addr, cnt, addr);
++	if (n != cnt) {
++		printf("target is %llx block, but only %llx block has been write\n", cnt, n);
++		return -1;
++	}
++
++	memset(ext_csd_ffu, 0, 512);
++	err = mmc_get_ext_csd(mmc, ext_csd_ffu);
++	if (err)
++		return err;
++
++	for (i = 0; i < 8; i++) {
++		fw_ver |= ext_csd_ffu[EXT_CSD_FW_VERSION + 7 - i];
++		if (i < 7)
++			fw_ver <<= 8;
++	}
++	if ((mmc->cid[0] >> 24) == BIWIN_MID)
++		fw_ver = ((fw_ver >> 16) & 0xffffffff);
++	printf("new fw_ver = %llx\n", fw_ver);
++	if ((mmc->cid[0] >> 24) == SAMSUNG_MID) {
++		/* Set Normal Mode */
++		err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_MODE_CFG, 0);
++		if (err)
++			return err;
++	}
++
++	/* reset devices */
++	err = mmc_go_idle(mmc);
++	if (err)
++		return err;
++
++	/* Initialization */
++	mmc->has_init = 0;
++	err = mmc_init(mmc);
++	if (err)
++		return err;
++
++	/* Read ffu_status, check ffu_version */
++	memset(ext_csd_ffu, 0, 512);
++	err = mmc_get_ext_csd(mmc, ext_csd_ffu);
++	if (err)
++		return err;
++	ffu_status = ext_csd_ffu[EXT_CSD_FFU_STATUS] & 0xff;
++	fw_ver = 0;
++	for (i = 0; i < 8; i++) {
++		fw_ver |= ext_csd_ffu[EXT_CSD_FW_VERSION + 7 - i];
++		if (i < 7)
++			fw_ver <<= 8;
++	}
++	if ((mmc->cid[0] >> 24) == BIWIN_MID)
++		fw_ver = ((fw_ver >> 16) & 0xffffffff);
++	printf("new fw_ver = %llx\n", fw_ver);
++	if (ffu_status || (fw_ver != ffu_ver))
++		return ffu_status;
++
++	printf("FFU update ok!\n");
++	return 0;
++}
++
++int get_boot_size(char *name, uint64_t* size)
++{
++	int ret = 0;
++	struct mmc *mmc = find_mmc_device(1);
++
++	/* do nothing */
++	if (!name)
++		goto _out;
++
++	if (!mmc) {
++		printf("%s() %d: not valid emmc\n", __func__, __LINE__);
++		ret = -1;
++		goto _out;
++	}
++	/* make sure mmc is initialized! */
++	ret = mmc_init(mmc);
++	if (ret) {
++		printf("%s() %d: emmc init %d\n", __func__, __LINE__, ret);
++		ret = -2;
++		goto _out;
++	}
++
++	if (!strcmp(name, "boot0") || !strcmp(name, "boot1"))
++		*size = mmc->capacity_boot;
++
++_out:
++	return ret;
++}
++
+ int mmc_set_dsr(struct mmc *mmc, u16 val)
+ {
+ 	mmc->dsr = val;
+@@ -1618,3 +2549,466 @@
+ 			  enable);
+ }
+ #endif
++
++extern ulong mmc_bwrite(int dev_num, lbaint_t start,
++				lbaint_t blkcnt, const void *src);
++extern unsigned long mmc_berase(int dev_num,
++				lbaint_t start, lbaint_t blkcnt);
++static int mmc_reserved_read(const char *name,
++			     unsigned char *buf, unsigned int size)
++{
++	ulong start, start_blk, blkcnt, ret;
++	int dev = EMMC_DTB_DEV;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++
++	vpart = aml_get_virtual_partition_by_name(name);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	start = part->offset + vpart->offset;
++	start_blk = (start / MMC_BLOCK_SIZE);
++	blkcnt = (size / MMC_BLOCK_SIZE);
++	ret = mmc_bread(dev, start_blk, blkcnt, buf);
++	if (ret != blkcnt) {
++		printf("[%s] %d, mmc_bread %s error\n",
++			__func__, __LINE__, name);
++		return 1;
++	}
++	return 0;
++}
++
++static int mmc_reserved_write(const char *name,
++			      unsigned char *buf, unsigned int size)
++{
++	ulong start, start_blk, blkcnt, ret;
++	int i = 2, dev = EMMC_DTB_DEV;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++
++	vpart = aml_get_virtual_partition_by_name(name);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	start = part->offset + vpart->offset;
++	start_blk = (start / MMC_BLOCK_SIZE);
++	blkcnt = (size / MMC_BLOCK_SIZE);
++	do {
++		ret = mmc_bwrite(dev, start_blk, blkcnt, buf);
++		if (ret != blkcnt) {
++			printf("[%s] %d, mmc_bwrite %s error\n",
++				__func__, __LINE__, name);
++			return 1;
++		}
++		start_blk += vpart->size / MMC_BLOCK_SIZE;
++	} while (--i);
++	return 0;
++}
++
++static int mmc_reserved_erase(const char *name, int number)
++{
++	ulong start, start_blk, blkcnt, ret;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++	int dev = EMMC_DTB_DEV;
++
++	vpart = aml_get_virtual_partition_by_name(name);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	start = part->offset + vpart->offset;
++	start_blk = (start / MMC_BLOCK_SIZE);
++#ifdef KEY_BACKUP
++	blkcnt = (vpart->size / MMC_BLOCK_SIZE) * number + 2;
++#else
++	blkcnt = (vpart->size / MMC_BLOCK_SIZE) * number;
++#endif
++	ret = mmc_berase(dev, start_blk, blkcnt);
++	if (ret) {
++		printf("[%s] %d mmc_berase %s error\n",
++		       __func__, __LINE__, name);
++		return 1;
++	}
++	return 0;
++}
++
++
++#ifdef KEY_BACKUP
++/* unifykey backup distribution */
++
++/*--------------------------------------------------------
++ * offset |  0x12020  |  0x12220  |  0x12420  |  0x12421  |
++ *--------------------------------------------------------
++ *  size  | 200 block | 200 block |  1 block  |  1 block  |
++ *--------------------------------------------------------
++ *content |    key1   |    key2   | checksum1 | checksum2 |
++ *--------------------------------------------------------
++ */
++static u64 _calc_key_checksum(void *addr, int size)
++{
++	int i = 0;
++	u32 *buffer;
++	u64 checksum = 0;
++
++	if ((u64)addr % 4 != 0)
++		BUG();
++
++	buffer = (u32 *)addr;
++	size = size >> 2;
++	while (i < size)
++		checksum += buffer[i++];
++
++	return checksum;
++}
++
++static int _key_read(struct mmc *mmc, u64 blk, u64 cnt, void * addr)
++{
++	int dev = EMMC_DTB_DEV;
++	u64 n;
++	n = mmc->block_dev.block_read(dev, blk, cnt, addr);
++	if (n != cnt) {
++		printf("%s: dev # %d, block # %#llx, count # %#llx ERROR!\n",
++				__func__, dev, blk, cnt);
++	}
++
++	return (n != cnt);
++}
++
++static int _verify_key_checksum(struct mmc *mmc, void *addr, int cpy)
++{
++	u64 checksum;
++	int ret = 0;
++	u64 blk, key_glb_offset;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++	char checksum_info[512] = {0};
++
++	vpart = aml_get_virtual_partition_by_name(MMC_KEY_NAME);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	key_glb_offset = part->offset + vpart->offset;
++
++	blk = (key_glb_offset + 2 * (vpart->size)) / MMC_BLOCK_SIZE + cpy;
++	ret = _key_read(mmc, blk, 1, (void *)checksum_info);
++	if (ret)
++		return -1;
++
++	memcpy(&key_infos[cpy], checksum_info, sizeof(struct aml_key_info));
++
++	checksum = _calc_key_checksum(addr, vpart->size);
++	printf("calc %llx, store %llx\n", checksum, key_infos[cpy].checksum);
++
++	return !(checksum == key_infos[cpy].checksum);
++}
++
++static int update_key_info(struct mmc *mmc, unsigned char *addr)
++{
++	int ret = 0;
++	u64 blk, cnt, key_glb_offset;
++	int cpy = 1;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++	int valid_flag = 0;
++
++	vpart = aml_get_virtual_partition_by_name(MMC_KEY_NAME);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	key_glb_offset = part->offset + vpart->offset;
++
++	while (cpy >= 0) {
++		blk = (key_glb_offset + cpy * (vpart->size)) / MMC_BLOCK_SIZE;
++		cnt = vpart->size / mmc->read_bl_len;
++		ret = _key_read(mmc, blk, cnt, addr);
++		if (ret) {
++			printf("%s: block # %#llx, cnt # %#llx ERROR!\n",
++				__func__, blk, cnt);
++			return -1;
++		}
++
++		ret = _verify_key_checksum(mmc, addr, cpy);
++		if (!ret && key_infos[cpy].magic != 0)
++			valid_flag += cpy + 1;
++		else
++			printf("cpy %d is not valid\n", cpy);
++		cpy--;
++	}
++
++	if (key_infos[0].stamp > key_infos[1].stamp)
++		mmc->key_stamp = key_infos[0].stamp;
++	else
++		mmc->key_stamp = key_infos[1].stamp;
++
++	return valid_flag;
++}
++
++static int _key_write(struct mmc *mmc, u64 blk, u64 cnt, void *addr)
++{
++	int dev = EMMC_KEY_DEV;
++	u32 n;
++	n = mmc->block_dev.block_write(dev, blk, cnt, addr);
++	if (n != cnt) {
++		printf("%s: dev # %d, block # %#llx, count # %#llx ERROR!\n",
++				__func__, dev, blk, cnt);
++	}
++
++	return (n != cnt);
++}
++
++static int write_invalid_key(struct mmc *mmc, void *addr, int valid_flag)
++{
++	u64 blk, cnt, key_glb_offset;
++	int ret = 0;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++	char checksum_info[512] = {0};
++
++	if (valid_flag > 2 || valid_flag < 1)
++		return 1;
++
++	vpart = aml_get_virtual_partition_by_name(MMC_KEY_NAME);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	key_glb_offset = part->offset + vpart->offset;
++
++	blk = (key_glb_offset + (valid_flag - 1) * (vpart->size)) / MMC_BLOCK_SIZE;
++	cnt = vpart->size / mmc->read_bl_len;
++
++	if (_key_read(mmc, blk, cnt, addr)) {
++	printf("%s: block # %#llx,cnt # %#llx ERROR!\n",
++			__func__, blk, cnt);
++		ret = -2;
++	}
++	/* fixme, update the invalid one - key1 */
++	blk = (key_glb_offset + (valid_flag % 2) * vpart->size) / MMC_BLOCK_SIZE;
++	if (_key_write(mmc, blk, cnt, addr)) {
++		printf("%s: block # %#llx,cnt # %#llx ERROR!\n",
++			__func__, blk, cnt);
++		ret = -4;
++	}
++
++	memcpy(checksum_info, &key_infos[valid_flag - 1], sizeof(struct aml_key_info));
++	blk = (key_glb_offset + 2 * (vpart->size)) / MMC_BLOCK_SIZE + valid_flag % 2;
++	if (_key_write(mmc, blk, 1, checksum_info)) {
++		printf("%s: block # %#llx,cnt # %#llx ERROR!\n",
++			__func__, blk, cnt);
++		ret = -4;
++	}
++
++	return ret;
++}
++
++static int update_invalid_key(struct mmc *mmc, void *addr, int valid_flag)
++{
++	int ret = 0, dev = EMMC_KEY_DEV;
++	u64 blk, cnt, key_glb_offset;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++	char checksum_info[512] = {0};
++
++	vpart = aml_get_virtual_partition_by_name(MMC_KEY_NAME);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	key_glb_offset = part->offset + vpart->offset;
++	cnt = vpart->size / mmc->read_bl_len;
++
++	if (valid_flag == 2) {
++		printf("update key1");
++		ret = write_invalid_key(mmc, addr, valid_flag);
++		if (ret)
++			ret = -2;
++	} else {
++		printf("update key2");
++		blk = (key_glb_offset + vpart->size) / MMC_BLOCK_SIZE;
++		if (_key_write(mmc, blk, cnt, addr)) {
++			printf("%s: dev # %d, block # %#llx,cnt # %#llx ERROR!\n",
++				__func__, dev, blk, cnt);
++			ret = -2;
++		}
++		memcpy(checksum_info, &key_infos[valid_flag - 1],
++				sizeof(struct aml_key_info));
++		blk = (key_glb_offset + 2 * (vpart->size)) / MMC_BLOCK_SIZE + valid_flag % 2;
++		if (_key_write(mmc, blk, 1, checksum_info)) {
++			printf("%s: block # %#llx,cnt # %#llx ERROR!\n",
++				__func__, blk, cnt);
++			ret = -4;
++		}
++	}
++	return ret;
++}
++
++int update_old_key(struct mmc *mmc, void *addr)
++{
++	int ret = 0;
++	int valid_flag;
++
++	if (stamp_after(key_infos[1].stamp, key_infos[0].stamp)) {
++		memcpy(&key_infos[1], &key_infos[0], sizeof(struct aml_key_info));
++		valid_flag = 2;
++	} else if (stamp_after(key_infos[0].stamp, key_infos[1].stamp)) {
++		memcpy(&key_infos[0], &key_infos[1], sizeof(struct aml_key_info));
++		valid_flag = 1;
++	} else {
++		printf("do nothing\n");
++		return ret;
++	}
++
++	ret = write_invalid_key(mmc, addr, valid_flag);
++	/*update key*/
++	if (ret)
++		ret = -3;
++	mmc->key_stamp = key_infos[0].stamp;
++	return ret;
++}
++
++static struct mmc *_rsv_init(void)
++{
++	struct mmc *mmc = find_mmc_device(EMMC_KEY_DEV);
++	if (!mmc) {
++		printf("not find mmc\n");
++		return NULL;
++	}
++
++	if (mmc_init(mmc)) {
++		printf("mmc init failed\n");
++		return NULL;
++	}
++
++	return mmc;
++}
++
++static int mmc_key_write_backup(const char *name,
++			      unsigned char *addr, unsigned int size)
++{
++	int ret = 0;
++	u64 blk, cnt, key_glb_offset;
++	int cpy;
++	struct mmc * mmc;
++	struct partitions * part = NULL;
++	struct virtual_partition *vpart = NULL;
++	char checksum_info[512] = {0};
++
++	vpart = aml_get_virtual_partition_by_name(MMC_KEY_NAME);
++	part = aml_get_partition_by_name(MMC_RESERVED_NAME);
++	key_glb_offset = part->offset + vpart->offset;
++
++	mmc = _rsv_init();
++	if (mmc == NULL)
++		return -10;
++
++	key_infos[0].stamp =  mmc->key_stamp + 1;
++	key_infos[0].magic = 9;
++	key_infos[0].checksum = _calc_key_checksum(addr, vpart->size);
++	printf("new stamp %d, checksum 0x%llx, magic %d\n",
++		key_infos[0].stamp, key_infos[0].checksum, key_infos[0].magic);
++
++	memcpy(checksum_info, &key_infos[0], sizeof(struct aml_key_info));
++
++	for (cpy = 0; cpy < KEY_COPIES; cpy++) {
++		blk = (key_glb_offset + cpy * (vpart->size)) / MMC_BLOCK_SIZE;
++		cnt = vpart->size / mmc->read_bl_len;
++		ret |= _key_write(mmc, blk, cnt, addr);
++
++		blk = (key_glb_offset + 2 * (vpart->size)) / MMC_BLOCK_SIZE + cpy;
++		ret |= _key_write(mmc, blk, 1, checksum_info);
++	}
++
++	if (ret) {
++		printf("%s() %d: emmc init %d\n", __func__, __LINE__, ret);
++		ret = -2;
++	}
++
++	return ret;
++}
++
++static int mmc_key_read_backup(const char *name,
++			      unsigned char *addr, unsigned int size)
++{
++	int valid = 0;
++	struct mmc *mmc;
++
++	mmc = _rsv_init();
++	if (mmc == NULL)
++		return -10;
++
++	/* check valid key flag , addr save the first key content */
++	valid = update_key_info(mmc, addr);
++	switch (valid) {
++		/* none is valid, using the 1st one for compatibility*/
++		case 0:
++			goto _out;
++		break;
++		/* only first is valid, using the first update the second */
++		case 1:
++			update_invalid_key(mmc, addr, 1);
++		break;
++		/* only second is valid, using the second */
++		case 2:
++			update_invalid_key(mmc, addr, 2);
++		break;
++		case 3:
++		/*update the old key */
++			update_old_key(mmc, addr);
++		break;
++		default:
++			printf("impossible valid values.\n");
++			BUG();
++		break;
++	}
++_out:
++	return 0;
++}
++#endif
++
++int mmc_key_write(unsigned char *buf,
++		  unsigned int size, uint32_t *actual_lenth)
++{
++	int ret;
++
++	info_disprotect |= DISPROTECT_KEY;
++#ifdef KEY_BACKUP
++	ret = mmc_key_write_backup(MMC_KEY_NAME, buf, size);
++#else
++	ret = mmc_reserved_write(MMC_KEY_NAME, buf, size);
++#endif
++	info_disprotect &= ~DISPROTECT_KEY;
++
++	return ret;
++}
++
++int mmc_key_read(unsigned char *buf,
++		 unsigned int size, uint32_t *actual_lenth)
++{
++	int ret;
++
++	info_disprotect |= DISPROTECT_KEY;
++#ifdef KEY_BACKUP
++	ret = mmc_key_read_backup(MMC_KEY_NAME, buf, size);
++#else
++	ret = mmc_reserved_read(MMC_KEY_NAME, buf, size);
++#endif
++	info_disprotect &= ~DISPROTECT_KEY;
++
++	/*key size is 256KB*/
++	*actual_lenth =  0x40000;
++
++	return ret;
++}
++
++int mmc_key_erase(void)
++{
++	int ret;
++
++	info_disprotect |= DISPROTECT_KEY;
++	/* when write the 2nd key? */
++	ret = mmc_reserved_erase(MMC_KEY_NAME, 2);
++	info_disprotect &= ~DISPROTECT_KEY;
++
++	return ret;
++}
++
++int mmc_ddr_parameter_read(unsigned char *buf,
++			   unsigned int size)
++{
++	return mmc_reserved_read(MMC_DDR_PARAMETER_NAME, buf, size);
++}
++
++int mmc_ddr_parameter_write(unsigned char *buf,
++			    unsigned int size)
++{
++	return mmc_reserved_write(MMC_DDR_PARAMETER_NAME, buf, size);
++}
++
++int mmc_ddr_parameter_erase(void)
++{
++	return mmc_reserved_erase(MMC_DDR_PARAMETER_NAME, 1);
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/mmc_private.h b/drivers/mmc/mmc_private.h
+--- a/drivers/mmc/mmc_private.h	2026-04-02 18:17:41.343477671 +0800
++++ b/drivers/mmc/mmc_private.h	2026-02-09 11:25:48.417072977 +0800
+@@ -12,10 +12,21 @@
+ 
+ #include <mmc.h>
+ 
++#define TOSHIBA_MID           0x11
++#define SAMSUNG_MID           0x15
++#define KINGSTON_MID          0x70
++#define BIWIN_MID             0xf4
++#define TOSHIBA_FFU_ADDR      0xffffffff
++#define SAMSUNG_FFU_ADDR      0xc7810000
++#define KINGSTON_FFU_ADDR     0x0000ffff
++#define BIWIN_FFU_ADDR        0x0
++
+ extern int mmc_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
+ 			struct mmc_data *data);
+ extern int mmc_send_status(struct mmc *mmc, int timeout);
+ extern int mmc_set_blocklen(struct mmc *mmc, int len);
++extern ulong mmc_ffu_write(int dev_num, lbaint_t start, lbaint_t blkcnt,
++		const void *src);
+ 
+ #ifndef CONFIG_SPL_BUILD
+ 
+@@ -24,6 +35,17 @@
+ extern ulong mmc_bwrite(int dev_num, lbaint_t start, lbaint_t blkcnt,
+ 		const void *src);
+ 
++extern void print_all_reg(struct mmc *mmc);
++
++extern int aml_read_tuning_para(struct mmc *mmc);
++
++extern int mmc_set_hs200_mode(struct mmc *mmc);
++
++extern uint32_t mmc_set_hs400_mode(struct mmc *mmc);
++
++extern int r1p1_temp_read(int type, int *temp);
++
++extern void reset_all_reg(struct mmc *mmc);
+ #else /* CONFIG_SPL_BUILD */
+ 
+ /* SPL will never write or erase, declare dummies to reduce code size. */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/mmc_write.c b/drivers/mmc/mmc_write.c
+--- a/drivers/mmc/mmc_write.c	2026-04-02 18:17:41.343477671 +0800
++++ b/drivers/mmc/mmc_write.c	2026-02-09 11:25:48.417072977 +0800
+@@ -11,6 +11,11 @@
+ #include <common.h>
+ #include <part.h>
+ #include "mmc_private.h"
++#include <malloc.h>
++#include <asm/arch/cpu_sdio.h>
++
++extern bool emmckey_is_access_range_legal(struct mmc *mmc,
++		ulong start, lbaint_t blkcnt);
+ 
+ static ulong mmc_erase_t(struct mmc *mmc, ulong start, lbaint_t blkcnt)
+ {
+@@ -24,7 +29,7 @@
+ 		end = (start + blkcnt - 1) * mmc->write_bl_len;
+ 		start *= mmc->write_bl_len;
+ 	}
+-
++	printf("start = 0x%lx,end = 0x%lx\n",start,end);
+ 	if (IS_SD(mmc)) {
+ 		start_cmd = SD_CMD_ERASE_WR_BLK_START;
+ 		end_cmd = SD_CMD_ERASE_WR_BLK_END;
+@@ -49,7 +54,7 @@
+ 		goto err_out;
+ 
+ 	cmd.cmdidx = MMC_CMD_ERASE;
+-	cmd.cmdarg = SECURE_ERASE;
++	cmd.cmdarg = NORMAL_ERASE;
+ 	cmd.resp_type = MMC_RSP_R1b;
+ 
+ 	err = mmc_send_cmd(mmc, &cmd, NULL);
+@@ -63,39 +68,137 @@
+ 	return err;
+ }
+ 
+-unsigned long mmc_berase(int dev_num, lbaint_t start, lbaint_t blkcnt)
++unsigned long mmc_berase_becalled(int dev_num, lbaint_t start, lbaint_t blkcnt)
+ {
+ 	int err = 0;
+ 	struct mmc *mmc = find_mmc_device(dev_num);
+-	lbaint_t blk = 0, blk_r = 0;
+ 	int timeout = 1000;
+ 
+ 	if (!mmc)
+ 		return -1;
+ 
+-	if ((start % mmc->erase_grp_size) || (blkcnt % mmc->erase_grp_size))
+-		printf("\n\nCaution! Your devices Erase group is 0x%x\n"
+-		       "The erase range would be change to "
+-		       "0x" LBAF "~0x" LBAF "\n\n",
+-		       mmc->erase_grp_size, start & ~(mmc->erase_grp_size - 1),
+-		       ((start + blkcnt + mmc->erase_grp_size)
+-		       & ~(mmc->erase_grp_size - 1)) - 1);
+-
+-	while (blk < blkcnt) {
+-		blk_r = ((blkcnt - blk) > mmc->erase_grp_size) ?
+-			mmc->erase_grp_size : (blkcnt - blk);
+-		err = mmc_erase_t(mmc, start + blk, blk_r);
+-		if (err)
+-			break;
++	err = mmc_erase_t(mmc, start, blkcnt);
++	if (err)
++		return 1;
+ 
+-		blk += blk_r;
++	/* Waiting for the ready status */
++	if (mmc_send_status(mmc, timeout))
++		return 1;
+ 
+-		/* Waiting for the ready status */
+-		if (mmc_send_status(mmc, timeout))
+-			return 0;
++	return 0;
++}
++
++/*
++ * Function: Zero out blk_len blocks at the blk_addr by writing zeros. The
++ *           function can be used when we want to erase the blocks not
++ *           aligned with the mmc erase group.
++ * Arg     : Block address & length
++ * Return  : Returns 0
++ * Flow    : Erase the card from specified addr
++ */
++
++static uint32_t mmc_zero_out(int dev_num, uint32_t blk_addr, uint32_t num_blks)
++{
++	uint32_t erase_size = (512 * num_blks);
++	uint32_t *out = malloc(erase_size);
++
++	if (out == NULL) {
++		printf("mmc zero out: malloc fail\n");
++		return 1;
++	}
++	memset((void *)out, 0, erase_size);
++
++	/* Flush the data to memory before writing to storage */
++
++	if (mmc_bwrite(dev_num, blk_addr, num_blks, out) != num_blks)
++	{
++		printf("failed to erase the block: %x\n", blk_addr);
++		free(out);
++		return 1;
++	}
++	free(out);
++	return 0;
++}
++
++/*
++ * Function: mmc erase
++ * Arg     : Block address & length
++ * Return  : Returns 0
++ * Flow    : Erase the card from specified addr
++ */
++unsigned long mmc_berase(int dev_num, lbaint_t start, lbaint_t blkcnt)
++{
++	struct mmc *mmc;
++	uint32_t unaligned_blks;
++	uint32_t head_unit;
++	uint32_t tail_unit;
++	uint32_t erase_unit_sz;
++	uint64_t blks_to_erase;
++
++
++	mmc = find_mmc_device(dev_num);
++	if (!mmc)
++		return 0;
++
++	if (!emmckey_is_access_range_legal(mmc, start, blkcnt))
++		return blkcnt;
++
++	if (blkcnt == 0) {
++
++		blkcnt = mmc->capacity/512 - (mmc->capacity/512)% mmc->erase_grp_size; // erase whole
++		printf("blkcnt = %lu\n",blkcnt);
++
++		if (mmc_berase_becalled(dev_num, start, blkcnt))
++			return 1;
++	}
++
++	erase_unit_sz = mmc->erase_grp_size;
++	head_unit = start / erase_unit_sz;
++	tail_unit = (start + blkcnt - 1) / erase_unit_sz;
++
++	if (tail_unit - head_unit <= 1)
++	{
++		return mmc_zero_out(dev_num, start, blkcnt);
++	}
++
++	unaligned_blks = erase_unit_sz - (start % erase_unit_sz);
++
++	if (unaligned_blks < erase_unit_sz)
++	{
++		if (mmc_zero_out(dev_num, start, unaligned_blks))
++			return 1;
++
++		start += unaligned_blks;
++		blkcnt -= unaligned_blks;
++
++		head_unit = start / erase_unit_sz;
++		tail_unit = (start + blkcnt - 1) / erase_unit_sz;
++
++		if (tail_unit - head_unit <= 1)
++		{
++			return mmc_zero_out(dev_num, start, blkcnt);
++		}
++	}
++
++	unaligned_blks = blkcnt % erase_unit_sz;
++	blks_to_erase = blkcnt - unaligned_blks;
++
++	if (mmc_berase_becalled(dev_num, start, blks_to_erase))
++	{
++		printf("MMC erase failed\n");
++		return 1;
++	}
++
++	start += blks_to_erase;
++
++	if (unaligned_blks)
++	{
++		if (mmc_zero_out(dev_num, start, unaligned_blks))
++			return 1;
+ 	}
+ 
+-	return blk;
++
++	return 0;
+ }
+ 
+ static ulong mmc_write_blocks(struct mmc *mmc, lbaint_t start,
+@@ -104,6 +207,7 @@
+ 	struct mmc_cmd cmd;
+ 	struct mmc_data data;
+ 	int timeout = 1000;
++	int ret;
+ 
+ 	if ((start + blkcnt) > mmc->block_dev.lba) {
+ 		printf("MMC: block number 0x" LBAF " exceeds max(0x" LBAF ")\n",
+@@ -111,6 +215,20 @@
+ 		return 0;
+ 	}
+ 
++#ifdef MMC_CMD23
++	if (blkcnt > 1) {
++		cmd.cmdidx = MMC_CMD_SET_BLOCK_COUNT;
++		cmd.cmdarg = blkcnt & 0xFFFF;
++		cmd.cmdarg |= 1 << 31;
++		cmd.resp_type = MMC_RSP_R1;
++		ret = mmc_send_cmd(mmc, &cmd, NULL);
++		if (ret) {
++			printf("mmc set blkcnt failed\n");
++			return 0;
++		}
++	}
++#endif
++
+ 	if (blkcnt == 0)
+ 		return 0;
+ 	else if (blkcnt == 1)
+@@ -130,13 +248,12 @@
+ 	data.blocksize = mmc->write_bl_len;
+ 	data.flags = MMC_DATA_WRITE;
+ 
+-	if (mmc_send_cmd(mmc, &cmd, &data)) {
++	ret = mmc_send_cmd(mmc, &cmd, &data);
++	if (ret)
+ 		printf("mmc write failed\n");
+-		return 0;
+-	}
+-
++#ifndef MMC_CMD23
+ 	/* SPI multiblock writes terminate using a special
+-	 * token, not a STOP_TRANSMISSION request.
++	 * token, not a STOP_TRANSMISSION request
+ 	 */
+ 	if (!mmc_host_is_spi(mmc) && blkcnt > 1) {
+ 		cmd.cmdidx = MMC_CMD_STOP_TRANSMISSION;
+@@ -147,6 +264,9 @@
+ 			return 0;
+ 		}
+ 	}
++#endif
++	if (ret)
++		return 0;
+ 
+ 	/* Waiting for the ready status */
+ 	if (mmc_send_status(mmc, timeout))
+@@ -163,9 +283,12 @@
+ 	if (!mmc)
+ 		return 0;
+ 
++	if (!emmckey_is_access_range_legal(mmc, start, blkcnt))
++		return 0;
++#ifndef MMC_HS400_MODE
+ 	if (mmc_set_blocklen(mmc, mmc->write_bl_len))
+ 		return 0;
+-
++#endif
+ 	do {
+ 		cur = (blocks_todo > mmc->cfg->b_max) ?
+ 			mmc->cfg->b_max : blocks_todo;
+@@ -178,3 +301,46 @@
+ 
+ 	return blkcnt;
+ }
++
++extern int aml_sd_send_cmd_ffu(struct mmc *mmc, struct mmc_cmd *cmd, struct mmc_data *data);
++ulong mmc_ffu_write(int dev_num, lbaint_t start, lbaint_t blkcnt, const void *src)
++{
++	struct mmc_cmd cmd;
++	struct mmc_data data;
++	int ret, timeout = 1000;
++	struct mmc *mmc = find_mmc_device(dev_num);
++	if (!mmc || !blkcnt)
++		return 0;
++
++	printf("mmc ffu start = %lx, cnt = %lx, addr = %p\n", start, blkcnt, src);
++
++	cmd.cmdidx = MMC_CMD_SET_BLOCK_COUNT;
++	cmd.cmdarg = blkcnt & 0xFFFF;
++	cmd.resp_type = MMC_RSP_R1;
++	ret = mmc_send_cmd(mmc, &cmd, NULL);
++	if (ret) {
++		printf("mmc set blkcnt failed\n");
++		return 0;
++	}
++
++	cmd.cmdidx = MMC_CMD_WRITE_MULTIPLE_BLOCK;
++	cmd.cmdarg = start;
++	cmd.resp_type = MMC_RSP_R1b;
++
++	data.src = src;
++	data.blocks = blkcnt;
++	data.blocksize = mmc->write_bl_len;
++	data.flags = MMC_DATA_WRITE;
++
++	ret = aml_sd_send_cmd_ffu(mmc, &cmd, &data);
++	if (ret) {
++		printf("mmc write failed\n");
++		return 0;
++	}
++
++	/* Waiting for the ready status */
++	if (mmc_send_status(mmc, timeout))
++		return 0;
++
++	return blkcnt;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/drivers/mmc/rpmb.c b/drivers/mmc/rpmb.c
+--- a/drivers/mmc/rpmb.c	2026-04-02 18:17:41.347477601 +0800
++++ b/drivers/mmc/rpmb.c	2026-02-09 11:25:48.421073195 +0800
+@@ -66,7 +66,7 @@
+ 	unsigned char mac[RPMB_SZ_MAC];
+ 	unsigned char data[RPMB_SZ_DATA];
+ 	unsigned char nonce[RPMB_SZ_NONCE];
+-	unsigned long write_counter;
++	unsigned int write_counter;
+ 	unsigned short address;
+ 	unsigned short block_count;
+ 	unsigned short result;

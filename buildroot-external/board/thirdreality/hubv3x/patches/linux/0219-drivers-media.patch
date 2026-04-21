@@ -1,0 +1,2027 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/common/videobuf2/videobuf2-dma-sg.c b/drivers/media/common/videobuf2/videobuf2-dma-sg.c
+--- a/drivers/media/common/videobuf2/videobuf2-dma-sg.c	2026-04-10 14:05:35.787703569 +0800
++++ b/drivers/media/common/videobuf2/videobuf2-dma-sg.c	2026-02-09 11:25:56.789529799 +0800
+@@ -51,6 +51,9 @@
+ 	struct vb2_vmarea_handler	handler;
+ 
+ 	struct dma_buf_attachment	*db_attach;
++#ifdef CONFIG_AMLOGIC_MODIFY
++	int				order_max;
++#endif
+ };
+ 
+ static void vb2_dma_sg_put(void *buf_priv);
+@@ -71,6 +74,11 @@
+ 		if ((PAGE_SIZE << order) > size)
+ 			order--;
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++		if (buf->order_max != -1 &&
++			order > buf->order_max)
++			order = buf->order_max;
++#endif
+ 		pages = NULL;
+ 		while (!pages) {
+ 			pages = alloc_pages(GFP_KERNEL | __GFP_ZERO |
+@@ -104,6 +112,9 @@
+ 	struct sg_table *sgt;
+ 	int ret;
+ 	int num_pages;
++#ifdef CONFIG_AMLOGIC_MODIFY
++	ulong totalram = totalram_pages() << PAGE_SHIFT;
++#endif
+ 
+ 	if (WARN_ON(!dev))
+ 		return ERR_PTR(-EINVAL);
+@@ -147,6 +158,13 @@
+ 	if (!sgt->nents)
+ 		goto fail_map;
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++	buf->order_max = (totalram <= SZ_1G) ? 0 :
++			 (totalram <= SZ_2G) ? 3 : -1;
++	dprintk(1, "%s: Allocate max buffer order:%d\n",
++		__func__, buf->order_max);
++#endif
++
+ 	buf->handler.refcount = &buf->refcount;
+ 	buf->handler.put = vb2_dma_sg_put;
+ 	buf->handler.arg = buf;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/common/videobuf2/videobuf2-v4l2.c b/drivers/media/common/videobuf2/videobuf2-v4l2.c
+--- a/drivers/media/common/videobuf2/videobuf2-v4l2.c	2026-04-10 14:05:35.787703569 +0800
++++ b/drivers/media/common/videobuf2/videobuf2-v4l2.c	2026-02-09 11:25:56.789529799 +0800
+@@ -49,8 +49,11 @@
+ 				 V4L2_BUF_FLAG_REQUEST_FD | \
+ 				 V4L2_BUF_FLAG_TIMESTAMP_MASK)
+ /* Output buffer flags that should be passed on to the driver */
+-#define V4L2_BUFFER_OUT_FLAGS	(V4L2_BUF_FLAG_PFRAME | V4L2_BUF_FLAG_BFRAME | \
+-				 V4L2_BUF_FLAG_KEYFRAME | V4L2_BUF_FLAG_TIMECODE)
++#define V4L2_BUFFER_OUT_FLAGS	(V4L2_BUF_FLAG_PFRAME | \
++				 V4L2_BUF_FLAG_BFRAME | \
++				 V4L2_BUF_FLAG_KEYFRAME | \
++				 V4L2_BUF_FLAG_TIMECODE | \
++				 V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF)
+ 
+ /*
+  * __verify_planes_array() - verify that the planes array passed in struct
+@@ -194,6 +197,7 @@
+ 	}
+ 	vbuf->sequence = 0;
+ 	vbuf->request_fd = -1;
++	vbuf->is_held = false;
+ 
+ 	if (V4L2_TYPE_IS_MULTIPLANAR(b->type)) {
+ 		switch (b->memory) {
+@@ -321,6 +325,8 @@
+ 		 */
+ 		vbuf->flags &= ~V4L2_BUF_FLAG_TIMECODE;
+ 		vbuf->field = b->field;
++		if (!(q->subsystem_flags & VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF))
++			vbuf->flags &= ~V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF;
+ 	} else {
+ 		/* Zero any output buffer flags as this is a capture buffer */
+ 		vbuf->flags &= ~V4L2_BUFFER_OUT_FLAGS;
+@@ -328,6 +334,10 @@
+ 		vbuf->flags &= ~V4L2_BUF_FLAG_LAST;
+ 	}
+ 
++#ifdef CONFIG_AMLOGIC_MEDIA_V4L_DEC
++	vbuf->meta_ptr = (ulong)(((u64)b->reserved2 << 32) | b->reserved);
++#endif
++
+ 	return 0;
+ }
+ 
+@@ -654,6 +664,8 @@
+ 		*caps |= V4L2_BUF_CAP_SUPPORTS_USERPTR;
+ 	if (q->io_modes & VB2_DMABUF)
+ 		*caps |= V4L2_BUF_CAP_SUPPORTS_DMABUF;
++	if (q->subsystem_flags & VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF)
++		*caps |= V4L2_BUF_CAP_SUPPORTS_M2M_HOLD_CAPTURE_BUF;
+ #ifdef CONFIG_MEDIA_CONTROLLER_REQUEST_API
+ 	if (q->supports_requests)
+ 		*caps |= V4L2_BUF_CAP_SUPPORTS_REQUESTS;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/dvb-core/dmxdev.c b/drivers/media/dvb-core/dmxdev.c
+--- a/drivers/media/dvb-core/dmxdev.c	2026-04-10 14:05:35.787703569 +0800
++++ b/drivers/media/dvb-core/dmxdev.c	2026-02-09 11:25:56.789529799 +0800
+@@ -1110,6 +1110,110 @@
+ 					     &((struct dmx_stc *)parg)->base);
+ 		break;
+ 
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	case DMX_SET_INPUT:
++		if (!dmxdev->demux->set_input) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->set_input(dmxdev->demux, arg);
++		break;
++	case DMX_GET_MEM_INFO:
++		if (mutex_lock_interruptible(&dmxdevfilter->mutex)) {
++			mutex_unlock(&dmxdev->mutex);
++			return -ERESTARTSYS;
++		}
++		{
++			struct dmx_mem_info *info = parg;
++
++			info->dvb_core_total_size = dmxdevfilter->buffer.size;
++			info->dvb_core_free_size =
++			    dvb_ringbuffer_free(&dmxdevfilter->buffer);
++
++			if (dmxdevfilter->type == DMXDEV_TYPE_SEC) {
++				if (dmxdev->demux->get_sec_mem_info) {
++					struct dmx_section_feed *sec_feed =
++					    dmxdevfilter->feed.sec;
++
++					ret =
++					    dmxdev->demux->get_sec_mem_info(dmxdev->demux,
++								sec_feed, info);
++				}
++			} else if (dmxdevfilter->type == DMXDEV_TYPE_PES) {
++				if (dmxdev->demux->get_ts_mem_info) {
++					struct dmxdev_feed *feed;
++
++					list_for_each_entry(feed,
++							&dmxdevfilter->feed.ts, next) {
++						ret =
++						    dmxdev->demux->get_ts_mem_info(dmxdev->demux,
++									feed->ts,
++								    info);
++						break;
++					}
++				}
++			}
++		}
++		mutex_unlock(&dmxdevfilter->mutex);
++		break;
++	case DMX_GET_FILTER_MEM_INFO:
++		if (mutex_lock_interruptible(&dmxdevfilter->mutex)) {
++			mutex_unlock(&dmxdev->mutex);
++			return -ERESTARTSYS;
++		}
++		{
++			struct dmx_filter_mem_info *info = parg;
++
++			if (dmxdev->demux->get_dmx_mem_info)
++				ret =
++					dmxdev->demux->get_dmx_mem_info(dmxdev->demux, info);
++		}
++		mutex_unlock(&dmxdevfilter->mutex);
++		break;
++	case DMX_SET_HW_SOURCE:
++		if (!dmxdev->demux->set_hw_source) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->set_hw_source(dmxdev->demux, arg);
++		break;
++	case DMX_GET_HW_SOURCE:
++		if (!dmxdev->demux->get_hw_source) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->get_hw_source(dmxdev->demux, parg);
++		break;
++	case DMX_SET_SEC_MEM:
++		if (!dmxdev->demux->set_sec_mem) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->set_sec_mem(dmxdev->demux, parg);
++		break;
++	case DMX_GET_DVR_MEM:
++		if (!dmxdev->demux->get_dvr_mem) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->get_dvr_mem(dmxdev->demux, parg);
++		break;
++	case DMX_REMAP_PID:
++		if (!dmxdev->demux->remap_pid) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->remap_pid(dmxdev->demux, parg);
++		break;
++	case DMX_SET_DECODE_INFO:
++		if (!dmxdev->demux->decode_info) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->decode_info(dmxdev->demux, parg);
++		break;
++#endif
++
+ 	case DMX_ADD_PID:
+ 		if (mutex_lock_interruptible(&dmxdevfilter->mutex)) {
+ 			ret = -ERESTARTSYS;
+@@ -1300,7 +1404,22 @@
+ 	case DMX_SET_BUFFER_SIZE:
+ 		ret = dvb_dvr_set_buffer_size(dmxdev, arg);
+ 		break;
+-
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	case DMX_SET_INPUT:
++		if (!dmxdev->demux->set_input) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->set_input(dmxdev->demux, arg);
++		break;
++	case DMX_GET_DVR_MEM:
++		if (!dmxdev->demux->get_dvr_mem) {
++			ret = -EINVAL;
++			break;
++		}
++		ret = dmxdev->demux->get_dvr_mem(dmxdev->demux, parg);
++		break;
++#endif
+ #ifdef CONFIG_DVB_MMAP
+ 	case DMX_REQBUFS:
+ 		ret = dvb_vb2_reqbufs(&dmxdev->dvr_vb2_ctx, parg);
+@@ -1393,6 +1512,7 @@
+ 	.read = dvb_dvr_read,
+ 	.write = dvb_dvr_write,
+ 	.unlocked_ioctl = dvb_dvr_ioctl,
++
+ 	.open = dvb_dvr_open,
+ 	.release = dvb_dvr_release,
+ 	.poll = dvb_dvr_poll,
+@@ -1400,6 +1520,9 @@
+ #ifdef CONFIG_DVB_MMAP
+ 	.mmap = dvb_dvr_mmap,
+ #endif
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	.compat_ioctl = dvb_dvr_ioctl,
++#endif
+ };
+ 
+ static const struct dvb_device dvbdev_dvr = {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/dvb-core/dvbdev.c b/drivers/media/dvb-core/dvbdev.c
+--- a/drivers/media/dvb-core/dvbdev.c	2026-04-10 14:05:35.791703547 +0800
++++ b/drivers/media/dvb-core/dvbdev.c	2026-02-09 11:25:56.789529799 +0800
+@@ -67,7 +67,12 @@
+ #define MAX_DVB_MINORS		256
+ #define DVB_MAX_IDS		MAX_DVB_MINORS
+ #else
++#ifdef CONFIG_AMLOGIC_MODIFY
++#define DVB_MAX_IDS		32
++#else
+ #define DVB_MAX_IDS		4
++#endif
++
+ 
+ static const u8 minor_type[] = {
+        [DVB_DEVICE_VIDEO]      = 0,
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/dvb-core/dvb_frontend.c b/drivers/media/dvb-core/dvb_frontend.c
+--- a/drivers/media/dvb-core/dvb_frontend.c	2026-04-10 14:05:35.787703569 +0800
++++ b/drivers/media/dvb-core/dvb_frontend.c	2026-02-09 11:25:56.789529799 +0800
+@@ -233,8 +233,13 @@
+ 	}
+ }
+ 
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++void dvb_frontend_add_event(struct dvb_frontend *fe,
++			    enum fe_status status)
++#else
+ static void dvb_frontend_add_event(struct dvb_frontend *fe,
+ 				   enum fe_status status)
++#endif
+ {
+ 	struct dvb_frontend_private *fepriv = fe->frontend_priv;
+ 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
+@@ -266,6 +271,10 @@
+ 	wake_up_interruptible(&events->wait_queue);
+ }
+ 
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++EXPORT_SYMBOL(dvb_frontend_add_event);
++#endif
++
+ static int dvb_frontend_test_event(struct dvb_frontend_private *fepriv,
+ 				   struct dvb_fe_events *events)
+ {
+@@ -1124,7 +1133,19 @@
+ 	_DTV_CMD(DTV_DVBT2_PLP_ID_LEGACY, 1, 0),
+ 	_DTV_CMD(DTV_SCRAMBLING_SEQUENCE_INDEX, 1, 0),
+ 	_DTV_CMD(DTV_LNA, 1, 0),
+-
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	/*set blind scan cmd*/
++	_DTV_CMD(DTV_START_BLIND_SCAN, 1, 0),
++	_DTV_CMD(DTV_CANCEL_BLIND_SCAN, 1, 0),
++	_DTV_CMD(DTV_BLIND_SCAN_MIN_FRE, 1, 0),
++	_DTV_CMD(DTV_BLIND_SCAN_MAX_FRE, 1, 0),
++	_DTV_CMD(DTV_BLIND_SCAN_MIN_SRATE, 1, 0),
++	_DTV_CMD(DTV_BLIND_SCAN_MAX_SRATE, 1, 0),
++	_DTV_CMD(DTV_BLIND_SCAN_FRE_RANGE, 1, 0),
++	_DTV_CMD(DTV_BLIND_SCAN_FRE_STEP, 1, 0),
++	_DTV_CMD(DTV_BLIND_SCAN_TIMEOUT, 1, 0),
++	/*set blind scan cmd end*/
++#endif
+ 	/* Get */
+ 	_DTV_CMD(DTV_DISEQC_SLAVE_REPLY, 0, 1),
+ 	_DTV_CMD(DTV_API_VERSION, 0, 0),
+@@ -1342,6 +1363,10 @@
+ {
+ 	int ncaps;
+ 
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	int r = 0;
++#endif
++
+ 	switch (tvp->cmd) {
+ 	case DTV_ENUM_DELSYS:
+ 		ncaps = 0;
+@@ -1549,6 +1574,12 @@
+ 	case DTV_STAT_TOTAL_BLOCK_COUNT:
+ 		tvp->u.st = c->block_count;
+ 		break;
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	case DTV_DELIVERY_SUB_SYSTEM:
++	case DTV_TS_INPUT:
++		r = 0;
++		break;
++#endif
+ 	default:
+ 		dev_dbg(fe->dvb->device,
+ 			"%s: FE property %d doesn't exist\n",
+@@ -1556,6 +1587,15 @@
+ 		return -EINVAL;
+ 	}
+ 
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	/* Allow the frontend to override outgoing properties */
++	if (fe->ops.get_property) {
++		r = fe->ops.get_property(fe, tvp);
++		if (r < 0)
++			return r;
++	}
++#endif
++
+ 	if (!dtv_cmds[tvp->cmd].buffer)
+ 		dev_dbg(fe->dvb->device,
+ 			"%s: GET cmd 0x%08x (%s) = 0x%08x\n",
+@@ -1576,8 +1616,20 @@
+ 
+ static bool is_dvbv3_delsys(u32 delsys)
+ {
+-	return (delsys == SYS_DVBT) || (delsys == SYS_DVBC_ANNEX_A) ||
+-	       (delsys == SYS_DVBS) || (delsys == SYS_ATSC);
++	bool status = false;
++
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	status = (delsys == SYS_DVBT) || (delsys == SYS_DVBC_ANNEX_A) ||
++		 (delsys == SYS_DVBS) || (delsys == SYS_ATSC) ||
++		 (delsys == SYS_DTMB) || (delsys == SYS_DVBS2) ||
++		 (delsys == SYS_DVBT2) || (delsys == SYS_ISDBC) ||
++		 (delsys == SYS_ISDBT) || (delsys == SYS_ISDBS);
++#else
++	status = (delsys == SYS_DVBT) || (delsys == SYS_DVBC_ANNEX_A) ||
++		 (delsys == SYS_DVBS) || (delsys == SYS_ATSC);
++#endif
++
++	return status;
+ }
+ 
+ /**
+@@ -1811,6 +1863,20 @@
+ 	int r = 0;
+ 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
+ 
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	struct dtv_property tvp;
++
++	tvp.cmd = cmd;
++	tvp.u.data = data;
++
++	/* Allow the frontend to validate incoming properties */
++	if (fe->ops.set_property) {
++		r = fe->ops.set_property(fe, &tvp);
++		if (r < 0)
++			return r;
++	}
++#endif
++
+ 	/** Dump DTV command name and value*/
+ 	if (!cmd || cmd > DTV_MAX_COMMAND)
+ 		dev_warn(fe->dvb->device, "%s: SET cmd 0x%08x undefined\n",
+@@ -1865,6 +1931,11 @@
+ 	case DTV_DELIVERY_SYSTEM:
+ 		r = dvbv5_set_delivery_system(fe, data);
+ 		break;
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	case DTV_DELIVERY_SUB_SYSTEM:
++		r = 0;
++		break;
++#endif
+ 	case DTV_VOLTAGE:
+ 		c->voltage = data;
+ 		r = dvb_frontend_handle_ioctl(file, FE_SET_VOLTAGE,
+@@ -1976,7 +2047,25 @@
+ 		if (r < 0)
+ 			c->lna = LNA_AUTO;
+ 		break;
+-
++#ifdef CONFIG_AMLOGIC_DVB_COMPAT
++	case DTV_START_BLIND_SCAN:
++	case DTV_CANCEL_BLIND_SCAN:
++	case DTV_BLIND_SCAN_MIN_FRE:
++	case DTV_BLIND_SCAN_MAX_FRE:
++	case DTV_BLIND_SCAN_MIN_SRATE:
++	case DTV_BLIND_SCAN_MAX_SRATE:
++	case DTV_BLIND_SCAN_FRE_RANGE:
++	case DTV_BLIND_SCAN_FRE_STEP:
++	case DTV_BLIND_SCAN_TIMEOUT:
++	case DTV_SINGLE_CABLE_VER:
++	case DTV_SINGLE_CABLE_USER_BAND:
++	case DTV_SINGLE_CABLE_BAND_FRE:
++	case DTV_SINGLE_CABLE_BANK:
++	case DTV_SINGLE_CABLE_UNCOMMITTED:
++	case DTV_SINGLE_CABLE_COMMITTED:
++		r = 0;
++		break;
++#endif
+ 	default:
+ 		return -EINVAL;
+ 	}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/i2c/saa6588.c b/drivers/media/i2c/saa6588.c
+--- a/drivers/media/i2c/saa6588.c	2026-04-10 14:05:35.875703081 +0800
++++ b/drivers/media/i2c/saa6588.c	2026-02-09 11:25:56.841532637 +0800
+@@ -380,7 +380,7 @@
+ 
+ /* ---------------------------------------------------------------------- */
+ 
+-static long saa6588_command(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
++static long saa6588_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+ {
+ 	struct saa6588 *s = to_saa6588(sd);
+ 	struct saa6588_command *a = arg;
+@@ -433,7 +433,7 @@
+ /* ----------------------------------------------------------------------- */
+ 
+ static const struct v4l2_subdev_core_ops saa6588_core_ops = {
+-	.command = saa6588_command,
++	.ioctl = saa6588_ioctl,
+ };
+ 
+ static const struct v4l2_subdev_tuner_ops saa6588_tuner_ops = {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/Kconfig b/drivers/media/Kconfig
+--- a/drivers/media/Kconfig	2026-04-10 14:05:35.775703636 +0800
++++ b/drivers/media/Kconfig	2026-02-09 11:25:56.781529363 +0800
+@@ -50,7 +50,7 @@
+ 		will disable support for them.
+ 
+ config MEDIA_DIGITAL_TV_SUPPORT
+-	bool "Digital TV support"
++	tristate "Digital TV support"
+ 	help
+ 	  Enable digital TV support.
+ 
+@@ -123,7 +123,7 @@
+ 	depends on MEDIA_SUPPORT
+ 	depends on MEDIA_DIGITAL_TV_SUPPORT
+ 	depends on (I2C || I2C=n)
+-	default y
++	default MEDIA_DIGITAL_TV_SUPPORT
+ 	select CRC32
+ 
+ config DVB_MMAP
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/Makefile b/drivers/media/Makefile
+--- a/drivers/media/Makefile	2026-04-10 14:05:35.775703636 +0800
++++ b/drivers/media/Makefile	2026-02-09 11:25:56.781529363 +0800
+@@ -7,8 +7,9 @@
+ # I2C drivers should come before other drivers, otherwise they'll fail
+ # when compiled as builtin drivers
+ #
+-obj-y += i2c/ tuners/
+-obj-$(CONFIG_DVB_CORE)  += dvb-frontends/
++obj-y += i2c/
++#tuners/
++#obj-$(CONFIG_DVB_CORE)  += dvb-frontends/
+ 
+ #
+ # Now, let's link-in the media controller core
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/pci/bt8xx/bttv-driver.c b/drivers/media/pci/bt8xx/bttv-driver.c
+--- a/drivers/media/pci/bt8xx/bttv-driver.c	2026-04-10 14:05:35.891702992 +0800
++++ b/drivers/media/pci/bt8xx/bttv-driver.c	2026-02-09 11:25:56.849533074 +0800
+@@ -3187,7 +3187,7 @@
+ 
+ 	btv->radio_user--;
+ 
+-	bttv_call_all(btv, core, command, SAA6588_CMD_CLOSE, &cmd);
++	bttv_call_all(btv, core, ioctl, SAA6588_CMD_CLOSE, &cmd);
+ 
+ 	if (btv->radio_user == 0)
+ 		btv->has_radio_tuner = 0;
+@@ -3268,7 +3268,7 @@
+ 	cmd.result = -ENODEV;
+ 	radio_enable(btv);
+ 
+-	bttv_call_all(btv, core, command, SAA6588_CMD_READ, &cmd);
++	bttv_call_all(btv, core, ioctl, SAA6588_CMD_READ, &cmd);
+ 
+ 	return cmd.result;
+ }
+@@ -3289,7 +3289,7 @@
+ 	cmd.instance = file;
+ 	cmd.event_list = wait;
+ 	cmd.poll_mask = res;
+-	bttv_call_all(btv, core, command, SAA6588_CMD_POLL, &cmd);
++	bttv_call_all(btv, core, ioctl, SAA6588_CMD_POLL, &cmd);
+ 
+ 	return cmd.poll_mask;
+ }
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/pci/saa7134/saa7134-video.c b/drivers/media/pci/saa7134/saa7134-video.c
+--- a/drivers/media/pci/saa7134/saa7134-video.c	2026-04-10 14:05:35.927702792 +0800
++++ b/drivers/media/pci/saa7134/saa7134-video.c	2026-02-09 11:25:56.877534602 +0800
+@@ -1179,7 +1179,7 @@
+ 
+ 	saa_call_all(dev, tuner, standby);
+ 	if (vdev->vfl_type == VFL_TYPE_RADIO)
+-		saa_call_all(dev, core, command, SAA6588_CMD_CLOSE, &cmd);
++		saa_call_all(dev, core, ioctl, SAA6588_CMD_CLOSE, &cmd);
+ 	mutex_unlock(&dev->lock);
+ 
+ 	return 0;
+@@ -1198,7 +1198,7 @@
+ 	cmd.result = -ENODEV;
+ 
+ 	mutex_lock(&dev->lock);
+-	saa_call_all(dev, core, command, SAA6588_CMD_READ, &cmd);
++	saa_call_all(dev, core, ioctl, SAA6588_CMD_READ, &cmd);
+ 	mutex_unlock(&dev->lock);
+ 
+ 	return cmd.result;
+@@ -1214,7 +1214,7 @@
+ 	cmd.event_list = wait;
+ 	cmd.poll_mask = 0;
+ 	mutex_lock(&dev->lock);
+-	saa_call_all(dev, core, command, SAA6588_CMD_POLL, &cmd);
++	saa_call_all(dev, core, ioctl, SAA6588_CMD_POLL, &cmd);
+ 	mutex_unlock(&dev->lock);
+ 
+ 	return rc | cmd.poll_mask;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/platform/davinci/vpbe_display.c b/drivers/media/platform/davinci/vpbe_display.c
+--- a/drivers/media/platform/davinci/vpbe_display.c	2026-04-10 14:05:35.951702659 +0800
++++ b/drivers/media/platform/davinci/vpbe_display.c	2026-02-09 11:25:56.889535257 +0800
+@@ -48,7 +48,7 @@
+ 
+ 	ret = v4l2_subdev_call(vpbe_dev->venc,
+ 			       core,
+-			       command,
++			       ioctl,
+ 			       VENC_GET_FLD,
+ 			       &val);
+ 	if (ret < 0) {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/platform/davinci/vpbe_venc.c b/drivers/media/platform/davinci/vpbe_venc.c
+--- a/drivers/media/platform/davinci/vpbe_venc.c	2026-04-10 14:05:35.951702659 +0800
++++ b/drivers/media/platform/davinci/vpbe_venc.c	2026-02-09 11:25:56.889535257 +0800
+@@ -521,7 +521,9 @@
+ 	return ret;
+ }
+ 
+-static long venc_command(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
++static long venc_ioctl(struct v4l2_subdev *sd,
++			unsigned int cmd,
++			void *arg)
+ {
+ 	u32 val;
+ 
+@@ -540,7 +542,7 @@
+ }
+ 
+ static const struct v4l2_subdev_core_ops venc_core_ops = {
+-	.command      = venc_command,
++	.ioctl      = venc_ioctl,
+ };
+ 
+ static const struct v4l2_subdev_video_ops venc_video_ops = {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/rc/bpf-lirc.c b/drivers/media/rc/bpf-lirc.c
+--- a/drivers/media/rc/bpf-lirc.c	2026-04-10 14:05:36.019702283 +0800
++++ b/drivers/media/rc/bpf-lirc.c	2026-02-09 11:25:56.937537877 +0800
+@@ -108,6 +108,8 @@
+ 		return &bpf_map_peek_elem_proto;
+ 	case BPF_FUNC_ktime_get_ns:
+ 		return &bpf_ktime_get_ns_proto;
++	case BPF_FUNC_ktime_get_boot_ns:
++		return &bpf_ktime_get_boot_ns_proto;
+ 	case BPF_FUNC_tail_call:
+ 		return &bpf_tail_call_proto;
+ 	case BPF_FUNC_get_prandom_u32:
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/rc/ir-rx51.c b/drivers/media/rc/ir-rx51.c
+--- a/drivers/media/rc/ir-rx51.c	2026-04-10 14:05:36.023702260 +0800
++++ b/drivers/media/rc/ir-rx51.c	2026-02-09 11:25:56.941538096 +0800
+@@ -241,7 +241,8 @@
+ 	}
+ 
+ 	/* Use default, in case userspace does not set the carrier */
+-	ir_rx51.freq = DIV_ROUND_CLOSEST(pwm_get_period(pwm), NSEC_PER_SEC);
++	ir_rx51.freq = DIV_ROUND_CLOSEST_ULL(pwm_get_period(pwm),
++			NSEC_PER_SEC);
+ 	pwm_put(pwm);
+ 
+ 	hrtimer_init(&ir_rx51.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/v4l2-core/v4l2-common.c b/drivers/media/v4l2-core/v4l2-common.c
+--- a/drivers/media/v4l2-core/v4l2-common.c	2026-04-10 14:05:36.135701639 +0800
++++ b/drivers/media/v4l2-core/v4l2-common.c	2026-02-09 11:25:57.001541371 +0800
+@@ -236,77 +236,79 @@
+ {
+ 	static const struct v4l2_format_info formats[] = {
+ 		/* RGB formats */
+-		{ .format = V4L2_PIX_FMT_BGR24,   .mem_planes = 1, .comp_planes = 1, .bpp = { 3, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_RGB24,   .mem_planes = 1, .comp_planes = 1, .bpp = { 3, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_HSV24,   .mem_planes = 1, .comp_planes = 1, .bpp = { 3, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_BGR32,   .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_XBGR32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_BGRX32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_RGB32,   .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_XRGB32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_RGBX32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_HSV32,   .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_ARGB32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_RGBA32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_ABGR32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_BGRA32,  .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_GREY,    .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_BGR24,   .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 3, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_RGB24,   .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 3, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_HSV24,   .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 3, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_BGR32,   .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_XBGR32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_BGRX32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_RGB32,   .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_XRGB32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_RGBX32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_HSV32,   .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_ARGB32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_RGBA32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_ABGR32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_BGRA32,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 4, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_GREY,    .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_RGB565,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_RGB555,  .pixel_enc = V4L2_PIXEL_ENC_RGB, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+ 
+ 		/* YUV packed formats */
+-		{ .format = V4L2_PIX_FMT_YUYV,    .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_YVYU,    .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_UYVY,    .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_VYUY,    .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_YUYV,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_YVYU,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_UYVY,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_VYUY,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+ 
+ 		/* YUV planar formats */
+-		{ .format = V4L2_PIX_FMT_NV12,    .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_NV21,    .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_NV16,    .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_NV61,    .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_NV24,    .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_NV42,    .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-
+-		{ .format = V4L2_PIX_FMT_YUV410,  .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 4, .vdiv = 4 },
+-		{ .format = V4L2_PIX_FMT_YVU410,  .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 4, .vdiv = 4 },
+-		{ .format = V4L2_PIX_FMT_YUV411P, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 4, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_YUV420,  .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_YVU420,  .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_YUV422P, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_NV12,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_NV21,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_NV16,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_NV61,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_NV24,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_NV42,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++
++		{ .format = V4L2_PIX_FMT_YUV410,  .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 4, .vdiv = 4 },
++		{ .format = V4L2_PIX_FMT_YVU410,  .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 4, .vdiv = 4 },
++		{ .format = V4L2_PIX_FMT_YUV411P, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 4, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_YUV420,  .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_YVU420,  .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_YUV422P, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 1 },
+ 
+ 		/* YUV planar formats, non contiguous variant */
+-		{ .format = V4L2_PIX_FMT_YUV420M, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_YVU420M, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_YUV422M, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_YVU422M, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_YUV444M, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_YVU444M, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 1, .vdiv = 1 },
+-
+-		{ .format = V4L2_PIX_FMT_NV12M,   .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_NV21M,   .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
+-		{ .format = V4L2_PIX_FMT_NV16M,   .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_NV61M,   .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_YUV420M, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_YVU420M, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_YUV422M, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_YVU422M, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_YUV444M, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_YVU444M, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 3, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .hdiv = 1, .vdiv = 1 },
++
++		{ .format = V4L2_PIX_FMT_NV12M,   .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_NV21M,   .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_NV16M,   .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_NV61M,   .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 2, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .hdiv = 2, .vdiv = 1 },
+ 
+ 		/* Bayer RGB formats */
+-		{ .format = V4L2_PIX_FMT_SBGGR8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGBRG8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGRBG8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SRGGB8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SBGGR10,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGBRG10,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGRBG10,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SRGGB10,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SBGGR10ALAW8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGBRG10ALAW8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGRBG10ALAW8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SRGGB10ALAW8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SBGGR10DPCM8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGBRG10DPCM8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGRBG10DPCM8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SRGGB10DPCM8,	.mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SBGGR12,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGBRG12,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SGRBG12,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+-		{ .format = V4L2_PIX_FMT_SRGGB12,	.mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SBGGR8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGBRG8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGRBG8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SRGGB8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SBGGR10,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGBRG10,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGRBG10,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SRGGB10,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SBGGR10ALAW8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGBRG10ALAW8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGRBG10ALAW8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SRGGB10ALAW8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SBGGR10DPCM8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGBRG10DPCM8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGRBG10DPCM8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SRGGB10DPCM8,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 1, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SBGGR12,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGBRG12,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SGRBG12,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
++		{ .format = V4L2_PIX_FMT_SRGGB12,	.pixel_enc = V4L2_PIXEL_ENC_BAYER, .mem_planes = 1, .comp_planes = 1, .bpp = { 2, 0, 0, 0 }, .hdiv = 1, .vdiv = 1 },
+ 	};
+ 	unsigned int i;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/v4l2-core/v4l2-compat-ioctl32.c b/drivers/media/v4l2-core/v4l2-compat-ioctl32.c
+--- a/drivers/media/v4l2-core/v4l2-compat-ioctl32.c	2026-04-10 14:05:36.135701639 +0800
++++ b/drivers/media/v4l2-core/v4l2-compat-ioctl32.c	2026-02-09 11:25:57.001541371 +0800
+@@ -465,6 +465,11 @@
+ 		__s32		fd;
+ 	} m;
+ 	__u32			data_offset;
++	/*
++	 * few userspace clients and drivers use reserved fields
++	 * and it is up to them how these fields are used. v4l2
++	 * simply copy reserved fields between them.
++	 */
+ 	__u32			reserved[11];
+ };
+ 
+@@ -499,7 +504,9 @@
+ 
+ 	if (copy_in_user(p64, p32, 2 * sizeof(__u32)) ||
+ 	    copy_in_user(&p64->data_offset, &p32->data_offset,
+-			 sizeof(p64->data_offset)))
++			 sizeof(p64->data_offset)) ||
++	    copy_in_user(p64->reserved, p32->reserved,
++			 sizeof(p64->reserved)))
+ 		return -EFAULT;
+ 
+ 	switch (memory) {
+@@ -531,7 +538,9 @@
+ 
+ 	if (copy_in_user(p32, p64, 2 * sizeof(__u32)) ||
+ 	    copy_in_user(&p32->data_offset, &p64->data_offset,
+-			 sizeof(p64->data_offset)))
++			 sizeof(p64->data_offset)) ||
++	    copy_in_user(p32->reserved, p64->reserved,
++			 sizeof(p32->reserved)))
+ 		return -EFAULT;
+ 
+ 	switch (memory) {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/v4l2-core/v4l2-ctrls.c b/drivers/media/v4l2-core/v4l2-ctrls.c
+--- a/drivers/media/v4l2-core/v4l2-ctrls.c	2026-04-10 14:05:36.135701639 +0800
++++ b/drivers/media/v4l2-core/v4l2-ctrls.c	2026-02-09 11:25:57.001541371 +0800
+@@ -29,6 +29,8 @@
+ #define call_op(master, op) \
+ 	(has_op(master, op) ? master->ops->op(master) : 0)
+ 
++static const union v4l2_ctrl_ptr ptr_null;
++
+ /* Internal temporary helper struct, one for each v4l2_ext_control */
+ struct v4l2_ctrl_helper {
+ 	/* Pointer to the control reference of the master control */
+@@ -334,6 +336,10 @@
+ 		"4.2",
+ 		"5",
+ 		"5.1",
++		"5.2",
++		"6.0",
++		"6.1",
++		"6.2",
+ 		NULL,
+ 	};
+ 	static const char * const h264_loop_filter[] = {
+@@ -360,6 +366,7 @@
+ 		"Scalable High Intra",
+ 		"Stereo High",
+ 		"Multiview High",
++		"Constrained High",
+ 		NULL,
+ 	};
+ 	static const char * const vui_sar_idc[] = {
+@@ -566,6 +573,16 @@
+ 		"Disabled at slice boundary",
+ 		"NULL",
+ 	};
++	static const char * const hevc_decode_mode[] = {
++		"Slice-Based",
++		"Frame-Based",
++		NULL,
++	};
++	static const char * const hevc_start_code[] = {
++		"No Start Code",
++		"Annex B Start Code",
++		NULL,
++	};
+ 
+ 	switch (id) {
+ 	case V4L2_CID_MPEG_AUDIO_SAMPLING_FREQ:
+@@ -687,7 +704,10 @@
+ 		return hevc_tier;
+ 	case V4L2_CID_MPEG_VIDEO_HEVC_LOOP_FILTER_MODE:
+ 		return hevc_loop_filter_mode;
+-
++	case V4L2_CID_MPEG_VIDEO_HEVC_DECODE_MODE:
++		return hevc_decode_mode;
++	case V4L2_CID_MPEG_VIDEO_HEVC_START_CODE:
++		return hevc_start_code;
+ 	default:
+ 		return NULL;
+ 	}
+@@ -957,6 +977,11 @@
+ 	case V4L2_CID_MPEG_VIDEO_HEVC_SIZE_OF_LENGTH_FIELD:	return "HEVC Size of Length Field";
+ 	case V4L2_CID_MPEG_VIDEO_REF_NUMBER_FOR_PFRAMES:	return "Reference Frames for a P-Frame";
+ 	case V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR:		return "Prepend SPS and PPS to IDR";
++	case V4L2_CID_MPEG_VIDEO_HEVC_SPS:			return "HEVC Sequence Parameter Set";
++	case V4L2_CID_MPEG_VIDEO_HEVC_PPS:			return "HEVC Picture Parameter Set";
++	case V4L2_CID_MPEG_VIDEO_HEVC_SLICE_PARAMS:		return "HEVC Slice Parameters";
++	case V4L2_CID_MPEG_VIDEO_HEVC_DECODE_MODE:		return "HEVC Decode Mode";
++	case V4L2_CID_MPEG_VIDEO_HEVC_START_CODE:		return "HEVC Start Code";
+ 
+ 	/* CAMERA controls */
+ 	/* Keep the order of the 'case's the same as in v4l2-controls.h! */
+@@ -994,6 +1019,7 @@
+ 	case V4L2_CID_AUTO_FOCUS_RANGE:		return "Auto Focus, Range";
+ 	case V4L2_CID_PAN_SPEED:		return "Pan, Speed";
+ 	case V4L2_CID_TILT_SPEED:		return "Tilt, Speed";
++	case V4L2_CID_UNIT_CELL_SIZE:		return "Unit Cell Size";
+ 
+ 	/* FM Radio Modulator controls */
+ 	/* Keep the order of the 'case's the same as in v4l2-controls.h! */
+@@ -1265,6 +1291,8 @@
+ 	case V4L2_CID_MPEG_VIDEO_HEVC_SIZE_OF_LENGTH_FIELD:
+ 	case V4L2_CID_MPEG_VIDEO_HEVC_TIER:
+ 	case V4L2_CID_MPEG_VIDEO_HEVC_LOOP_FILTER_MODE:
++	case V4L2_CID_MPEG_VIDEO_HEVC_DECODE_MODE:
++	case V4L2_CID_MPEG_VIDEO_HEVC_START_CODE:
+ 		*type = V4L2_CTRL_TYPE_MENU;
+ 		break;
+ 	case V4L2_CID_LINK_FREQ:
+@@ -1375,6 +1403,19 @@
+ 	case V4L2_CID_MPEG_VIDEO_VP8_FRAME_HEADER:
+ 		*type = V4L2_CTRL_TYPE_VP8_FRAME_HEADER;
+ 		break;
++	case V4L2_CID_MPEG_VIDEO_HEVC_SPS:
++		*type = V4L2_CTRL_TYPE_HEVC_SPS;
++		break;
++	case V4L2_CID_MPEG_VIDEO_HEVC_PPS:
++		*type = V4L2_CTRL_TYPE_HEVC_PPS;
++		break;
++	case V4L2_CID_MPEG_VIDEO_HEVC_SLICE_PARAMS:
++		*type = V4L2_CTRL_TYPE_HEVC_SLICE_PARAMS;
++		break;
++	case V4L2_CID_UNIT_CELL_SIZE:
++		*type = V4L2_CTRL_TYPE_AREA;
++		*flags |= V4L2_CTRL_FLAG_READ_ONLY;
++		break;
+ 	default:
+ 		*type = V4L2_CTRL_TYPE_INTEGER;
+ 		break;
+@@ -1520,7 +1561,8 @@
+ 		if (ctrl->is_int)
+ 			return ptr1.p_s32[idx] == ptr2.p_s32[idx];
+ 		idx *= ctrl->elem_size;
+-		return !memcmp(ptr1.p + idx, ptr2.p + idx, ctrl->elem_size);
++		return !memcmp(ptr1.p_const + idx, ptr2.p_const + idx,
++			       ctrl->elem_size);
+ 	}
+ }
+ 
+@@ -1530,7 +1572,10 @@
+ 	struct v4l2_ctrl_mpeg2_slice_params *p_mpeg2_slice_params;
+ 	void *p = ptr.p + idx * ctrl->elem_size;
+ 
+-	memset(p, 0, ctrl->elem_size);
++	if (ctrl->p_def.p_const)
++		memcpy(p, ctrl->p_def.p_const, ctrl->elem_size);
++	else
++		memset(p, 0, ctrl->elem_size);
+ 
+ 	/*
+ 	 * The cast is needed to get rid of a gcc warning complaining that
+@@ -1672,7 +1717,12 @@
+ {
+ 	struct v4l2_ctrl_mpeg2_slice_params *p_mpeg2_slice_params;
+ 	struct v4l2_ctrl_vp8_frame_header *p_vp8_frame_header;
++	struct v4l2_ctrl_hevc_sps *p_hevc_sps;
++	struct v4l2_ctrl_hevc_pps *p_hevc_pps;
++	struct v4l2_ctrl_hevc_slice_params *p_hevc_slice_params;
++	struct v4l2_area *area;
+ 	void *p = ptr.p + idx * ctrl->elem_size;
++	unsigned int i;
+ 
+ 	switch ((u32)ctrl->type) {
+ 	case V4L2_CTRL_TYPE_MPEG2_SLICE_PARAMS:
+@@ -1748,6 +1798,76 @@
+ 		zero_padding(p_vp8_frame_header->entropy_header);
+ 		zero_padding(p_vp8_frame_header->coder_state);
+ 		break;
++
++	case V4L2_CTRL_TYPE_HEVC_SPS:
++		p_hevc_sps = p;
++
++		if (!(p_hevc_sps->flags & V4L2_HEVC_SPS_FLAG_PCM_ENABLED)) {
++			p_hevc_sps->pcm_sample_bit_depth_luma_minus1 = 0;
++			p_hevc_sps->pcm_sample_bit_depth_chroma_minus1 = 0;
++			p_hevc_sps->log2_min_pcm_luma_coding_block_size_minus3 = 0;
++			p_hevc_sps->log2_diff_max_min_pcm_luma_coding_block_size = 0;
++		}
++
++		if (!(p_hevc_sps->flags &
++		      V4L2_HEVC_SPS_FLAG_LONG_TERM_REF_PICS_PRESENT))
++			p_hevc_sps->num_long_term_ref_pics_sps = 0;
++		break;
++
++	case V4L2_CTRL_TYPE_HEVC_PPS:
++		p_hevc_pps = p;
++
++		if (!(p_hevc_pps->flags &
++		      V4L2_HEVC_PPS_FLAG_CU_QP_DELTA_ENABLED))
++			p_hevc_pps->diff_cu_qp_delta_depth = 0;
++
++		if (!(p_hevc_pps->flags & V4L2_HEVC_PPS_FLAG_TILES_ENABLED)) {
++			p_hevc_pps->num_tile_columns_minus1 = 0;
++			p_hevc_pps->num_tile_rows_minus1 = 0;
++			memset(&p_hevc_pps->column_width_minus1, 0,
++			       sizeof(p_hevc_pps->column_width_minus1));
++			memset(&p_hevc_pps->row_height_minus1, 0,
++			       sizeof(p_hevc_pps->row_height_minus1));
++
++			p_hevc_pps->flags &=
++				~V4L2_HEVC_PPS_FLAG_LOOP_FILTER_ACROSS_TILES_ENABLED;
++		}
++
++		if (p_hevc_pps->flags &
++		    V4L2_HEVC_PPS_FLAG_PPS_DISABLE_DEBLOCKING_FILTER) {
++			p_hevc_pps->pps_beta_offset_div2 = 0;
++			p_hevc_pps->pps_tc_offset_div2 = 0;
++		}
++
++		zero_padding(*p_hevc_pps);
++		break;
++
++	case V4L2_CTRL_TYPE_HEVC_SLICE_PARAMS:
++		p_hevc_slice_params = p;
++
++		if (p_hevc_slice_params->num_active_dpb_entries >
++		    V4L2_HEVC_DPB_ENTRIES_NUM_MAX)
++			return -EINVAL;
++
++		zero_padding(p_hevc_slice_params->pred_weight_table);
++
++		for (i = 0; i < p_hevc_slice_params->num_active_dpb_entries;
++		     i++) {
++			struct v4l2_hevc_dpb_entry *dpb_entry =
++				&p_hevc_slice_params->dpb[i];
++
++			zero_padding(*dpb_entry);
++		}
++
++		zero_padding(*p_hevc_slice_params);
++		break;
++
++	case V4L2_CTRL_TYPE_AREA:
++		area = p;
++		if (!area->width || !area->height)
++			return -EINVAL;
++		break;
++
+ 	default:
+ 		return -EINVAL;
+ 	}
+@@ -1841,7 +1961,7 @@
+ 	u32 len;
+ 
+ 	if (ctrl->is_ptr && !ctrl->is_string)
+-		return copy_to_user(c->ptr, ptr.p, c->size) ?
++		return copy_to_user(c->ptr, ptr.p_const, c->size) ?
+ 		       -EFAULT : 0;
+ 
+ 	switch (ctrl->type) {
+@@ -1956,7 +2076,7 @@
+ {
+ 	if (ctrl == NULL)
+ 		return;
+-	memcpy(to.p, from.p, ctrl->elems * ctrl->elem_size);
++	memcpy(to.p, from.p_const, ctrl->elems * ctrl->elem_size);
+ }
+ 
+ /* Copy the new value to the current value. */
+@@ -2363,7 +2483,8 @@
+ 			s64 min, s64 max, u64 step, s64 def,
+ 			const u32 dims[V4L2_CTRL_MAX_DIMS], u32 elem_size,
+ 			u32 flags, const char * const *qmenu,
+-			const s64 *qmenu_int, void *priv)
++			const s64 *qmenu_int, const union v4l2_ctrl_ptr p_def,
++			void *priv)
+ {
+ 	struct v4l2_ctrl *ctrl;
+ 	unsigned sz_extra;
+@@ -2430,6 +2551,18 @@
+ 	case V4L2_CTRL_TYPE_VP8_FRAME_HEADER:
+ 		elem_size = sizeof(struct v4l2_ctrl_vp8_frame_header);
+ 		break;
++	case V4L2_CTRL_TYPE_HEVC_SPS:
++		elem_size = sizeof(struct v4l2_ctrl_hevc_sps);
++		break;
++	case V4L2_CTRL_TYPE_HEVC_PPS:
++		elem_size = sizeof(struct v4l2_ctrl_hevc_pps);
++		break;
++	case V4L2_CTRL_TYPE_HEVC_SLICE_PARAMS:
++		elem_size = sizeof(struct v4l2_ctrl_hevc_slice_params);
++		break;
++	case V4L2_CTRL_TYPE_AREA:
++		elem_size = sizeof(struct v4l2_area);
++		break;
+ 	default:
+ 		if (type < V4L2_CTRL_COMPOUND_TYPES)
+ 			elem_size = sizeof(s32);
+@@ -2469,6 +2602,9 @@
+ 		 is_array)
+ 		sz_extra += 2 * tot_ctrl_size;
+ 
++	if (type >= V4L2_CTRL_COMPOUND_TYPES && p_def.p_const)
++		sz_extra += elem_size;
++
+ 	ctrl = kvzalloc(sizeof(*ctrl) + sz_extra, GFP_KERNEL);
+ 	if (ctrl == NULL) {
+ 		handler_set_err(hdl, -ENOMEM);
+@@ -2512,6 +2648,12 @@
+ 		ctrl->p_new.p = &ctrl->val;
+ 		ctrl->p_cur.p = &ctrl->cur.val;
+ 	}
++
++	if (type >= V4L2_CTRL_COMPOUND_TYPES && p_def.p_const) {
++		ctrl->p_def.p = ctrl->p_cur.p + tot_ctrl_size;
++		memcpy(ctrl->p_def.p, p_def.p_const, elem_size);
++	}
++
+ 	for (idx = 0; idx < elems; idx++) {
+ 		ctrl->type_ops->init(ctrl, idx, ctrl->p_cur);
+ 		ctrl->type_ops->init(ctrl, idx, ctrl->p_new);
+@@ -2563,7 +2705,7 @@
+ 			type, min, max,
+ 			is_menu ? cfg->menu_skip_mask : step, def,
+ 			cfg->dims, cfg->elem_size,
+-			flags, qmenu, qmenu_int, priv);
++			flags, qmenu, qmenu_int, cfg->p_def, priv);
+ 	if (ctrl)
+ 		ctrl->is_private = cfg->is_private;
+ 	return ctrl;
+@@ -2588,7 +2730,7 @@
+ 	}
+ 	return v4l2_ctrl_new(hdl, ops, NULL, id, name, type,
+ 			     min, max, step, def, NULL, 0,
+-			     flags, NULL, NULL, NULL);
++			     flags, NULL, NULL, ptr_null, NULL);
+ }
+ EXPORT_SYMBOL(v4l2_ctrl_new_std);
+ 
+@@ -2621,7 +2763,7 @@
+ 	}
+ 	return v4l2_ctrl_new(hdl, ops, NULL, id, name, type,
+ 			     0, max, mask, def, NULL, 0,
+-			     flags, qmenu, qmenu_int, NULL);
++			     flags, qmenu, qmenu_int, ptr_null, NULL);
+ }
+ EXPORT_SYMBOL(v4l2_ctrl_new_std_menu);
+ 
+@@ -2653,11 +2795,32 @@
+ 	}
+ 	return v4l2_ctrl_new(hdl, ops, NULL, id, name, type,
+ 			     0, max, mask, def, NULL, 0,
+-			     flags, qmenu, NULL, NULL);
++			     flags, qmenu, NULL, ptr_null, NULL);
+ 
+ }
+ EXPORT_SYMBOL(v4l2_ctrl_new_std_menu_items);
+ 
++/* Helper function for standard compound controls */
++struct v4l2_ctrl *v4l2_ctrl_new_std_compound(struct v4l2_ctrl_handler *hdl,
++				const struct v4l2_ctrl_ops *ops, u32 id,
++				const union v4l2_ctrl_ptr p_def)
++{
++	const char *name;
++	enum v4l2_ctrl_type type;
++	u32 flags;
++	s64 min, max, step, def;
++
++	v4l2_ctrl_fill(id, &name, &type, &min, &max, &step, &def, &flags);
++	if (type < V4L2_CTRL_COMPOUND_TYPES) {
++		handler_set_err(hdl, -EINVAL);
++		return NULL;
++	}
++	return v4l2_ctrl_new(hdl, ops, NULL, id, name, type,
++			     min, max, step, def, NULL, 0,
++			     flags, NULL, NULL, p_def, NULL);
++}
++EXPORT_SYMBOL(v4l2_ctrl_new_std_compound);
++
+ /* Helper function for standard integer menu controls */
+ struct v4l2_ctrl *v4l2_ctrl_new_int_menu(struct v4l2_ctrl_handler *hdl,
+ 			const struct v4l2_ctrl_ops *ops,
+@@ -2678,7 +2841,7 @@
+ 	}
+ 	return v4l2_ctrl_new(hdl, ops, NULL, id, name, type,
+ 			     0, max, 0, def, NULL, 0,
+-			     flags, NULL, qmenu_int, NULL);
++			     flags, NULL, qmenu_int, ptr_null, NULL);
+ }
+ EXPORT_SYMBOL(v4l2_ctrl_new_int_menu);
+ 
+@@ -4097,6 +4260,18 @@
+ }
+ EXPORT_SYMBOL(__v4l2_ctrl_s_ctrl_string);
+ 
++int __v4l2_ctrl_s_ctrl_area(struct v4l2_ctrl *ctrl,
++			    const struct v4l2_area *area)
++{
++	lockdep_assert_held(ctrl->handler->lock);
++
++	/* It's a driver bug if this happens. */
++	WARN_ON(ctrl->type != V4L2_CTRL_TYPE_AREA);
++	*ctrl->p_new.p_area = *area;
++	return set_ctrl(NULL, ctrl, 0);
++}
++EXPORT_SYMBOL(__v4l2_ctrl_s_ctrl_area);
++
+ void v4l2_ctrl_request_complete(struct media_request *req,
+ 				struct v4l2_ctrl_handler *main_hdl)
+ {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/v4l2-core/v4l2-dev.c b/drivers/media/v4l2-core/v4l2-dev.c
+--- a/drivers/media/v4l2-core/v4l2-dev.c	2026-04-10 14:05:36.135701639 +0800
++++ b/drivers/media/v4l2-core/v4l2-dev.c	2026-02-09 11:25:57.001541371 +0800
+@@ -533,13 +533,23 @@
+  */
+ static void determine_valid_ioctls(struct video_device *vdev)
+ {
++	const u32 vid_caps = V4L2_CAP_VIDEO_CAPTURE |
++			     V4L2_CAP_VIDEO_CAPTURE_MPLANE |
++			     V4L2_CAP_VIDEO_OUTPUT |
++			     V4L2_CAP_VIDEO_OUTPUT_MPLANE |
++			     V4L2_CAP_VIDEO_M2M | V4L2_CAP_VIDEO_M2M_MPLANE;
++	const u32 meta_caps = V4L2_CAP_META_CAPTURE |
++			      V4L2_CAP_META_OUTPUT;
+ 	DECLARE_BITMAP(valid_ioctls, BASE_VIDIOC_PRIVATE);
+ 	const struct v4l2_ioctl_ops *ops = vdev->ioctl_ops;
+-	bool is_vid = vdev->vfl_type == VFL_TYPE_GRABBER;
++	bool is_vid = vdev->vfl_type == VFL_TYPE_GRABBER &&
++		      (vdev->device_caps & vid_caps);
+ 	bool is_vbi = vdev->vfl_type == VFL_TYPE_VBI;
+ 	bool is_radio = vdev->vfl_type == VFL_TYPE_RADIO;
+ 	bool is_sdr = vdev->vfl_type == VFL_TYPE_SDR;
+ 	bool is_tch = vdev->vfl_type == VFL_TYPE_TOUCH;
++	bool is_meta = vdev->vfl_type == VFL_TYPE_GRABBER &&
++		       (vdev->device_caps & meta_caps);
+ 	bool is_rx = vdev->vfl_dir != VFL_DIR_TX;
+ 	bool is_tx = vdev->vfl_dir != VFL_DIR_RX;
+ 
+@@ -571,8 +581,10 @@
+ 		set_bit(_IOC_NR(VIDIOC_TRY_EXT_CTRLS), valid_ioctls);
+ 	if (vdev->ctrl_handler || ops->vidioc_querymenu)
+ 		set_bit(_IOC_NR(VIDIOC_QUERYMENU), valid_ioctls);
+-	SET_VALID_IOCTL(ops, VIDIOC_G_FREQUENCY, vidioc_g_frequency);
+-	SET_VALID_IOCTL(ops, VIDIOC_S_FREQUENCY, vidioc_s_frequency);
++	if (!is_tch) {
++		SET_VALID_IOCTL(ops, VIDIOC_G_FREQUENCY, vidioc_g_frequency);
++		SET_VALID_IOCTL(ops, VIDIOC_S_FREQUENCY, vidioc_s_frequency);
++	}
+ 	SET_VALID_IOCTL(ops, VIDIOC_LOG_STATUS, vidioc_log_status);
+ #ifdef CONFIG_VIDEO_ADV_DEBUG
+ 	set_bit(_IOC_NR(VIDIOC_DBG_G_CHIP_INFO), valid_ioctls);
+@@ -586,40 +598,32 @@
+ 	if (ops->vidioc_enum_freq_bands || ops->vidioc_g_tuner || ops->vidioc_g_modulator)
+ 		set_bit(_IOC_NR(VIDIOC_ENUM_FREQ_BANDS), valid_ioctls);
+ 
+-	if (is_vid || is_tch) {
+-		/* video and metadata specific ioctls */
++	if (is_vid) {
++		/* video specific ioctls */
+ 		if ((is_rx && (ops->vidioc_enum_fmt_vid_cap ||
+-			       ops->vidioc_enum_fmt_vid_overlay ||
+-			       ops->vidioc_enum_fmt_meta_cap)) ||
+-		    (is_tx && (ops->vidioc_enum_fmt_vid_out ||
+-			       ops->vidioc_enum_fmt_meta_out)))
++			       ops->vidioc_enum_fmt_vid_overlay)) ||
++		    (is_tx && ops->vidioc_enum_fmt_vid_out))
+ 			set_bit(_IOC_NR(VIDIOC_ENUM_FMT), valid_ioctls);
+ 		if ((is_rx && (ops->vidioc_g_fmt_vid_cap ||
+ 			       ops->vidioc_g_fmt_vid_cap_mplane ||
+-			       ops->vidioc_g_fmt_vid_overlay ||
+-			       ops->vidioc_g_fmt_meta_cap)) ||
++			       ops->vidioc_g_fmt_vid_overlay)) ||
+ 		    (is_tx && (ops->vidioc_g_fmt_vid_out ||
+ 			       ops->vidioc_g_fmt_vid_out_mplane ||
+-			       ops->vidioc_g_fmt_vid_out_overlay ||
+-			       ops->vidioc_g_fmt_meta_out)))
++			       ops->vidioc_g_fmt_vid_out_overlay)))
+ 			 set_bit(_IOC_NR(VIDIOC_G_FMT), valid_ioctls);
+ 		if ((is_rx && (ops->vidioc_s_fmt_vid_cap ||
+ 			       ops->vidioc_s_fmt_vid_cap_mplane ||
+-			       ops->vidioc_s_fmt_vid_overlay ||
+-			       ops->vidioc_s_fmt_meta_cap)) ||
++			       ops->vidioc_s_fmt_vid_overlay)) ||
+ 		    (is_tx && (ops->vidioc_s_fmt_vid_out ||
+ 			       ops->vidioc_s_fmt_vid_out_mplane ||
+-			       ops->vidioc_s_fmt_vid_out_overlay ||
+-			       ops->vidioc_s_fmt_meta_out)))
++			       ops->vidioc_s_fmt_vid_out_overlay)))
+ 			 set_bit(_IOC_NR(VIDIOC_S_FMT), valid_ioctls);
+ 		if ((is_rx && (ops->vidioc_try_fmt_vid_cap ||
+ 			       ops->vidioc_try_fmt_vid_cap_mplane ||
+-			       ops->vidioc_try_fmt_vid_overlay ||
+-			       ops->vidioc_try_fmt_meta_cap)) ||
++			       ops->vidioc_try_fmt_vid_overlay)) ||
+ 		    (is_tx && (ops->vidioc_try_fmt_vid_out ||
+ 			       ops->vidioc_try_fmt_vid_out_mplane ||
+-			       ops->vidioc_try_fmt_vid_out_overlay ||
+-			       ops->vidioc_try_fmt_meta_out)))
++			       ops->vidioc_try_fmt_vid_out_overlay)))
+ 			 set_bit(_IOC_NR(VIDIOC_TRY_FMT), valid_ioctls);
+ 		SET_VALID_IOCTL(ops, VIDIOC_OVERLAY, vidioc_overlay);
+ 		SET_VALID_IOCTL(ops, VIDIOC_G_FBUF, vidioc_g_fbuf);
+@@ -641,7 +645,21 @@
+ 			set_bit(_IOC_NR(VIDIOC_S_CROP), valid_ioctls);
+ 		SET_VALID_IOCTL(ops, VIDIOC_G_SELECTION, vidioc_g_selection);
+ 		SET_VALID_IOCTL(ops, VIDIOC_S_SELECTION, vidioc_s_selection);
+-	} else if (is_vbi) {
++	}
++	if (is_meta && is_rx) {
++		/* metadata capture specific ioctls */
++		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FMT, vidioc_enum_fmt_meta_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_G_FMT, vidioc_g_fmt_meta_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_S_FMT, vidioc_s_fmt_meta_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_TRY_FMT, vidioc_try_fmt_meta_cap);
++	} else if (is_meta && is_tx) {
++		/* metadata output specific ioctls */
++		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FMT, vidioc_enum_fmt_meta_out);
++		SET_VALID_IOCTL(ops, VIDIOC_G_FMT, vidioc_g_fmt_meta_out);
++		SET_VALID_IOCTL(ops, VIDIOC_S_FMT, vidioc_s_fmt_meta_out);
++		SET_VALID_IOCTL(ops, VIDIOC_TRY_FMT, vidioc_try_fmt_meta_out);
++	}
++	if (is_vbi) {
+ 		/* vbi specific ioctls */
+ 		if ((is_rx && (ops->vidioc_g_fmt_vbi_cap ||
+ 			       ops->vidioc_g_fmt_sliced_vbi_cap)) ||
+@@ -659,30 +677,35 @@
+ 			       ops->vidioc_try_fmt_sliced_vbi_out)))
+ 			set_bit(_IOC_NR(VIDIOC_TRY_FMT), valid_ioctls);
+ 		SET_VALID_IOCTL(ops, VIDIOC_G_SLICED_VBI_CAP, vidioc_g_sliced_vbi_cap);
++	} else if (is_tch) {
++		/* touch specific ioctls */
++		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FMT, vidioc_enum_fmt_vid_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_G_FMT, vidioc_g_fmt_vid_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_S_FMT, vidioc_s_fmt_vid_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_TRY_FMT, vidioc_try_fmt_vid_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FRAMESIZES, vidioc_enum_framesizes);
++		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FRAMEINTERVALS, vidioc_enum_frameintervals);
++		SET_VALID_IOCTL(ops, VIDIOC_ENUMINPUT, vidioc_enum_input);
++		SET_VALID_IOCTL(ops, VIDIOC_G_INPUT, vidioc_g_input);
++		SET_VALID_IOCTL(ops, VIDIOC_S_INPUT, vidioc_s_input);
++		SET_VALID_IOCTL(ops, VIDIOC_G_PARM, vidioc_g_parm);
++		SET_VALID_IOCTL(ops, VIDIOC_S_PARM, vidioc_s_parm);
+ 	} else if (is_sdr && is_rx) {
+ 		/* SDR receiver specific ioctls */
+-		if (ops->vidioc_enum_fmt_sdr_cap)
+-			set_bit(_IOC_NR(VIDIOC_ENUM_FMT), valid_ioctls);
+-		if (ops->vidioc_g_fmt_sdr_cap)
+-			set_bit(_IOC_NR(VIDIOC_G_FMT), valid_ioctls);
+-		if (ops->vidioc_s_fmt_sdr_cap)
+-			set_bit(_IOC_NR(VIDIOC_S_FMT), valid_ioctls);
+-		if (ops->vidioc_try_fmt_sdr_cap)
+-			set_bit(_IOC_NR(VIDIOC_TRY_FMT), valid_ioctls);
++		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FMT, vidioc_enum_fmt_sdr_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_G_FMT, vidioc_g_fmt_sdr_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_S_FMT, vidioc_s_fmt_sdr_cap);
++		SET_VALID_IOCTL(ops, VIDIOC_TRY_FMT, vidioc_try_fmt_sdr_cap);
+ 	} else if (is_sdr && is_tx) {
+ 		/* SDR transmitter specific ioctls */
+-		if (ops->vidioc_enum_fmt_sdr_out)
+-			set_bit(_IOC_NR(VIDIOC_ENUM_FMT), valid_ioctls);
+-		if (ops->vidioc_g_fmt_sdr_out)
+-			set_bit(_IOC_NR(VIDIOC_G_FMT), valid_ioctls);
+-		if (ops->vidioc_s_fmt_sdr_out)
+-			set_bit(_IOC_NR(VIDIOC_S_FMT), valid_ioctls);
+-		if (ops->vidioc_try_fmt_sdr_out)
+-			set_bit(_IOC_NR(VIDIOC_TRY_FMT), valid_ioctls);
++		SET_VALID_IOCTL(ops, VIDIOC_ENUM_FMT, vidioc_enum_fmt_sdr_out);
++		SET_VALID_IOCTL(ops, VIDIOC_G_FMT, vidioc_g_fmt_sdr_out);
++		SET_VALID_IOCTL(ops, VIDIOC_S_FMT, vidioc_s_fmt_sdr_out);
++		SET_VALID_IOCTL(ops, VIDIOC_TRY_FMT, vidioc_try_fmt_sdr_out);
+ 	}
+ 
+-	if (is_vid || is_vbi || is_sdr || is_tch) {
+-		/* ioctls valid for video, metadata, vbi or sdr */
++	if (is_vid || is_vbi || is_sdr || is_tch || is_meta) {
++		/* ioctls valid for video, vbi, sdr, touch and metadata */
+ 		SET_VALID_IOCTL(ops, VIDIOC_REQBUFS, vidioc_reqbufs);
+ 		SET_VALID_IOCTL(ops, VIDIOC_QUERYBUF, vidioc_querybuf);
+ 		SET_VALID_IOCTL(ops, VIDIOC_QBUF, vidioc_qbuf);
+@@ -694,8 +717,8 @@
+ 		SET_VALID_IOCTL(ops, VIDIOC_STREAMOFF, vidioc_streamoff);
+ 	}
+ 
+-	if (is_vid || is_vbi || is_tch) {
+-		/* ioctls valid for video or vbi */
++	if (is_vid || is_vbi || is_meta) {
++		/* ioctls valid for video, vbi and metadata */
+ 		if (ops->vidioc_s_std)
+ 			set_bit(_IOC_NR(VIDIOC_ENUMSTD), valid_ioctls);
+ 		SET_VALID_IOCTL(ops, VIDIOC_S_STD, vidioc_s_std);
+@@ -719,8 +742,7 @@
+ 			SET_VALID_IOCTL(ops, VIDIOC_G_AUDOUT, vidioc_g_audout);
+ 			SET_VALID_IOCTL(ops, VIDIOC_S_AUDOUT, vidioc_s_audout);
+ 		}
+-		if (ops->vidioc_g_parm || (vdev->vfl_type == VFL_TYPE_GRABBER &&
+-					ops->vidioc_g_std))
++		if (ops->vidioc_g_parm || ops->vidioc_g_std)
+ 			set_bit(_IOC_NR(VIDIOC_G_PARM), valid_ioctls);
+ 		SET_VALID_IOCTL(ops, VIDIOC_S_PARM, vidioc_s_parm);
+ 		SET_VALID_IOCTL(ops, VIDIOC_S_DV_TIMINGS, vidioc_s_dv_timings);
+@@ -734,7 +756,7 @@
+ 		SET_VALID_IOCTL(ops, VIDIOC_G_MODULATOR, vidioc_g_modulator);
+ 		SET_VALID_IOCTL(ops, VIDIOC_S_MODULATOR, vidioc_s_modulator);
+ 	}
+-	if (is_rx) {
++	if (is_rx && !is_tch) {
+ 		/* receiver only ioctls */
+ 		SET_VALID_IOCTL(ops, VIDIOC_G_TUNER, vidioc_g_tuner);
+ 		SET_VALID_IOCTL(ops, VIDIOC_S_TUNER, vidioc_s_tuner);
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/v4l2-core/v4l2-dv-timings.c b/drivers/media/v4l2-core/v4l2-dv-timings.c
+--- a/drivers/media/v4l2-core/v4l2-dv-timings.c	2026-04-10 14:05:36.139701617 +0800
++++ b/drivers/media/v4l2-core/v4l2-dv-timings.c	2026-02-09 11:25:57.001541371 +0800
+@@ -293,7 +293,7 @@
+ 	if (prefix == NULL)
+ 		prefix = "";
+ 
+-	pr_info("%s: %s%ux%u%s%u.%u (%ux%u)\n", dev_prefix, prefix,
++	pr_info("%s: %s%ux%u%s%u.%02u (%ux%u)\n", dev_prefix, prefix,
+ 		bt->width, bt->height, bt->interlaced ? "i" : "p",
+ 		fps / 100, fps % 100, htot, vtot);
+ 
+@@ -757,7 +757,7 @@
+ 	pix_clk = pix_clk / GTF_PXL_CLK_GRAN * GTF_PXL_CLK_GRAN;
+ 
+ 	hsync = (frame_width * 8 + 50) / 100;
+-	hsync = ((hsync + GTF_CELL_GRAN / 2) / GTF_CELL_GRAN) * GTF_CELL_GRAN;
++	hsync = DIV_ROUND_CLOSEST(hsync, GTF_CELL_GRAN) * GTF_CELL_GRAN;
+ 
+ 	h_fp = h_blank / 2 - hsync;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
+--- a/drivers/media/v4l2-core/v4l2-ioctl.c	2026-04-10 14:05:36.139701617 +0800
++++ b/drivers/media/v4l2-core/v4l2-ioctl.c	2026-02-09 11:25:57.001541371 +0800
+@@ -950,12 +950,22 @@
+ 
+ static int check_fmt(struct file *file, enum v4l2_buf_type type)
+ {
++	const u32 vid_caps = V4L2_CAP_VIDEO_CAPTURE |
++			     V4L2_CAP_VIDEO_CAPTURE_MPLANE |
++			     V4L2_CAP_VIDEO_OUTPUT |
++			     V4L2_CAP_VIDEO_OUTPUT_MPLANE |
++			     V4L2_CAP_VIDEO_M2M | V4L2_CAP_VIDEO_M2M_MPLANE;
++	const u32 meta_caps = V4L2_CAP_META_CAPTURE |
++			      V4L2_CAP_META_OUTPUT;
+ 	struct video_device *vfd = video_devdata(file);
+ 	const struct v4l2_ioctl_ops *ops = vfd->ioctl_ops;
+-	bool is_vid = vfd->vfl_type == VFL_TYPE_GRABBER;
++	bool is_vid = vfd->vfl_type == VFL_TYPE_GRABBER &&
++		      (vfd->device_caps & vid_caps);
+ 	bool is_vbi = vfd->vfl_type == VFL_TYPE_VBI;
+ 	bool is_sdr = vfd->vfl_type == VFL_TYPE_SDR;
+ 	bool is_tch = vfd->vfl_type == VFL_TYPE_TOUCH;
++	bool is_meta = vfd->vfl_type == VFL_TYPE_GRABBER &&
++		       (vfd->device_caps & meta_caps);
+ 	bool is_rx = vfd->vfl_dir != VFL_DIR_TX;
+ 	bool is_tx = vfd->vfl_dir != VFL_DIR_RX;
+ 
+@@ -1014,11 +1024,11 @@
+ 			return 0;
+ 		break;
+ 	case V4L2_BUF_TYPE_META_CAPTURE:
+-		if (is_vid && is_rx && ops->vidioc_g_fmt_meta_cap)
++		if (is_meta && is_rx && ops->vidioc_g_fmt_meta_cap)
+ 			return 0;
+ 		break;
+ 	case V4L2_BUF_TYPE_META_OUTPUT:
+-		if (is_vid && is_tx && ops->vidioc_g_fmt_meta_out)
++		if (is_meta && is_tx && ops->vidioc_g_fmt_meta_out)
+ 			return 0;
+ 		break;
+ 	default:
+@@ -1374,6 +1384,7 @@
+ 		case V4L2_PIX_FMT_VP8_FRAME:    descr = "VP8 Frame"; break;
+ 		case V4L2_PIX_FMT_VP9:		descr = "VP9"; break;
+ 		case V4L2_PIX_FMT_HEVC:		descr = "HEVC"; break; /* aka H.265 */
++		case V4L2_PIX_FMT_HEVC_SLICE:	descr = "HEVC Parsed Slice Data"; break;
+ 		case V4L2_PIX_FMT_FWHT:		descr = "FWHT"; break; /* used in vicodec */
+ 		case V4L2_PIX_FMT_FWHT_STATELESS:	descr = "FWHT Stateless"; break; /* used in vicodec */
+ 		case V4L2_PIX_FMT_CPIA1:	descr = "GSPCA CPiA YUV"; break;
+@@ -1396,6 +1407,11 @@
+ 		case V4L2_PIX_FMT_S5C_UYVY_JPG:	descr = "S5C73MX interleaved UYVY/JPEG"; break;
+ 		case V4L2_PIX_FMT_MT21C:	descr = "Mediatek Compressed Format"; break;
+ 		case V4L2_PIX_FMT_SUNXI_TILED_NV12: descr = "Sunxi Tiled NV12 Format"; break;
++#ifdef CONFIG_AMLOGIC_MODIFY
++		case V4L2_PIX_FMT_AV1:		descr = "AV1"; break;
++		case V4L2_PIX_FMT_AVS:		descr = "AVS"; break;
++		case V4L2_PIX_FMT_AVS2:		descr = "AVS2"; break;
++#endif
+ 		default:
+ 			if (fmt->description[0])
+ 				return;
+@@ -2072,22 +2088,7 @@
+ 	struct v4l2_streamparm *p = arg;
+ 	int ret = check_fmt(file, p->type);
+ 
+-	if (ret)
+-		return ret;
+-
+-	/* Note: extendedmode is never used in drivers */
+-	if (V4L2_TYPE_IS_OUTPUT(p->type)) {
+-		memset(p->parm.output.reserved, 0,
+-		       sizeof(p->parm.output.reserved));
+-		p->parm.output.extendedmode = 0;
+-		p->parm.output.outputmode &= V4L2_MODE_HIGHQUALITY;
+-	} else {
+-		memset(p->parm.capture.reserved, 0,
+-		       sizeof(p->parm.capture.reserved));
+-		p->parm.capture.extendedmode = 0;
+-		p->parm.capture.capturemode &= V4L2_MODE_HIGHQUALITY;
+-	}
+-	return ops->vidioc_s_parm(file, fh, p);
++	return ret ? ret : ops->vidioc_s_parm(file, fh, p);
+ }
+ 
+ static int v4l_queryctrl(const struct v4l2_ioctl_ops *ops,
+@@ -2660,7 +2661,7 @@
+ /* Zero struct from after the field to the end */
+ #define INFO_FL_CLEAR(v4l2_struct, field)			\
+ 	((offsetof(struct v4l2_struct, field) +			\
+-	  sizeof(((struct v4l2_struct *)0)->field)) << 16)
++	  FIELD_SIZEOF(struct v4l2_struct, field)) << 16)
+ #define INFO_FL_CLEAR_MASK	(_IOC_SIZEMASK << 16)
+ 
+ #define DEFINE_V4L_STUB_FUNC(_vidioc)				\
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/media/v4l2-core/v4l2-mem2mem.c b/drivers/media/v4l2-core/v4l2-mem2mem.c
+--- a/drivers/media/v4l2-core/v4l2-mem2mem.c	2026-04-10 14:05:36.139701617 +0800
++++ b/drivers/media/v4l2-core/v4l2-mem2mem.c	2026-02-09 11:25:57.001541371 +0800
+@@ -266,10 +266,9 @@
+ 	m2m_dev->curr_ctx = list_first_entry(&m2m_dev->job_queue,
+ 				   struct v4l2_m2m_ctx, queue);
+ 	m2m_dev->curr_ctx->job_flags |= TRANS_RUNNING;
+-	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
+-
+ 	dprintk("Running job on m2m_ctx: %p\n", m2m_dev->curr_ctx);
+ 	m2m_dev->m2m_ops->device_run(m2m_dev->curr_ctx->priv);
++	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
+ }
+ 
+ /*
+@@ -284,7 +283,8 @@
+ static void __v4l2_m2m_try_queue(struct v4l2_m2m_dev *m2m_dev,
+ 				 struct v4l2_m2m_ctx *m2m_ctx)
+ {
+-	unsigned long flags_job, flags_out, flags_cap;
++	unsigned long flags_job;
++	struct vb2_v4l2_buffer *dst, *src;
+ 
+ 	dprintk("Trying to schedule a job for m2m_ctx: %p\n", m2m_ctx);
+ 
+@@ -307,20 +307,42 @@
+ 		goto job_unlock;
+ 	}
+ 
+-	spin_lock_irqsave(&m2m_ctx->out_q_ctx.rdy_spinlock, flags_out);
+-	if (list_empty(&m2m_ctx->out_q_ctx.rdy_queue)
+-	    && !m2m_ctx->out_q_ctx.buffered) {
++	src = v4l2_m2m_next_src_buf(m2m_ctx);
++	dst = v4l2_m2m_next_dst_buf(m2m_ctx);
++	if (!src && !m2m_ctx->out_q_ctx.buffered) {
+ 		dprintk("No input buffers available\n");
+-		goto out_unlock;
++		goto job_unlock;
+ 	}
+-	spin_lock_irqsave(&m2m_ctx->cap_q_ctx.rdy_spinlock, flags_cap);
+-	if (list_empty(&m2m_ctx->cap_q_ctx.rdy_queue)
+-	    && !m2m_ctx->cap_q_ctx.buffered) {
++	if (!dst && !m2m_ctx->cap_q_ctx.buffered) {
+ 		dprintk("No output buffers available\n");
+-		goto cap_unlock;
++		goto job_unlock;
++	}
++
++	m2m_ctx->new_frame = true;
++
++	if (src && dst && dst->is_held &&
++	    dst->vb2_buf.copied_timestamp &&
++	    dst->vb2_buf.timestamp != src->vb2_buf.timestamp) {
++		dst->is_held = false;
++		v4l2_m2m_dst_buf_remove(m2m_ctx);
++		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_DONE);
++		dst = v4l2_m2m_next_dst_buf(m2m_ctx);
++
++		if (!dst && !m2m_ctx->cap_q_ctx.buffered) {
++			dprintk("No output buffers available after returning held buffer\n");
++			goto job_unlock;
++		}
++	}
++
++	if (src && dst && (m2m_ctx->out_q_ctx.q.subsystem_flags &
++			   VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF))
++		m2m_ctx->new_frame = !dst->vb2_buf.copied_timestamp ||
++			dst->vb2_buf.timestamp != src->vb2_buf.timestamp;
++
++	if (m2m_ctx->has_stopped) {
++		dprintk("Device has stopped\n");
++		goto job_unlock;
+ 	}
+-	spin_unlock_irqrestore(&m2m_ctx->cap_q_ctx.rdy_spinlock, flags_cap);
+-	spin_unlock_irqrestore(&m2m_ctx->out_q_ctx.rdy_spinlock, flags_out);
+ 
+ 	if (m2m_dev->m2m_ops->job_ready
+ 		&& (!m2m_dev->m2m_ops->job_ready(m2m_ctx->priv))) {
+@@ -331,13 +353,6 @@
+ 	list_add_tail(&m2m_ctx->queue, &m2m_dev->job_queue);
+ 	m2m_ctx->job_flags |= TRANS_QUEUED;
+ 
+-	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags_job);
+-	return;
+-
+-cap_unlock:
+-	spin_unlock_irqrestore(&m2m_ctx->cap_q_ctx.rdy_spinlock, flags_cap);
+-out_unlock:
+-	spin_unlock_irqrestore(&m2m_ctx->out_q_ctx.rdy_spinlock, flags_out);
+ job_unlock:
+ 	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags_job);
+ }
+@@ -412,10 +427,102 @@
+ 	}
+ }
+ 
++/*
++ * Schedule the next job, called from v4l2_m2m_job_finish() or
++ * v4l2_m2m_buf_done_and_job_finish().
++ */
++static void v4l2_m2m_schedule_next_job(struct v4l2_m2m_dev *m2m_dev,
++				       struct v4l2_m2m_ctx *m2m_ctx)
++{
++	/*
++	 * This instance might have more buffers ready, but since we do not
++	 * allow more than one job on the job_queue per instance, each has
++	 * to be scheduled separately after the previous one finishes.
++	 */
++	__v4l2_m2m_try_queue(m2m_dev, m2m_ctx);
++
++	/*
++	 * We might be running in atomic context,
++	 * but the job must be run in non-atomic context.
++	 */
++	schedule_work(&m2m_dev->job_work);
++}
++
++/*
++ * Assumes job_spinlock is held, called from v4l2_m2m_job_finish() or
++ * v4l2_m2m_buf_done_and_job_finish().
++ */
++static bool _v4l2_m2m_job_finish(struct v4l2_m2m_dev *m2m_dev,
++				 struct v4l2_m2m_ctx *m2m_ctx)
++{
++	if (!m2m_dev->curr_ctx || m2m_dev->curr_ctx != m2m_ctx) {
++		dprintk("Called by an instance not currently running\n");
++		return false;
++	}
++
++	list_del(&m2m_dev->curr_ctx->queue);
++	m2m_dev->curr_ctx->job_flags &= ~(TRANS_QUEUED | TRANS_RUNNING);
++	wake_up(&m2m_dev->curr_ctx->finished);
++	m2m_dev->curr_ctx = NULL;
++	return true;
++}
++
+ void v4l2_m2m_job_finish(struct v4l2_m2m_dev *m2m_dev,
+ 			 struct v4l2_m2m_ctx *m2m_ctx)
+ {
+ 	unsigned long flags;
++	bool schedule_next;
++
++	/*
++	 * This function should not be used for drivers that support
++	 * holding capture buffers. Those should use
++	 * v4l2_m2m_buf_done_and_job_finish() instead.
++	 */
++	WARN_ON(m2m_ctx->out_q_ctx.q.subsystem_flags &
++		VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF);
++	spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
++	schedule_next = _v4l2_m2m_job_finish(m2m_dev, m2m_ctx);
++	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
++
++	if (schedule_next)
++		v4l2_m2m_schedule_next_job(m2m_dev, m2m_ctx);
++}
++EXPORT_SYMBOL(v4l2_m2m_job_finish);
++
++void v4l2_m2m_buf_done_and_job_finish(struct v4l2_m2m_dev *m2m_dev,
++				      struct v4l2_m2m_ctx *m2m_ctx,
++				      enum vb2_buffer_state state)
++{
++	struct vb2_v4l2_buffer *src_buf, *dst_buf;
++	bool schedule_next = false;
++	unsigned long flags;
++
++	spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
++	src_buf = v4l2_m2m_src_buf_remove(m2m_ctx);
++	dst_buf = v4l2_m2m_next_dst_buf(m2m_ctx);
++
++	if (WARN_ON(!src_buf || !dst_buf))
++		goto unlock;
++	v4l2_m2m_buf_done(src_buf, state);
++	dst_buf->is_held = src_buf->flags & V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF;
++	if (!dst_buf->is_held) {
++		v4l2_m2m_dst_buf_remove(m2m_ctx);
++		v4l2_m2m_buf_done(dst_buf, state);
++	}
++	schedule_next = _v4l2_m2m_job_finish(m2m_dev, m2m_ctx);
++unlock:
++	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
++
++	if (schedule_next)
++		v4l2_m2m_schedule_next_job(m2m_dev, m2m_ctx);
++}
++EXPORT_SYMBOL(v4l2_m2m_buf_done_and_job_finish);
++
++#ifdef CONFIG_AMLOGIC_MEDIA_V4L_DEC
++void v4l2_m2m_job_pause(struct v4l2_m2m_dev *m2m_dev,
++			struct v4l2_m2m_ctx *m2m_ctx)
++{
++	unsigned long flags;
+ 
+ 	spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
+ 	if (!m2m_dev->curr_ctx || m2m_dev->curr_ctx != m2m_ctx) {
+@@ -426,22 +533,28 @@
+ 
+ 	list_del(&m2m_dev->curr_ctx->queue);
+ 	m2m_dev->curr_ctx->job_flags &= ~(TRANS_QUEUED | TRANS_RUNNING);
++	m2m_dev->curr_ctx->job_flags |= TRANS_ABORT;
+ 	wake_up(&m2m_dev->curr_ctx->finished);
+ 	m2m_dev->curr_ctx = NULL;
+ 
+ 	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
++}
++EXPORT_SYMBOL(v4l2_m2m_job_pause);
+ 
+-	/* This instance might have more buffers ready, but since we do not
+-	 * allow more than one job on the job_queue per instance, each has
+-	 * to be scheduled separately after the previous one finishes. */
+-	__v4l2_m2m_try_queue(m2m_dev, m2m_ctx);
++void v4l2_m2m_job_resume(struct v4l2_m2m_dev *m2m_dev,
++			 struct v4l2_m2m_ctx *m2m_ctx)
++{
++	unsigned long flags;
+ 
+-	/* We might be running in atomic context,
+-	 * but the job must be run in non-atomic context.
+-	 */
+-	schedule_work(&m2m_dev->job_work);
++	spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
++	m2m_ctx->job_flags &= ~TRANS_ABORT;
++	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
++
++	v4l2_m2m_try_schedule(m2m_ctx);
++	v4l2_m2m_try_run(m2m_dev);
+ }
+-EXPORT_SYMBOL(v4l2_m2m_job_finish);
++EXPORT_SYMBOL(v4l2_m2m_job_resume);
++#endif
+ 
+ int v4l2_m2m_reqbufs(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
+ 		     struct v4l2_requestbuffers *reqbufs)
+@@ -485,6 +598,140 @@
+ }
+ EXPORT_SYMBOL_GPL(v4l2_m2m_querybuf);
+ 
++/*
++ * This will add the LAST flag and mark the buffer management
++ * state as stopped.
++ * This is called when the last capture buffer must be flagged as LAST
++ * in draining mode from the encoder/decoder driver buf_queue() callback
++ * or from v4l2_update_last_buf_state() when a capture buffer is available.
++ */
++void v4l2_m2m_last_buffer_done(struct v4l2_m2m_ctx *m2m_ctx,
++			       struct vb2_v4l2_buffer *vbuf)
++{
++	vbuf->flags |= V4L2_BUF_FLAG_LAST;
++	vb2_buffer_done(&vbuf->vb2_buf, VB2_BUF_STATE_DONE);
++
++	v4l2_m2m_mark_stopped(m2m_ctx);
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_last_buffer_done);
++
++/* When stop command is issued, update buffer management state */
++static int v4l2_update_last_buf_state(struct v4l2_m2m_ctx *m2m_ctx)
++{
++	struct vb2_v4l2_buffer *next_dst_buf;
++
++	if (m2m_ctx->is_draining)
++		return -EBUSY;
++
++	if (m2m_ctx->has_stopped)
++		return 0;
++
++	m2m_ctx->last_src_buf = v4l2_m2m_last_src_buf(m2m_ctx);
++	m2m_ctx->is_draining = true;
++
++	/*
++	 * The processing of the last output buffer queued before
++	 * the STOP command is expected to mark the buffer management
++	 * state as stopped with v4l2_m2m_mark_stopped().
++	 */
++	if (m2m_ctx->last_src_buf)
++		return 0;
++
++	/*
++	 * In case the output queue is empty, try to mark the last capture
++	 * buffer as LAST.
++	 */
++	next_dst_buf = v4l2_m2m_dst_buf_remove(m2m_ctx);
++	if (!next_dst_buf) {
++		/*
++		 * Wait for the next queued one in encoder/decoder driver
++		 * buf_queue() callback using the v4l2_m2m_dst_buf_is_last()
++		 * helper or in v4l2_m2m_qbuf() if encoder/decoder is not yet
++		 * streaming.
++		 */
++		m2m_ctx->next_buf_last = true;
++		return 0;
++	}
++
++	v4l2_m2m_last_buffer_done(m2m_ctx, next_dst_buf);
++
++	return 0;
++}
++
++/*
++ * Updates the encoding/decoding buffer management state, should
++ * be called from encoder/decoder drivers start_streaming()
++ */
++void v4l2_m2m_update_start_streaming_state(struct v4l2_m2m_ctx *m2m_ctx,
++					   struct vb2_queue *q)
++{
++	/* If start streaming again, untag the last output buffer */
++	if (V4L2_TYPE_IS_OUTPUT(q->type))
++		m2m_ctx->last_src_buf = NULL;
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_update_start_streaming_state);
++
++/*
++ * Updates the encoding/decoding buffer management state, should
++ * be called from encoder/decoder driver stop_streaming()
++ */
++void v4l2_m2m_update_stop_streaming_state(struct v4l2_m2m_ctx *m2m_ctx,
++					  struct vb2_queue *q)
++{
++	if (V4L2_TYPE_IS_OUTPUT(q->type)) {
++		/*
++		 * If in draining state, either mark next dst buffer as
++		 * done or flag next one to be marked as done either
++		 * in encoder/decoder driver buf_queue() callback using
++		 * the v4l2_m2m_dst_buf_is_last() helper or in v4l2_m2m_qbuf()
++		 * if encoder/decoder is not yet streaming
++		 */
++		if (m2m_ctx->is_draining) {
++			struct vb2_v4l2_buffer *next_dst_buf;
++
++			m2m_ctx->last_src_buf = NULL;
++			next_dst_buf = v4l2_m2m_dst_buf_remove(m2m_ctx);
++			if (!next_dst_buf)
++				m2m_ctx->next_buf_last = true;
++			else
++				v4l2_m2m_last_buffer_done(m2m_ctx,
++							  next_dst_buf);
++		}
++	} else {
++		v4l2_m2m_clear_state(m2m_ctx);
++	}
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_update_stop_streaming_state);
++
++static void v4l2_m2m_force_last_buf_done(struct v4l2_m2m_ctx *m2m_ctx,
++					 struct vb2_queue *q)
++{
++	struct vb2_buffer *vb;
++	struct vb2_v4l2_buffer *vbuf;
++	unsigned int i;
++
++	if (WARN_ON(q->is_output))
++		return;
++	if (list_empty(&q->queued_list))
++		return;
++
++	vb = list_first_entry(&q->queued_list, struct vb2_buffer, queued_entry);
++	for (i = 0; i < vb->num_planes; i++)
++		vb2_set_plane_payload(vb, i, 0);
++
++	/*
++	 * Since the buffer hasn't been queued to the ready queue,
++	 * mark is active and owned before marking it LAST and DONE
++	 */
++	vb->state = VB2_BUF_STATE_ACTIVE;
++	atomic_inc(&q->owned_by_drv_count);
++
++	vbuf = to_vb2_v4l2_buffer(vb);
++	vbuf->field = V4L2_FIELD_NONE;
++
++	v4l2_m2m_last_buffer_done(m2m_ctx, vbuf);
++}
++
+ int v4l2_m2m_qbuf(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
+ 		  struct v4l2_buffer *buf)
+ {
+@@ -499,11 +746,25 @@
+ 			__func__);
+ 		return -EPERM;
+ 	}
++
+ 	ret = vb2_qbuf(vq, vdev->v4l2_dev->mdev, buf);
+-	if (!ret && !(buf->flags & V4L2_BUF_FLAG_IN_REQUEST))
++	if (ret)
++		return ret;
++
++	/*
++	 * If the capture queue is streaming, but streaming hasn't started
++	 * on the device, but was asked to stop, mark the previously queued
++	 * buffer as DONE with LAST flag since it won't be queued on the
++	 * device.
++	 */
++	if (!V4L2_TYPE_IS_OUTPUT(vq->type) &&
++	    vb2_is_streaming(vq) && !vb2_start_streaming_called(vq) &&
++	   (v4l2_m2m_has_stopped(m2m_ctx) || v4l2_m2m_dst_buf_is_last(m2m_ctx)))
++		v4l2_m2m_force_last_buf_done(m2m_ctx, vq);
++	else if (!(buf->flags & V4L2_BUF_FLAG_IN_REQUEST))
+ 		v4l2_m2m_try_schedule(m2m_ctx);
+ 
+-	return ret;
++	return 0;
+ }
+ EXPORT_SYMBOL_GPL(v4l2_m2m_qbuf);
+ 
+@@ -1153,6 +1414,123 @@
+ EXPORT_SYMBOL_GPL(v4l2_m2m_ioctl_try_decoder_cmd);
+ 
+ /*
++ * Updates the encoding state on ENC_CMD_STOP/ENC_CMD_START
++ * Should be called from the encoder driver encoder_cmd() callback
++ */
++int v4l2_m2m_encoder_cmd(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
++			 struct v4l2_encoder_cmd *ec)
++{
++	if (ec->cmd != V4L2_ENC_CMD_STOP && ec->cmd != V4L2_ENC_CMD_START)
++		return -EINVAL;
++
++	if (ec->cmd == V4L2_ENC_CMD_STOP)
++		return v4l2_update_last_buf_state(m2m_ctx);
++
++	if (m2m_ctx->is_draining)
++		return -EBUSY;
++
++	if (m2m_ctx->has_stopped)
++		m2m_ctx->has_stopped = false;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_encoder_cmd);
++
++/*
++ * Updates the decoding state on DEC_CMD_STOP/DEC_CMD_START
++ * Should be called from the decoder driver decoder_cmd() callback
++ */
++int v4l2_m2m_decoder_cmd(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
++			 struct v4l2_decoder_cmd *dc)
++{
++	if (dc->cmd != V4L2_DEC_CMD_STOP && dc->cmd != V4L2_DEC_CMD_START)
++		return -EINVAL;
++
++	if (dc->cmd == V4L2_DEC_CMD_STOP)
++		return v4l2_update_last_buf_state(m2m_ctx);
++
++	if (m2m_ctx->is_draining)
++		return -EBUSY;
++
++	if (m2m_ctx->has_stopped)
++		m2m_ctx->has_stopped = false;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_decoder_cmd);
++
++int v4l2_m2m_ioctl_encoder_cmd(struct file *file, void *priv,
++			       struct v4l2_encoder_cmd *ec)
++{
++	struct v4l2_fh *fh = file->private_data;
++
++	return v4l2_m2m_encoder_cmd(file, fh->m2m_ctx, ec);
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_ioctl_encoder_cmd);
++
++int v4l2_m2m_ioctl_decoder_cmd(struct file *file, void *priv,
++			       struct v4l2_decoder_cmd *dc)
++{
++	struct v4l2_fh *fh = file->private_data;
++
++	return v4l2_m2m_decoder_cmd(file, fh->m2m_ctx, dc);
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_ioctl_decoder_cmd);
++
++int v4l2_m2m_ioctl_stateless_try_decoder_cmd(struct file *file, void *fh,
++					     struct v4l2_decoder_cmd *dc)
++{
++	if (dc->cmd != V4L2_DEC_CMD_FLUSH)
++		return -EINVAL;
++
++	dc->flags = 0;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_ioctl_stateless_try_decoder_cmd);
++
++int v4l2_m2m_ioctl_stateless_decoder_cmd(struct file *file, void *priv,
++					 struct v4l2_decoder_cmd *dc)
++{
++	struct v4l2_fh *fh = file->private_data;
++	struct vb2_v4l2_buffer *out_vb, *cap_vb;
++	struct v4l2_m2m_dev *m2m_dev = fh->m2m_ctx->m2m_dev;
++	unsigned long flags;
++	int ret;
++
++	ret = v4l2_m2m_ioctl_stateless_try_decoder_cmd(file, priv, dc);
++	if (ret < 0)
++		return ret;
++
++	spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
++	out_vb = v4l2_m2m_last_src_buf(fh->m2m_ctx);
++	cap_vb = v4l2_m2m_last_dst_buf(fh->m2m_ctx);
++
++	/*
++	 * If there is an out buffer pending, then clear any HOLD flag.
++	 *
++	 * By clearing this flag we ensure that when this output
++	 * buffer is processed any held capture buffer will be released.
++	 */
++	if (out_vb) {
++		out_vb->flags &= ~V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF;
++	} else if (cap_vb && cap_vb->is_held) {
++		/*
++		 * If there were no output buffers, but there is a
++		 * capture buffer that is held, then release that
++		 * buffer.
++		 */
++		cap_vb->is_held = false;
++		v4l2_m2m_dst_buf_remove(fh->m2m_ctx);
++		v4l2_m2m_buf_done(cap_vb, VB2_BUF_STATE_DONE);
++	}
++	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(v4l2_m2m_ioctl_stateless_decoder_cmd);
++
++/*
+  * v4l2_file_operations helpers. It is assumed here same lock is used
+  * for the output and the capture buffer queue.
+  */

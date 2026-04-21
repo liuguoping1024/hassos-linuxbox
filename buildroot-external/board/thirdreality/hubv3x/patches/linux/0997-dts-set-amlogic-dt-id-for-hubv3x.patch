@@ -1,0 +1,11 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts	2026-04-20 16:46:46.157067019 +0800
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts	2026-04-20 18:39:36.570810867 +0800
+@@ -9,7 +9,7 @@
+ 
+ / {
+ 	model = "Amlogic";
+-	amlogic-dt-id = "axg_s420_1g";
++	amlogic-dt-id = "axg_jethubj100_v1";
+ 	compatible = "amlogic, axg";
+ 	interrupt-parent = <&gic>;
+ 	#address-cells = <2>;

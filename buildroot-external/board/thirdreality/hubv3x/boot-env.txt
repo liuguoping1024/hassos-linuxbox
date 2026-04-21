@@ -1,0 +1,2 @@
+# HubV3X uses SDK kernel 5.4 with Amlogic DTS
+# DTB is embedded in boot.img via mkbootimg, not loaded separately

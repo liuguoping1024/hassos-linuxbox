@@ -1,0 +1,9 @@
+[Unit]
+Description=Zigbee2MQTT memory usage snapshot
+ConditionPathExists=/opt/zigbee2mqtt/index.js
+After=mnt-data.mount
+Requires=mnt-data.mount
+
+[Service]
+Type=oneshot
+ExecStart=/opt/zigbee2mqtt/scripts/z2m-mem-monitor.sh

@@ -1,0 +1,4 @@
+--- /dev/null
++++ b/drivers/vpu/Kconfig
+@@ -0,0 +1 @@
++# VPU Kconfig placeholder

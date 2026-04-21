@@ -1,0 +1,596 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/dts/s5pc100-pinctrl.dtsi b/arch/arm/dts/s5pc100-pinctrl.dtsi
+--- a/arch/arm/dts/s5pc100-pinctrl.dtsi	2026-04-02 18:17:40.831486643 +0800
++++ b/arch/arm/dts/s5pc100-pinctrl.dtsi	1970-01-01 08:00:00.000000000 +0800
+@@ -1,180 +0,0 @@
+-/*
+- * U-Boot additions to enable a generic Exynos GPIO driver
+- *
+- * Copyright (c) 2014 Google, Inc
+- */
+-
+-/ {
+-	pinctrl@e0300000 {
+-		gpa0: gpa0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpa1: gpa1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpb: gpb {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpc: gpc {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpd: gpd {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpe0: gpe0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpe1: gpe1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpf0: gpf0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpf1: gpf1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpf2: gpf2 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpf3: gpf3 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpg0: gpg0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpg1: gpg1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpg2: gpg2 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpg3: gpg3 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpi: gpi {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpj0: gpj0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpj1: gpj1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpj2: gpj2 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpj3: gpj3 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpj4: gpj4 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpk0: gpk0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpk1: gpk1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpk2: gpk2 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpk3: gpk3 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpl0: gpl0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpl1: gpl1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpl2: gpl2 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpl3: gpl3 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gpl4: gpl4 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gph0: gph0 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gph1: gph1 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gph2: gph2 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-		gph3: gph3 {
+-			gpio-controller;
+-			#gpio-cells = <2>;
+-		};
+-
+-	};
+-};
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/Kconfig b/arch/arm/Kconfig
+--- a/arch/arm/Kconfig	2026-04-02 18:17:40.751488045 +0800
++++ b/arch/arm/Kconfig	2026-02-09 11:25:46.876988984 +0800
+@@ -732,6 +732,58 @@
+ 	bool "Support ls2085a_simu"
+ 	select ARM64
+ 
++config TARGET_MESON_GX
++	bool "Support meson gx-series 64bit"
++	select ARM64
++
++config TARGET_MESON_GXTV
++	bool "Support meson gxtv-series 64bit"
++	select ARM64
++
++config TARGET_MESON_TXL
++	bool "Support meson txl-series 64bit"
++	select ARM64
++
++config TARGET_MESON_TXLX
++	bool "Support meson txlx-series 64bit"
++	select ARM64
++
++config TARGET_MESON_AXG
++	bool "Support meson axg-series 64bit"
++	select ARM64
++
++config TARGET_MESON_TXHD
++	bool "Support meson txhd-series 64bit"
++	select ARM64
++
++config TARGET_MESON_G12A
++	bool "Support meson g12a-series 64bit"
++	select ARM64
++
++config TARGET_MESON_G12B
++	bool "Support meson g12b-series 64bit"
++	select ARM64
++
++config TARGET_MESON_TL1
++	bool "Support meson tl1-series 64bit"
++	select ARM64
++
++config TARGET_MESON_TM2
++	bool "Support meson tm2-series 64bit"
++	select ARM64
++
++config TARGET_MESON_T5
++	bool "Support meson t5-series 64bit"
++	select ARM64
++
++config TARGET_MESON_T5D
++	bool "Support meson t5d-series 64bit"
++	select ARM64
++
++config TARGET_MESON_T5W
++	bool "Support meson t5d-series 64bit"
++	select ARM64
++
+ config TARGET_LS1021AQDS
+ 	bool "Support ls1021aqds"
+ 	select CPU_V7
+@@ -984,6 +1036,9 @@
+ source "board/xaeniax/Kconfig"
+ source "board/zipitz2/Kconfig"
+ 
++source "board/amlogic/Kconfig"
++source "customer/board/Kconfig"
++
+ source "arch/arm/Kconfig.debug"
+ 
+ endmenu
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/asm-offsets.c b/arch/arm/lib/asm-offsets.c
+--- a/arch/arm/lib/asm-offsets.c	2026-04-02 18:17:40.895485519 +0800
++++ b/arch/arm/lib/asm-offsets.c	2026-02-09 11:25:47.201006654 +0800
+@@ -14,6 +14,7 @@
+ 
+ #include <common.h>
+ #include <linux/kbuild.h>
++#include <linux/arm-smccc.h>
+ 
+ #if defined(CONFIG_MB86R0x)
+ #include <asm/arch/mb86r0x.h>
+@@ -244,5 +245,11 @@
+ 	DEFINE(PLL_DP_HFS_MFN, offsetof(struct dpll, dp_hfs_mfn));
+ #endif
+ 
++#ifdef CONFIG_ARM_SMCCC
++	DEFINE(ARM_SMCCC_RES_X0_OFFS, offsetof(struct arm_smccc_res, a0));
++	DEFINE(ARM_SMCCC_RES_X2_OFFS, offsetof(struct arm_smccc_res, a2));
++	DEFINE(ARM_SMCCC_QUIRK_ID_OFFS, offsetof(struct arm_smccc_quirk, id));
++	DEFINE(ARM_SMCCC_QUIRK_STATE_OFFS, offsetof(struct arm_smccc_quirk, state));
++#endif
+ 	return 0;
+ }
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/bootm.c b/arch/arm/lib/bootm.c
+--- a/arch/arm/lib/bootm.c	2026-04-02 18:17:40.895485519 +0800
++++ b/arch/arm/lib/bootm.c	2026-02-09 11:25:47.201006654 +0800
+@@ -24,11 +24,16 @@
+ #include <linux/compiler.h>
+ #include <bootm.h>
+ #include <vxworks.h>
++#include <asm/arch/timer.h>
+ 
+ #if defined(CONFIG_ARMV7_NONSEC) || defined(CONFIG_ARMV7_VIRT)
+ #include <asm/armv7.h>
+ #endif
+ 
++#if defined(CONFIG_ZIRCON_BOOT_IMAGE)
++#include <zircon/zircon.h>
++#endif
++
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+ static struct tag *params;
+@@ -258,12 +263,14 @@
+ #endif
+ 
+ /* Subcommand: GO */
++extern void jump_to_a32_kernel(unsigned long, unsigned long, unsigned long);
+ static void boot_jump_linux(bootm_headers_t *images, int flag)
+ {
+ #ifdef CONFIG_ARM64
+ 	void (*kernel_entry)(void *fdt_addr, void *res0, void *res1,
+ 			void *res2);
+ 	int fake = (flag & BOOTM_STATE_OS_FAKE_GO);
++	unsigned long machid = 0xf81;
+ 
+ 	kernel_entry = (void (*)(void *fdt_addr, void *res0, void *res1,
+ 				void *res2))images->ep;
+@@ -271,12 +278,53 @@
+ 	debug("## Transferring control to Linux (at address %lx)...\n",
+ 		(ulong) kernel_entry);
+ 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
++#ifdef CONFIG_AML_KASLR_SEED
++	int node, ret, len;
++	char *prop, *bootargs;
++	uint64_t seed;
++
++	node = fdt_path_offset(images->ft_addr, "/chosen");
++	if (node < 0)
++		printf("Can't find /chosen node from DTB\n");
++
++	bootargs = (char *)fdt_getprop(images->ft_addr, node, "bootargs", &len);
++	if (!bootargs)
++		printf("Can't find bootargs property in chosen\n");
++
++	if (bootargs && strstr(bootargs, "ramoops_io_en=1")) {
++		ret = fdt_appendprop_string(images->ft_addr, node, "bootargs", " nokaslr");
++		if (!ret)
++			printf("Not enable kaslr for debug purpose\n");
++		else
++			printf("Fail to set nokaslr %s\n", fdt_strerror(ret));
++	} else {
++		prop = (char *)fdt_getprop(images->ft_addr, node, "kaslr-seed", NULL);
++		if (!prop) {
++			printf("Can't find kaslr-seed property in chosen\n");
++		} else {
++			srand(timer_get_us());
++			seed = (uint64_t)rand();
++			//printf("--leo-- seed 0x%llx\n", seed);
++
++			ret = fdt_setprop(images->ft_addr, node, "kaslr-seed", &seed, sizeof(seed));
++			if (!ret)
++				printf("Enable kaslr\n");
++			else
++				printf("Can't set kaslr-seed value in chosen\n");
++		}
++	}
++#endif
+ 
+ 	announce_and_cleanup(fake);
+ 
+ 	if (!fake) {
+ 		do_nonsec_virt_switch();
+-		kernel_entry(images->ft_addr, NULL, NULL, NULL);
++		gd->flags &= ~GD_FLG_SILENT;
++		printf("uboot time: %u us\n", get_time());
++		if (images->os.arch == IH_ARCH_ARM)
++			jump_to_a32_kernel(images->ep, machid, (unsigned long)images->ft_addr);
++		else
++			kernel_entry(images->ft_addr, NULL, NULL, NULL);
+ 	}
+ #else
+ 	unsigned long machid = gd->bd->bi_arch_number;
+@@ -398,3 +446,43 @@
+ 	((void (*)(void *))images->ep)(images->ft_addr);
+ }
+ #endif
++
++#if defined(CONFIG_ZIRCON_BOOT_IMAGE)
++
++#define ZIRCON_KERNEL_ALIGN	65536
++
++int do_bootm_zircon(int flag, int argc, char * const argv[],
++		   bootm_headers_t *images)
++{
++	zbi_header_t* zbi = (zbi_header_t *)images->ep;
++	const zbi_header_t* kernel_hdr = &zbi[1];
++	const zbi_kernel_t* kernel = (zbi_kernel_t *)&zbi[2];
++
++	int ret = zircon_preboot(zbi);
++	if (ret < 0) {
++	    printf("zircon_preboot failed\n");
++	    return ret;
++	}
++
++	uint32_t zbi_len = zbi->length + sizeof(zbi_header_t);
++	uint32_t kernel_len = kernel_hdr->length + 2 * sizeof(zbi_header_t);
++
++	// If zbi_len is greater than kernel_len,
++	// then we have boot items after the kernel.
++	// In that case we must relocate the kernel after the zbi
++	if (zbi_len > kernel_len) {
++		uintptr_t dest = (ulong)zbi + zbi_len;
++		// align to 64K boundary
++		dest = (dest + ZIRCON_KERNEL_ALIGN - 1) & ~(ZIRCON_KERNEL_ALIGN - 1);
++		memcpy((void *)dest, zbi, kernel_len);
++		images->ep = dest + kernel->entry;
++	} else {
++		images->ep = (ulong)zbi + kernel->entry;
++	}
++
++	// this will pass the zbi pointer to the kernel via x0
++	images->ft_addr = (char *)zbi;
++	boot_jump_linux(images, flag);
++	return 0;
++}
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/interrupts_64.c b/arch/arm/lib/interrupts_64.c
+--- a/arch/arm/lib/interrupts_64.c	2026-04-02 18:17:40.895485519 +0800
++++ b/arch/arm/lib/interrupts_64.c	2026-02-09 11:25:47.201006654 +0800
+@@ -7,7 +7,9 @@
+ 
+ #include <common.h>
+ #include <linux/compiler.h>
+-
++#ifdef CONFIG_KALLSYMS
++#include "stacktrace_64.h"
++#endif
+ 
+ int interrupt_init(void)
+ {
+@@ -33,6 +35,11 @@
+ 	for (i = 0; i < 29; i += 2)
+ 		printf("x%-2d: %016lx x%-2d: %016lx\n",
+ 		       i, regs->regs[i], i+1, regs->regs[i+1]);
++#ifdef CONFIG_KALLSYMS
++	dump_backtrace(regs);
++#else
++	printf("\n\n !!! enable CONFIG_KALLSYMS to show call trace !!!\n");
++#endif
+ 	printf("\n");
+ }
+ 
+@@ -76,12 +83,13 @@
+ 	panic("Resetting CPU ...\n");
+ }
+ 
++
+ /*
+  * do_sync handles the Synchronous Abort exception.
+  */
+-void do_sync(struct pt_regs *pt_regs, unsigned int esr)
++void do_sync(struct pt_regs *pt_regs, unsigned int esr, unsigned long far)
+ {
+-	printf("\"Synchronous Abort\" handler, esr 0x%08x\n", esr);
++	printf("\"Synchronous Abort\" handler, esr 0x%08x, far:%lx\n", esr, far);
+ 	show_regs(pt_regs);
+ 	panic("Resetting CPU ...\n");
+ }
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/Makefile b/arch/arm/lib/Makefile
+--- a/arch/arm/lib/Makefile	2026-04-02 18:17:40.895485519 +0800
++++ b/arch/arm/lib/Makefile	2026-02-09 11:25:47.201006654 +0800
+@@ -38,6 +38,7 @@
+ ifdef CONFIG_ARM64
+ obj-y	+= gic_64.o
+ obj-y	+= interrupts_64.o
++obj-$(CONFIG_KALLSYMS) += stacktrace_64.o
+ else
+ obj-y	+= interrupts.o
+ endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/reset.c b/arch/arm/lib/reset.c
+--- a/arch/arm/lib/reset.c	2026-04-02 18:17:40.895485519 +0800
++++ b/arch/arm/lib/reset.c	2026-02-09 11:25:47.201006654 +0800
+@@ -25,6 +25,10 @@
+ 
+ __weak void reset_misc(void)
+ {
++#ifdef CONFIG_AML_NAND
++	extern void amlnf_hardreset(void);
++	amlnf_hardreset();
++#endif
+ }
+ 
+ int do_reset(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/sections.c b/arch/arm/lib/sections.c
+--- a/arch/arm/lib/sections.c	2026-04-02 18:17:40.895485519 +0800
++++ b/arch/arm/lib/sections.c	2026-02-09 11:25:47.201006654 +0800
+@@ -19,9 +19,11 @@
+  * aliasing warnings.
+  */
+ 
++
+ char __bss_start[0] __attribute__((section(".__bss_start")));
+ char __bss_end[0] __attribute__((section(".__bss_end")));
+ char __image_copy_start[0] __attribute__((section(".__image_copy_start")));
++char __rodata_start[0] __attribute__((section(".__rodata_start")));
+ char __image_copy_end[0] __attribute__((section(".__image_copy_end")));
+ char __rel_dyn_start[0] __attribute__((section(".__rel_dyn_start")));
+ char __rel_dyn_end[0] __attribute__((section(".__rel_dyn_end")));
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/stacktrace_64.c b/arch/arm/lib/stacktrace_64.c
+--- a/arch/arm/lib/stacktrace_64.c	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/lib/stacktrace_64.c	2026-02-09 11:25:47.201006654 +0800
+@@ -0,0 +1,85 @@
++#include <common.h>
++#include <linux/compiler.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++void print_symbol(unsigned long addr, unsigned long offset)
++{
++	const char *sym;
++	unsigned long base;
++	unsigned long end;
++	unsigned long size;
++	unsigned long faddr = addr - offset;
++
++	sym = symbol_lookup(faddr, &base, &end);
++	if (sym) {
++		size = end - base;
++		printf("[<%016lx>]%s+0x%lx/0x%lx\n", addr, sym, addr-(base+offset), size);
++	} else {
++		printf("[<%016lx>]%s\n", addr, "N/A");
++	}
++}
++
++static int unwind_frame(struct stackframe *frame)
++{
++	unsigned long fp = frame->fp;
++	unsigned long stack_high;
++	unsigned long stack_low;
++
++	stack_low = frame->sp;
++	stack_high = gd->start_addr_sp;
++	frame->fp = *(unsigned long *)(fp);
++
++	if (frame->fp < stack_low || fp > stack_high - 0x10)
++		return -1;
++
++	frame->sp = fp + 0x10;
++	/*
++	 * -4 here because we care about the PC not
++	 * where the return will go
++	 */
++	frame->pc = *(unsigned long *)(fp+8) - 4;
++
++	return 0;
++}
++
++int dump_backtrace(struct pt_regs *regs)
++{
++	struct stackframe frame;
++	unsigned long offset;
++	const register unsigned long current_sp asm ("sp");
++	int ret;
++
++	offset = gd->reloc_off;
++	memset(&frame, 0x00, sizeof(frame));
++	if (regs) {
++		frame.fp = regs->regs[29];
++		frame.sp = regs->regs[31];
++		frame.pc = regs->elr;
++	} else {
++		frame.fp = (unsigned long)__builtin_frame_address(0);
++		/*
++		 * +0x10 to reach the real bottom of
++		 * the curent frame
++		 */
++		frame.sp = current_sp + 0x10;
++		frame.pc = (unsigned long)dump_backtrace;
++	}
++
++	printf("\nCall trace: \n");
++	while (1) {
++		unsigned long where = frame.pc;
++		print_symbol(where, offset);
++
++		ret = unwind_frame(&frame);
++		if (ret < 0)
++			break;
++	}
++
++	return 0;
++}
++
++void stack_dump(void)
++{
++	dump_backtrace(NULL);
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/arm/lib/stacktrace_64.h b/arch/arm/lib/stacktrace_64.h
+--- a/arch/arm/lib/stacktrace_64.h	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/lib/stacktrace_64.h	2026-02-09 11:25:47.201006654 +0800
+@@ -0,0 +1,8 @@
++#ifndef _STACKTRACE_64_H_
++#define _STACKTRACE_64_H_
++
++#include <common.h>
++
++int dump_backtrace(struct pt_regs *regs);
++
++#endif

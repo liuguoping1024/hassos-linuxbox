@@ -1,0 +1,1604 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/commoncap.c b/security/commoncap.c
+--- a/security/commoncap.c	2026-04-10 14:05:39.987680324 +0800
++++ b/security/commoncap.c	2026-02-09 11:25:59.853697071 +0800
+@@ -297,7 +297,8 @@
+ 	struct inode *inode = d_backing_inode(dentry);
+ 	int error;
+ 
+-	error = __vfs_getxattr(dentry, inode, XATTR_NAME_CAPS, NULL, 0);
++	error = __vfs_getxattr(dentry, inode, XATTR_NAME_CAPS, NULL, 0,
++			       XATTR_NOSECURITY);
+ 	return error > 0;
+ }
+ 
+@@ -605,7 +606,8 @@
+ 
+ 	fs_ns = inode->i_sb->s_user_ns;
+ 	size = __vfs_getxattr((struct dentry *)dentry, inode,
+-			      XATTR_NAME_CAPS, &data, XATTR_CAPS_SZ);
++			      XATTR_NAME_CAPS, &data, XATTR_CAPS_SZ,
++			      XATTR_NOSECURITY);
+ 	if (size == -ENODATA || size == -EOPNOTSUPP)
+ 		/* no data, that's ok */
+ 		return -ENODATA;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/inode.c b/security/inode.c
+--- a/security/inode.c	2026-04-10 14:05:39.987680324 +0800
++++ b/security/inode.c	2026-02-09 11:25:59.853697071 +0800
+@@ -128,7 +128,7 @@
+ 	dir = d_inode(parent);
+ 
+ 	inode_lock(dir);
+-	dentry = lookup_one_len(name, parent, strlen(name));
++	dentry = lookup_one_len2(name, mount, parent, strlen(name));
+ 	if (IS_ERR(dentry))
+ 		goto out;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/integrity/evm/evm_main.c b/security/integrity/evm/evm_main.c
+--- a/security/integrity/evm/evm_main.c	2026-04-10 14:05:39.987680324 +0800
++++ b/security/integrity/evm/evm_main.c	2026-02-09 11:25:59.853697071 +0800
+@@ -100,7 +100,8 @@
+ 		return -EOPNOTSUPP;
+ 
+ 	list_for_each_entry_lockless(xattr, &evm_config_xattrnames, list) {
+-		error = __vfs_getxattr(dentry, inode, xattr->name, NULL, 0);
++		error = __vfs_getxattr(dentry, inode, xattr->name, NULL, 0,
++				       XATTR_NOSECURITY);
+ 		if (error < 0) {
+ 			if (error == -ENODATA)
+ 				continue;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/Kconfig.hardening b/security/Kconfig.hardening
+--- a/security/Kconfig.hardening	2026-04-10 14:05:39.979680369 +0800
++++ b/security/Kconfig.hardening	2026-02-09 11:25:59.849696853 +0800
+@@ -19,13 +19,16 @@
+ 
+ menu "Memory initialization"
+ 
+-config CC_HAS_AUTO_VAR_INIT
++config CC_HAS_AUTO_VAR_INIT_PATTERN
+ 	def_bool $(cc-option,-ftrivial-auto-var-init=pattern)
+ 
++config CC_HAS_AUTO_VAR_INIT_ZERO
++	def_bool $(cc-option,-ftrivial-auto-var-init=zero -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang)
++
+ choice
+ 	prompt "Initialize kernel stack variables at function entry"
+ 	default GCC_PLUGIN_STRUCTLEAK_BYREF_ALL if COMPILE_TEST && GCC_PLUGINS
+-	default INIT_STACK_ALL if COMPILE_TEST && CC_HAS_AUTO_VAR_INIT
++	default INIT_STACK_ALL_PATTERN if COMPILE_TEST && CC_HAS_AUTO_VAR_INIT_PATTERN
+ 	default INIT_STACK_NONE
+ 	help
+ 	  This option enables initialization of stack variables at
+@@ -88,9 +91,9 @@
+ 		  of uninitialized stack variable exploits and information
+ 		  exposures.
+ 
+-	config INIT_STACK_ALL
++	config INIT_STACK_ALL_PATTERN
+ 		bool "0xAA-init everything on the stack (strongest)"
+-		depends on CC_HAS_AUTO_VAR_INIT
++		depends on CC_HAS_AUTO_VAR_INIT_PATTERN
+ 		help
+ 		  Initializes everything on the stack with a 0xAA
+ 		  pattern. This is intended to eliminate all classes
+@@ -98,6 +101,24 @@
+ 		  exposures, even variables that were warned to have been
+ 		  left uninitialized.
+ 
++		  Pattern initialization is known to provoke many existing bugs
++		  related to uninitialized locals, e.g. pointers receive
++		  non-NULL values, buffer sizes and indices are very big.
++
++	config INIT_STACK_ALL_ZERO
++		bool "zero-init everything on the stack (strongest and safest)"
++		depends on CC_HAS_AUTO_VAR_INIT_ZERO
++		help
++		  Initializes everything on the stack with a zero
++		  value. This is intended to eliminate all classes
++		  of uninitialized stack variable exploits and information
++		  exposures, even variables that were warned to have been
++		  left uninitialized.
++
++		  Zero initialization provides safe defaults for strings,
++		  pointers, indices and sizes, and is therefore
++		  more suitable as a security mitigation measure.
++
+ endchoice
+ 
+ config GCC_PLUGIN_STRUCTLEAK_VERBOSE
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/security.c b/security/security.c
+--- a/security/security.c	2026-04-10 14:05:39.995680280 +0800
++++ b/security/security.c	2026-02-09 11:25:59.861697509 +0800
+@@ -904,11 +904,13 @@
+ 	return call_int_hook(move_mount, 0, from_path, to_path);
+ }
+ 
++#ifndef CONFIG_AMLOGIC_ANDROIDP
+ int security_path_notify(const struct path *path, u64 mask,
+-				unsigned int obj_type)
++			unsigned int obj_type)
+ {
+ 	return call_int_hook(path_notify, 0, path, mask, obj_type);
+ }
++#endif
+ 
+ int security_inode_alloc(struct inode *inode)
+ {
+@@ -1001,6 +1003,14 @@
+ }
+ EXPORT_SYMBOL(security_inode_init_security);
+ 
++int security_inode_init_security_anon(struct inode *inode,
++				      const struct qstr *name,
++				      const struct inode *context_inode)
++{
++	return call_int_hook(inode_init_security_anon, 0, inode, name,
++			     context_inode);
++}
++
+ int security_old_inode_init_security(struct inode *inode, struct inode *dir,
+ 				     const struct qstr *qstr, const char **name,
+ 				     void **value, size_t *len)
+@@ -2404,3 +2414,30 @@
+ 	return call_int_hook(locked_down, 0, what);
+ }
+ EXPORT_SYMBOL(security_locked_down);
++
++#ifdef CONFIG_PERF_EVENTS
++int security_perf_event_open(struct perf_event_attr *attr, int type)
++{
++	return call_int_hook(perf_event_open, 0, attr, type);
++}
++
++int security_perf_event_alloc(struct perf_event *event)
++{
++	return call_int_hook(perf_event_alloc, 0, event);
++}
++
++void security_perf_event_free(struct perf_event *event)
++{
++	call_void_hook(perf_event_free, event);
++}
++
++int security_perf_event_read(struct perf_event *event)
++{
++	return call_int_hook(perf_event_read, 0, event);
++}
++
++int security_perf_event_write(struct perf_event *event)
++{
++	return call_int_hook(perf_event_write, 0, event);
++}
++#endif /* CONFIG_PERF_EVENTS */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/avc.c b/security/selinux/avc.c
+--- a/security/selinux/avc.c	2026-04-10 14:05:39.995680280 +0800
++++ b/security/selinux/avc.c	2026-02-09 11:25:59.861697509 +0800
+@@ -31,6 +31,9 @@
+ #include "avc_ss.h"
+ #include "classmap.h"
+ 
++#define CREATE_TRACE_POINTS
++#include <trace/events/avc.h>
++
+ #define AVC_CACHE_SLOTS			512
+ #define AVC_DEF_CACHE_THRESHOLD		512
+ #define AVC_CACHE_RECLAIM		16
+@@ -703,33 +706,37 @@
+ {
+ 	struct common_audit_data *ad = a;
+ 	struct selinux_audit_data *sad = ad->selinux_audit_data;
+-	char *scontext;
++	char *scontext = NULL;
++	char *tcontext = NULL;
++	const char *tclass = NULL;
+ 	u32 scontext_len;
++	u32 tcontext_len;
+ 	int rc;
+ 
+ 	rc = security_sid_to_context(sad->state, sad->ssid, &scontext,
+ 				     &scontext_len);
+ 	if (rc)
+ 		audit_log_format(ab, " ssid=%d", sad->ssid);
+-	else {
++	else
+ 		audit_log_format(ab, " scontext=%s", scontext);
+-		kfree(scontext);
+-	}
+ 
+-	rc = security_sid_to_context(sad->state, sad->tsid, &scontext,
+-				     &scontext_len);
++	rc = security_sid_to_context(sad->state, sad->tsid, &tcontext,
++				     &tcontext_len);
+ 	if (rc)
+ 		audit_log_format(ab, " tsid=%d", sad->tsid);
+-	else {
+-		audit_log_format(ab, " tcontext=%s", scontext);
+-		kfree(scontext);
+-	}
++	else
++		audit_log_format(ab, " tcontext=%s", tcontext);
+ 
+-	audit_log_format(ab, " tclass=%s", secclass_map[sad->tclass-1].name);
++	tclass = secclass_map[sad->tclass-1].name;
++	audit_log_format(ab, " tclass=%s", tclass);
+ 
+ 	if (sad->denied)
+ 		audit_log_format(ab, " permissive=%u", sad->result ? 0 : 1);
+ 
++	trace_selinux_audited(sad, scontext, tcontext, tclass);
++	kfree(tcontext);
++	kfree(scontext);
++
+ 	/* in case of invalid context report also the actual context string */
+ 	rc = security_sid_to_context_inval(sad->state, sad->ssid, &scontext,
+ 					   &scontext_len);
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/hooks.c b/security/selinux/hooks.c
+--- a/security/selinux/hooks.c	2026-04-10 14:05:39.999680258 +0800
++++ b/security/selinux/hooks.c	2026-02-09 11:25:59.861697509 +0800
+@@ -89,8 +89,10 @@
+ #include <linux/kernfs.h>
+ #include <linux/stringhash.h>	/* for hashlen_string() */
+ #include <uapi/linux/mount.h>
++#ifndef CONFIG_AMLOGIC_ANDROIDP
+ #include <linux/fsnotify.h>
+ #include <linux/fanotify.h>
++#endif
+ 
+ #include "avc.h"
+ #include "objsec.h"
+@@ -554,7 +556,8 @@
+ 			goto out;
+ 		}
+ 
+-		rc = __vfs_getxattr(root, root_inode, XATTR_NAME_SELINUX, NULL, 0);
++		rc = __vfs_getxattr(root, root_inode, XATTR_NAME_SELINUX, NULL,
++				    0, XATTR_NOSECURITY);
+ 		if (rc < 0 && rc != -ENODATA) {
+ 			if (rc == -EOPNOTSUPP)
+ 				pr_warn("SELinux: (dev %s, type "
+@@ -752,6 +755,8 @@
+ 
+ 	if (!strcmp(sb->s_type->name, "debugfs") ||
+ 	    !strcmp(sb->s_type->name, "tracefs") ||
++	    !strcmp(sb->s_type->name, "binder") ||
++	    !strcmp(sb->s_type->name, "bpf") ||
+ 	    !strcmp(sb->s_type->name, "pstore"))
+ 		sbsec->flags |= SE_SBGENFS;
+ 
+@@ -1388,12 +1393,14 @@
+ 		return -ENOMEM;
+ 
+ 	context[len] = '\0';
+-	rc = __vfs_getxattr(dentry, inode, XATTR_NAME_SELINUX, context, len);
++	rc = __vfs_getxattr(dentry, inode, XATTR_NAME_SELINUX, context, len,
++			    XATTR_NOSECURITY);
+ 	if (rc == -ERANGE) {
+ 		kfree(context);
+ 
+ 		/* Need a larger buffer.  Query for the right size. */
+-		rc = __vfs_getxattr(dentry, inode, XATTR_NAME_SELINUX, NULL, 0);
++		rc = __vfs_getxattr(dentry, inode, XATTR_NAME_SELINUX, NULL, 0,
++				    XATTR_NOSECURITY);
+ 		if (rc < 0)
+ 			return rc;
+ 
+@@ -1404,7 +1411,7 @@
+ 
+ 		context[len] = '\0';
+ 		rc = __vfs_getxattr(dentry, inode, XATTR_NAME_SELINUX,
+-				    context, len);
++				    context, len, XATTR_NOSECURITY);
+ 	}
+ 	if (rc < 0) {
+ 		kfree(context);
+@@ -2961,6 +2968,62 @@
+ 	return 0;
+ }
+ 
++static int selinux_inode_init_security_anon(struct inode *inode,
++					    const struct qstr *name,
++					    const struct inode *context_inode)
++{
++	const struct task_security_struct *tsec = selinux_cred(current_cred());
++	struct common_audit_data ad;
++	struct inode_security_struct *isec;
++	int rc;
++
++	if (unlikely(!selinux_state.initialized))
++		return 0;
++
++	isec = selinux_inode(inode);
++
++	/*
++	 * We only get here once per ephemeral inode.  The inode has
++	 * been initialized via inode_alloc_security but is otherwise
++	 * untouched.
++	 */
++
++	if (context_inode) {
++		struct inode_security_struct *context_isec =
++			selinux_inode(context_inode);
++		if (context_isec->initialized != LABEL_INITIALIZED) {
++			pr_err("SELinux:  context_inode is not initialized");
++			return -EACCES;
++		}
++
++		isec->sclass = context_isec->sclass;
++		isec->sid = context_isec->sid;
++	} else {
++		isec->sclass = SECCLASS_ANON_INODE;
++		rc = security_transition_sid(
++			&selinux_state, tsec->sid, tsec->sid,
++			isec->sclass, name, &isec->sid);
++		if (rc)
++			return rc;
++	}
++
++	isec->initialized = LABEL_INITIALIZED;
++	/*
++	 * Now that we've initialized security, check whether we're
++	 * allowed to actually create this type of anonymous inode.
++	 */
++
++	ad.type = LSM_AUDIT_DATA_INODE;
++	ad.u.inode = inode;
++
++	return avc_has_perm(&selinux_state,
++			    tsec->sid,
++			    isec->sid,
++			    isec->sclass,
++			    FILE__CREATE,
++			    &ad);
++}
++
+ static int selinux_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode)
+ {
+ 	return may_create(dir, dentry, SECCLASS_FILE);
+@@ -3311,8 +3374,9 @@
+ 	return -EACCES;
+ }
+ 
++#ifndef CONFIG_AMLOGIC_ANDROIDP
+ static int selinux_path_notify(const struct path *path, u64 mask,
+-						unsigned int obj_type)
++				unsigned int obj_type)
+ {
+ 	int ret;
+ 	u32 perm;
+@@ -3333,7 +3397,7 @@
+ 	case FSNOTIFY_OBJ_TYPE_SB:
+ 		perm = FILE__WATCH_SB;
+ 		ret = superblock_has_perm(current_cred(), path->dentry->d_sb,
+-						FILESYSTEM__WATCH, &ad);
++				FILESYSTEM__WATCH, &ad);
+ 		if (ret)
+ 			return ret;
+ 		break;
+@@ -3343,7 +3407,6 @@
+ 	default:
+ 		return -EINVAL;
+ 	}
+-
+ 	/* blocking watches require the file:watch_with_perm permission */
+ 	if (mask & (ALL_FSNOTIFY_PERM_EVENTS))
+ 		perm |= FILE__WATCH_WITH_PERM;
+@@ -3354,6 +3417,7 @@
+ 
+ 	return path_has_perm(current_cred(), path, perm);
+ }
++#endif
+ 
+ /*
+  * Copy the inode security context value to the user.
+@@ -3727,6 +3791,7 @@
+ static int selinux_mmap_file(struct file *file, unsigned long reqprot,
+ 			     unsigned long prot, unsigned long flags)
+ {
++#ifndef CONFIG_AMLOGIC_ANDROIDP
+ 	struct common_audit_data ad;
+ 	int rc;
+ 
+@@ -3734,11 +3799,12 @@
+ 		ad.type = LSM_AUDIT_DATA_FILE;
+ 		ad.u.file = file;
+ 		rc = inode_has_perm(current_cred(), file_inode(file),
+-				    FILE__MAP, &ad);
++				FILE__MAP, &ad);
+ 		if (rc)
+ 			return rc;
+ 	}
+ 
++#endif
+ 	if (selinux_state.checkreqprot)
+ 		prot = reqprot;
+ 
+@@ -6849,6 +6915,67 @@
+ 	.lbs_msg_msg = sizeof(struct msg_security_struct),
+ };
+ 
++#ifdef CONFIG_PERF_EVENTS
++static int selinux_perf_event_open(struct perf_event_attr *attr, int type)
++{
++	u32 requested, sid = current_sid();
++
++	if (type == PERF_SECURITY_OPEN)
++		requested = PERF_EVENT__OPEN;
++	else if (type == PERF_SECURITY_CPU)
++		requested = PERF_EVENT__CPU;
++	else if (type == PERF_SECURITY_KERNEL)
++		requested = PERF_EVENT__KERNEL;
++	else if (type == PERF_SECURITY_TRACEPOINT)
++		requested = PERF_EVENT__TRACEPOINT;
++	else
++		return -EINVAL;
++
++	return avc_has_perm(&selinux_state, sid, sid, SECCLASS_PERF_EVENT,
++			    requested, NULL);
++}
++
++static int selinux_perf_event_alloc(struct perf_event *event)
++{
++	struct perf_event_security_struct *perfsec;
++
++	perfsec = kzalloc(sizeof(*perfsec), GFP_KERNEL);
++	if (!perfsec)
++		return -ENOMEM;
++
++	perfsec->sid = current_sid();
++	event->security = perfsec;
++
++	return 0;
++}
++
++static void selinux_perf_event_free(struct perf_event *event)
++{
++	struct perf_event_security_struct *perfsec = event->security;
++
++	event->security = NULL;
++	kfree(perfsec);
++}
++
++static int selinux_perf_event_read(struct perf_event *event)
++{
++	struct perf_event_security_struct *perfsec = event->security;
++	u32 sid = current_sid();
++
++	return avc_has_perm(&selinux_state, sid, perfsec->sid,
++			    SECCLASS_PERF_EVENT, PERF_EVENT__READ, NULL);
++}
++
++static int selinux_perf_event_write(struct perf_event *event)
++{
++	struct perf_event_security_struct *perfsec = event->security;
++	u32 sid = current_sid();
++
++	return avc_has_perm(&selinux_state, sid, perfsec->sid,
++			    SECCLASS_PERF_EVENT, PERF_EVENT__WRITE, NULL);
++}
++#endif
++
+ static struct security_hook_list selinux_hooks[] __lsm_ro_after_init = {
+ 	LSM_HOOK_INIT(binder_set_context_mgr, selinux_binder_set_context_mgr),
+ 	LSM_HOOK_INIT(binder_transaction, selinux_binder_transaction),
+@@ -6896,6 +7023,7 @@
+ 	LSM_HOOK_INIT(inode_alloc_security, selinux_inode_alloc_security),
+ 	LSM_HOOK_INIT(inode_free_security, selinux_inode_free_security),
+ 	LSM_HOOK_INIT(inode_init_security, selinux_inode_init_security),
++	LSM_HOOK_INIT(inode_init_security_anon, selinux_inode_init_security_anon),
+ 	LSM_HOOK_INIT(inode_create, selinux_inode_create),
+ 	LSM_HOOK_INIT(inode_link, selinux_inode_link),
+ 	LSM_HOOK_INIT(inode_unlink, selinux_inode_unlink),
+@@ -6920,8 +7048,9 @@
+ 	LSM_HOOK_INIT(inode_getsecid, selinux_inode_getsecid),
+ 	LSM_HOOK_INIT(inode_copy_up, selinux_inode_copy_up),
+ 	LSM_HOOK_INIT(inode_copy_up_xattr, selinux_inode_copy_up_xattr),
++#ifndef CONFIG_AMLOGIC_ANDROIDP
+ 	LSM_HOOK_INIT(path_notify, selinux_path_notify),
+-
++#endif
+ 	LSM_HOOK_INIT(kernfs_init_security, selinux_kernfs_init_security),
+ 
+ 	LSM_HOOK_INIT(file_permission, selinux_file_permission),
+@@ -7086,6 +7215,14 @@
+ 	LSM_HOOK_INIT(bpf_map_free_security, selinux_bpf_map_free),
+ 	LSM_HOOK_INIT(bpf_prog_free_security, selinux_bpf_prog_free),
+ #endif
++
++#ifdef CONFIG_PERF_EVENTS
++	LSM_HOOK_INIT(perf_event_open, selinux_perf_event_open),
++	LSM_HOOK_INIT(perf_event_alloc, selinux_perf_event_alloc),
++	LSM_HOOK_INIT(perf_event_free, selinux_perf_event_free),
++	LSM_HOOK_INIT(perf_event_read, selinux_perf_event_read),
++	LSM_HOOK_INIT(perf_event_write, selinux_perf_event_write),
++#endif
+ };
+ 
+ static __init int selinux_init(void)
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/include/classmap.h b/security/selinux/include/classmap.h
+--- a/security/selinux/include/classmap.h	2026-04-10 14:05:39.999680258 +0800
++++ b/security/selinux/include/classmap.h	2026-02-09 11:25:59.861697509 +0800
+@@ -2,13 +2,25 @@
+ #include <linux/capability.h>
+ #include <linux/socket.h>
+ 
++#ifdef CONFIG_AMLOGIC_ANDROIDP
+ #define COMMON_FILE_SOCK_PERMS "ioctl", "read", "write", "create", \
+-    "getattr", "setattr", "lock", "relabelfrom", "relabelto", "append", "map"
++	"getattr", "setattr", "lock", "relabelfrom", "relabelto", "append"
++#else
++#define COMMON_FILE_SOCK_PERMS "ioctl", "read", "write", "create", \
++	"getattr", "setattr", "lock", "relabelfrom", "relabelto", "append", "map"
++#endif
++
++#ifdef CONFIG_AMLOGIC_ANDROIDP
++#define COMMON_FILE_PERMS COMMON_FILE_SOCK_PERMS, "unlink", "link", \
++	"rename", "execute", "quotaon", "mounton", "audit_access", \
++	"open", "execmod"
++#else
+ 
+ #define COMMON_FILE_PERMS COMMON_FILE_SOCK_PERMS, "unlink", "link", \
+-    "rename", "execute", "quotaon", "mounton", "audit_access", \
++	"rename", "execute", "quotaon", "mounton", "audit_access", \
+ 	"open", "execmod", "watch", "watch_mount", "watch_sb", \
+ 	"watch_with_perm", "watch_reads"
++#endif
+ 
+ #define COMMON_SOCK_PERMS COMMON_FILE_SOCK_PERMS, "bind", "connect", \
+     "listen", "accept", "getopt", "setopt", "shutdown", "recvfrom",  \
+@@ -58,10 +70,18 @@
+ 	    "syslog_console", "module_request", "module_load", NULL } },
+ 	{ "capability",
+ 	  { COMMON_CAP_PERMS, NULL } },
++#ifdef CONFIG_AMLOGIC_ANDROIDP
++	{ "filesystem",
++	  { "mount", "remount", "unmount", "getattr",
++	    "relabelfrom", "relabelto", "associate", "quotamod",
++	    "quotaget", NULL } },
++#else
+ 	{ "filesystem",
+ 	  { "mount", "remount", "unmount", "getattr",
+ 	    "relabelfrom", "relabelto", "associate", "quotamod",
+-	    "quotaget", "watch", NULL } },
++		"quotaget", "watch", NULL } },
++
++#endif
+ 	{ "file",
+ 	  { COMMON_FILE_PERMS,
+ 	    "execute_no_trans", "entrypoint", NULL } },
+@@ -116,7 +136,8 @@
+ 	  { COMMON_IPC_PERMS, NULL } },
+ 	{ "netlink_route_socket",
+ 	  { COMMON_SOCK_PERMS,
+-	    "nlmsg_read", "nlmsg_write", NULL } },
++	    "nlmsg_read", "nlmsg_write", "nlmsg_readpriv", "nlmsg_getneigh",
++	    NULL } },
+ 	{ "netlink_tcpdiag_socket",
+ 	  { COMMON_SOCK_PERMS,
+ 	    "nlmsg_read", "nlmsg_write", NULL } },
+@@ -241,9 +262,14 @@
+ 	{ "infiniband_endport",
+ 	  { "manage_subnet", NULL } },
+ 	{ "bpf",
+-	  {"map_create", "map_read", "map_write", "prog_load", "prog_run"} },
++	  { "map_create", "map_read", "map_write", "prog_load", "prog_run",
++	    NULL } },
+ 	{ "xdp_socket",
+ 	  { COMMON_SOCK_PERMS, NULL } },
++	{ "perf_event",
++	  { "open", "cpu", "kernel", "tracepoint", "read", "write", NULL } },
++	{ "anon_inode",
++	  { COMMON_FILE_PERMS, NULL } },
+ 	{ NULL }
+   };
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/include/objsec.h b/security/selinux/include/objsec.h
+--- a/security/selinux/include/objsec.h	2026-04-10 14:05:39.999680258 +0800
++++ b/security/selinux/include/objsec.h	2026-02-09 11:25:59.861697509 +0800
+@@ -141,7 +141,11 @@
+ };
+ 
+ struct bpf_security_struct {
+-	u32 sid;  /*SID of bpf obj creater*/
++	u32 sid;  /* SID of bpf obj creator */
++};
++
++struct perf_event_security_struct {
++	u32 sid;  /* SID of perf_event obj creator */
+ };
+ 
+ extern struct lsm_blob_sizes selinux_blob_sizes;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/include/security.h b/security/selinux/include/security.h
+--- a/security/selinux/include/security.h	2026-04-10 14:05:39.999680258 +0800
++++ b/security/selinux/include/security.h	2026-02-09 11:25:59.861697509 +0800
+@@ -105,6 +105,9 @@
+ 	bool checkreqprot;
+ 	bool initialized;
+ 	bool policycap[__POLICYDB_CAPABILITY_MAX];
++	bool android_netlink_route;
++	bool android_netlink_getneigh;
++
+ 	struct selinux_avc *avc;
+ 	struct selinux_ss *ss;
+ };
+@@ -177,6 +180,20 @@
+ 	return state->policycap[POLICYDB_CAPABILITY_NNP_NOSUID_TRANSITION];
+ }
+ 
++static inline bool selinux_android_nlroute_getlink(void)
++{
++	struct selinux_state *state = &selinux_state;
++
++	return state->android_netlink_route;
++}
++
++static inline bool selinux_android_nlroute_getneigh(void)
++{
++	struct selinux_state *state = &selinux_state;
++
++	return state->android_netlink_getneigh;
++}
++
+ int security_mls_enabled(struct selinux_state *state);
+ int security_load_policy(struct selinux_state *state,
+ 			 void *data, size_t len);
+@@ -394,5 +411,7 @@
+ extern void avtab_cache_init(void);
+ extern void ebitmap_cache_init(void);
+ extern void hashtab_cache_init(void);
++extern void selinux_nlmsg_init(void);
++extern int security_sidtab_hash_stats(struct selinux_state *state, char *page);
+ 
+ #endif /* _SELINUX_SECURITY_H_ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/Kconfig b/security/selinux/Kconfig
+--- a/security/selinux/Kconfig	2026-04-10 14:05:39.995680280 +0800
++++ b/security/selinux/Kconfig	2026-02-09 11:25:59.861697509 +0800
+@@ -85,3 +85,15 @@
+ 	  via /selinux/checkreqprot if authorized by policy.
+ 
+ 	  If you are unsure how to answer this question, answer 0.
++
++config SECURITY_SELINUX_SIDTAB_HASH_BITS
++	int "NSA SELinux sidtab hashtable size"
++	depends on SECURITY_SELINUX
++	range 8 13
++	default 9
++	help
++	  This option sets the number of buckets used in the sidtab hashtable
++	  to 2^SECURITY_SELINUX_SIDTAB_HASH_BITS buckets. The number of hash
++	  collisions may be viewed at /sys/fs/selinux/ss/sidtab_hash_stats. If
++	  chain lengths are high (e.g. > 20) then selecting a higher value here
++	  will ensure that lookups times are short and stable.
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/nlmsgtab.c b/security/selinux/nlmsgtab.c
+--- a/security/selinux/nlmsgtab.c	2026-04-10 14:05:39.999680258 +0800
++++ b/security/selinux/nlmsgtab.c	2026-02-09 11:25:59.861697509 +0800
+@@ -25,7 +25,7 @@
+ 	u32	perm;
+ };
+ 
+-static const struct nlmsg_perm nlmsg_route_perms[] =
++static struct nlmsg_perm nlmsg_route_perms[] =
+ {
+ 	{ RTM_NEWLINK,		NETLINK_ROUTE_SOCKET__NLMSG_WRITE },
+ 	{ RTM_DELLINK,		NETLINK_ROUTE_SOCKET__NLMSG_WRITE },
+@@ -206,3 +206,43 @@
+ 
+ 	return err;
+ }
++
++static void nlmsg_set_perm_for_type(u32 perm, u16 type)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(nlmsg_route_perms); i++) {
++		if (nlmsg_route_perms[i].nlmsg_type == type) {
++			nlmsg_route_perms[i].perm = perm;
++			break;
++		}
++	}
++}
++
++/**
++ * Use nlmsg_readpriv as the permission for RTM_GETLINK messages if the
++ * netlink_route_getlink policy capability is set. Otherwise use nlmsg_read.
++ * Similarly, use nlmsg_getneigh for RTM_GETNEIGH and RTM_GETNEIGHTBL if the
++ * netlink_route_getneigh policy capability is set. Otherwise use nlmsg_read.
++ */
++void selinux_nlmsg_init(void)
++{
++	if (selinux_android_nlroute_getlink())
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READPRIV,
++					RTM_GETLINK);
++	else
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READ,
++					RTM_GETLINK);
++
++	if (selinux_android_nlroute_getneigh()) {
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_GETNEIGH,
++					RTM_GETNEIGH);
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_GETNEIGH,
++					RTM_GETNEIGHTBL);
++	} else {
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READ,
++					RTM_GETNEIGH);
++		nlmsg_set_perm_for_type(NETLINK_ROUTE_SOCKET__NLMSG_READ,
++					RTM_GETNEIGHTBL);
++	}
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
+--- a/security/selinux/selinuxfs.c	2026-04-10 14:05:39.999680258 +0800
++++ b/security/selinux/selinuxfs.c	2026-02-09 11:25:59.861697509 +0800
+@@ -1486,6 +1486,32 @@
+ 	return length;
+ }
+ 
++static ssize_t sel_read_sidtab_hash_stats(struct file *filp, char __user *buf,
++					size_t count, loff_t *ppos)
++{
++	struct selinux_fs_info *fsi = file_inode(filp)->i_sb->s_fs_info;
++	struct selinux_state *state = fsi->state;
++	char *page;
++	ssize_t length;
++
++	page = (char *)__get_free_page(GFP_KERNEL);
++	if (!page)
++		return -ENOMEM;
++
++	length = security_sidtab_hash_stats(state, page);
++	if (length >= 0)
++		length = simple_read_from_buffer(buf, count, ppos, page,
++						length);
++	free_page((unsigned long)page);
++
++	return length;
++}
++
++static const struct file_operations sel_sidtab_hash_stats_ops = {
++	.read		= sel_read_sidtab_hash_stats,
++	.llseek		= generic_file_llseek,
++};
++
+ static const struct file_operations sel_avc_cache_threshold_ops = {
+ 	.read		= sel_read_avc_cache_threshold,
+ 	.write		= sel_write_avc_cache_threshold,
+@@ -1604,6 +1630,37 @@
+ 	return 0;
+ }
+ 
++static int sel_make_ss_files(struct dentry *dir)
++{
++	struct super_block *sb = dir->d_sb;
++	struct selinux_fs_info *fsi = sb->s_fs_info;
++	int i;
++	static struct tree_descr files[] = {
++		{ "sidtab_hash_stats", &sel_sidtab_hash_stats_ops, S_IRUGO },
++	};
++
++	for (i = 0; i < ARRAY_SIZE(files); i++) {
++		struct inode *inode;
++		struct dentry *dentry;
++
++		dentry = d_alloc_name(dir, files[i].name);
++		if (!dentry)
++			return -ENOMEM;
++
++		inode = sel_make_inode(dir->d_sb, S_IFREG|files[i].mode);
++		if (!inode) {
++			dput(dentry);
++			return -ENOMEM;
++		}
++
++		inode->i_fop = files[i].ops;
++		inode->i_ino = ++fsi->last_ino;
++		d_add(dentry, inode);
++	}
++
++	return 0;
++}
++
+ static ssize_t sel_read_initcon(struct file *file, char __user *buf,
+ 				size_t count, loff_t *ppos)
+ {
+@@ -1968,6 +2025,14 @@
+ 	}
+ 
+ 	ret = sel_make_avc_files(dentry);
++
++	dentry = sel_make_dir(sb->s_root, "ss", &fsi->last_ino);
++	if (IS_ERR(dentry)) {
++		ret = PTR_ERR(dentry);
++		goto err;
++	}
++
++	ret = sel_make_ss_files(dentry);
+ 	if (ret)
+ 		goto err;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/ss/context.h b/security/selinux/ss/context.h
+--- a/security/selinux/ss/context.h	2026-04-10 14:05:39.999680258 +0800
++++ b/security/selinux/ss/context.h	2026-02-09 11:25:59.861697509 +0800
+@@ -31,6 +31,7 @@
+ 	u32 len;        /* length of string in bytes */
+ 	struct mls_range range;
+ 	char *str;	/* string representation if context cannot be mapped. */
++	u32 hash;	/* a hash of the string representation */
+ };
+ 
+ static inline void mls_context_init(struct context *c)
+@@ -136,12 +137,13 @@
+ 		kfree(dst->str);
+ 		return rc;
+ 	}
++	dst->hash = src->hash;
+ 	return 0;
+ }
+ 
+ static inline void context_destroy(struct context *c)
+ {
+-	c->user = c->role = c->type = 0;
++	c->user = c->role = c->type = c->hash = 0;
+ 	kfree(c->str);
+ 	c->str = NULL;
+ 	c->len = 0;
+@@ -150,6 +152,8 @@
+ 
+ static inline int context_cmp(struct context *c1, struct context *c2)
+ {
++	if (c1->hash && c2->hash && (c1->hash != c2->hash))
++		return 0;
+ 	if (c1->len && c2->len)
+ 		return (c1->len == c2->len && !strcmp(c1->str, c2->str));
+ 	if (c1->len || c2->len)
+@@ -160,5 +164,10 @@
+ 		mls_context_cmp(c1, c2));
+ }
+ 
++static inline unsigned int context_compute_hash(const char *s)
++{
++	return full_name_hash(NULL, s, strlen(s));
++}
++
+ #endif	/* _SS_CONTEXT_H_ */
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/ss/policydb.c b/security/selinux/ss/policydb.c
+--- a/security/selinux/ss/policydb.c	2026-04-10 14:05:40.003680236 +0800
++++ b/security/selinux/ss/policydb.c	2026-02-09 11:25:59.861697509 +0800
+@@ -873,6 +873,11 @@
+ 			sidtab_destroy(s);
+ 			goto out;
+ 		}
++		rc = context_add_hash(p, &c->context[0]);
++		if (rc) {
++			sidtab_destroy(s);
++			goto out;
++		}
+ 
+ 		rc = sidtab_set_initial(s, c->sid[0], &c->context[0]);
+ 		if (rc) {
+@@ -2344,6 +2349,14 @@
+ 	p->reject_unknown = !!(le32_to_cpu(buf[1]) & REJECT_UNKNOWN);
+ 	p->allow_unknown = !!(le32_to_cpu(buf[1]) & ALLOW_UNKNOWN);
+ 
++	if ((le32_to_cpu(buf[1]) & POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE)) {
++		p->android_netlink_route = 1;
++	}
++
++	if ((le32_to_cpu(buf[1]) & POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH)) {
++		p->android_netlink_getneigh = 1;
++	}
++
+ 	if (p->policyvers >= POLICYDB_VERSION_POLCAP) {
+ 		rc = ebitmap_read(&p->policycaps, fp);
+ 		if (rc)
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/ss/policydb.h b/security/selinux/ss/policydb.h
+--- a/security/selinux/ss/policydb.h	2026-04-10 14:05:40.003680236 +0800
++++ b/security/selinux/ss/policydb.h	2026-02-09 11:25:59.861697509 +0800
+@@ -234,6 +234,8 @@
+ /* The policy database */
+ struct policydb {
+ 	int mls_enabled;
++	int android_netlink_route;
++	int android_netlink_getneigh;
+ 
+ 	/* symbol tables */
+ 	struct symtab symtab[SYM_NUM];
+@@ -320,6 +322,8 @@
+ #define PERM_SYMTAB_SIZE 32
+ 
+ #define POLICYDB_CONFIG_MLS    1
++#define POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE    (1 << 31)
++#define POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH (1 << 30)
+ 
+ /* the config flags related to unknown classes/perms are bits 2 and 3 */
+ #define REJECT_UNKNOWN	0x00000002
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/ss/services.c b/security/selinux/ss/services.c
+--- a/security/selinux/ss/services.c	2026-04-10 14:05:40.003680236 +0800
++++ b/security/selinux/ss/services.c	2026-02-09 11:25:59.865697727 +0800
+@@ -1257,6 +1257,23 @@
+ 
+ #include "initial_sid_to_string.h"
+ 
++int security_sidtab_hash_stats(struct selinux_state *state, char *page)
++{
++	int rc;
++
++	if (!state->initialized) {
++		pr_err("SELinux: %s:  called before initial load_policy\n",
++		       __func__);
++		return -EINVAL;
++	}
++
++	read_lock(&state->ss->policy_rwlock);
++	rc = sidtab_hash_stats(state->ss->sidtab, page);
++	read_unlock(&state->ss->policy_rwlock);
++
++	return rc;
++}
++
+ const char *security_get_initial_sid_context(u32 sid)
+ {
+ 	if (unlikely(sid > SECINITSID_NUM))
+@@ -1449,6 +1466,42 @@
+ 	return rc;
+ }
+ 
++int context_add_hash(struct policydb *policydb,
++		     struct context *context)
++{
++	int rc;
++	char *str;
++	int len;
++
++	if (context->str) {
++		context->hash = context_compute_hash(context->str);
++	} else {
++		rc = context_struct_to_string(policydb, context,
++					      &str, &len);
++		if (rc)
++			return rc;
++		context->hash = context_compute_hash(str);
++		kfree(str);
++	}
++	return 0;
++}
++
++static int context_struct_to_sid(struct selinux_state *state,
++				 struct context *context, u32 *sid)
++{
++	int rc;
++	struct sidtab *sidtab = state->ss->sidtab;
++	struct policydb *policydb = &state->ss->policydb;
++
++	if (!context->hash) {
++		rc = context_add_hash(policydb, context);
++		if (rc)
++			return rc;
++	}
++
++	return sidtab_context_to_sid(sidtab, context, sid);
++}
++
+ static int security_context_to_sid_core(struct selinux_state *state,
+ 					const char *scontext, u32 scontext_len,
+ 					u32 *sid, u32 def_sid, gfp_t gfp_flags,
+@@ -1501,7 +1554,7 @@
+ 		str = NULL;
+ 	} else if (rc)
+ 		goto out_unlock;
+-	rc = sidtab_context_to_sid(sidtab, &context, sid);
++	rc = context_struct_to_sid(state, &context, sid);
+ 	context_destroy(&context);
+ out_unlock:
+ 	read_unlock(&state->ss->policy_rwlock);
+@@ -1805,7 +1858,7 @@
+ 			goto out_unlock;
+ 	}
+ 	/* Obtain the sid for the context. */
+-	rc = sidtab_context_to_sid(sidtab, &newcontext, out_sid);
++	rc = context_struct_to_sid(state, &newcontext, out_sid);
+ out_unlock:
+ 	read_unlock(&state->ss->policy_rwlock);
+ 	context_destroy(&newcontext);
+@@ -1957,6 +2010,7 @@
+ 			context_init(newc);
+ 			newc->str = s;
+ 			newc->len = oldc->len;
++			newc->hash = oldc->hash;
+ 			return 0;
+ 		}
+ 		kfree(s);
+@@ -2033,6 +2087,10 @@
+ 			goto bad;
+ 	}
+ 
++	rc = context_add_hash(args->newp, newc);
++	if (rc)
++		goto bad;
++
+ 	return 0;
+ bad:
+ 	/* Map old representation to string and save it. */
+@@ -2042,6 +2100,7 @@
+ 	context_destroy(newc);
+ 	newc->str = s;
+ 	newc->len = len;
++	newc->hash = context_compute_hash(s);
+ 	pr_info("SELinux:  Context %s became invalid (unmapped).\n",
+ 		newc->str);
+ 	return 0;
+@@ -2066,6 +2125,10 @@
+ 			pr_info("SELinux:  unknown policy capability %u\n",
+ 				i);
+ 	}
++
++	state->android_netlink_route = p->android_netlink_route;
++	state->android_netlink_getneigh = p->android_netlink_getneigh;
++	selinux_nlmsg_init();
+ }
+ 
+ static int security_preserve_bools(struct selinux_state *state,
+@@ -2622,12 +2685,17 @@
+ 		usercon.role = i + 1;
+ 		ebitmap_for_each_positive_bit(&role->types, tnode, j) {
+ 			usercon.type = j + 1;
++			/*
++			 * The same context struct is reused here so the hash
++			 * must be reset.
++			 */
++			usercon.hash = 0;
+ 
+ 			if (mls_setup_user_range(policydb, fromcon, user,
+ 						 &usercon))
+ 				continue;
+ 
+-			rc = sidtab_context_to_sid(sidtab, &usercon, &sid);
++			rc = context_struct_to_sid(state, &usercon, &sid);
+ 			if (rc)
+ 				goto out_unlock;
+ 			if (mynel < maxnel) {
+@@ -3045,8 +3113,7 @@
+ 			goto out_unlock;
+ 		}
+ 	}
+-
+-	rc = sidtab_context_to_sid(sidtab, &newcon, new_sid);
++	rc = context_struct_to_sid(state, &newcon, new_sid);
+ out_unlock:
+ 	read_unlock(&state->ss->policy_rwlock);
+ 	context_destroy(&newcon);
+@@ -3639,7 +3706,7 @@
+ 		if (!mls_context_isvalid(policydb, &ctx_new))
+ 			goto out_free;
+ 
+-		rc = sidtab_context_to_sid(sidtab, &ctx_new, sid);
++		rc = context_struct_to_sid(state, &ctx_new, sid);
+ 		if (rc)
+ 			goto out_free;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/ss/services.h b/security/selinux/ss/services.h
+--- a/security/selinux/ss/services.h	2026-04-10 14:05:40.003680236 +0800
++++ b/security/selinux/ss/services.h	2026-02-09 11:25:59.865697727 +0800
+@@ -8,7 +8,7 @@
+ #define _SS_SERVICES_H_
+ 
+ #include "policydb.h"
+-#include "sidtab.h"
++#include "context.h"
+ 
+ /* Mapping for a single class */
+ struct selinux_mapping {
+@@ -39,4 +39,6 @@
+ void services_compute_xperms_decision(struct extended_perms_decision *xpermd,
+ 					struct avtab_node *node);
+ 
++int context_add_hash(struct policydb *policydb, struct context *context);
++
+ #endif	/* _SS_SERVICES_H_ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/ss/sidtab.c b/security/selinux/ss/sidtab.c
+--- a/security/selinux/ss/sidtab.c	2026-04-10 14:05:40.003680236 +0800
++++ b/security/selinux/ss/sidtab.c	2026-02-09 11:25:59.865697727 +0800
+@@ -17,26 +17,43 @@
+ #include "security.h"
+ #include "sidtab.h"
+ 
++#define index_to_sid(index) (index + SECINITSID_NUM + 1)
++#define sid_to_index(sid) (sid - (SECINITSID_NUM + 1))
++
+ int sidtab_init(struct sidtab *s)
+ {
+ 	u32 i;
+ 
+ 	memset(s->roots, 0, sizeof(s->roots));
+ 
+-	/* max count is SIDTAB_MAX so valid index is always < SIDTAB_MAX */
+-	for (i = 0; i < SIDTAB_RCACHE_SIZE; i++)
+-		s->rcache[i] = SIDTAB_MAX;
+-
+ 	for (i = 0; i < SECINITSID_NUM; i++)
+ 		s->isids[i].set = 0;
+ 
+ 	s->count = 0;
+ 	s->convert = NULL;
++	hash_init(s->context_to_sid);
+ 
+ 	spin_lock_init(&s->lock);
+ 	return 0;
+ }
+ 
++static u32 context_to_sid(struct sidtab *s, struct context *context)
++{
++	struct sidtab_entry_leaf *entry;
++	u32 sid = 0;
++
++	rcu_read_lock();
++	hash_for_each_possible_rcu(s->context_to_sid, entry, list,
++				   context->hash) {
++		if (context_cmp(&entry->context, context)) {
++			sid = entry->sid;
++			break;
++		}
++	}
++	rcu_read_unlock();
++	return sid;
++}
++
+ int sidtab_set_initial(struct sidtab *s, u32 sid, struct context *context)
+ {
+ 	struct sidtab_isid_entry *entry;
+@@ -47,14 +64,60 @@
+ 
+ 	entry = &s->isids[sid - 1];
+ 
+-	rc = context_cpy(&entry->context, context);
++	rc = context_cpy(&entry->leaf.context, context);
+ 	if (rc)
+ 		return rc;
+ 
+ 	entry->set = 1;
++
++	/*
++	 * Multiple initial sids may map to the same context. Check that this
++	 * context is not already represented in the context_to_sid hashtable
++	 * to avoid duplicate entries and long linked lists upon hash
++	 * collision.
++	 */
++	if (!context_to_sid(s, context)) {
++		entry->leaf.sid = sid;
++		hash_add(s->context_to_sid, &entry->leaf.list, context->hash);
++	}
++
+ 	return 0;
+ }
+ 
++int sidtab_hash_stats(struct sidtab *sidtab, char *page)
++{
++	int i;
++	int chain_len = 0;
++	int slots_used = 0;
++	int entries = 0;
++	int max_chain_len = 0;
++	int cur_bucket = 0;
++	struct sidtab_entry_leaf *entry;
++
++	rcu_read_lock();
++	hash_for_each_rcu(sidtab->context_to_sid, i, entry, list) {
++		entries++;
++		if (i == cur_bucket) {
++			chain_len++;
++			if (chain_len == 1)
++				slots_used++;
++		} else {
++			cur_bucket = i;
++			if (chain_len > max_chain_len)
++				max_chain_len = chain_len;
++			chain_len = 0;
++		}
++	}
++	rcu_read_unlock();
++
++	if (chain_len > max_chain_len)
++		max_chain_len = chain_len;
++
++	return scnprintf(page, PAGE_SIZE, "entries: %d\nbuckets used: %d/%d\n"
++			 "longest chain: %d\n", entries,
++			 slots_used, SIDTAB_HASH_BUCKETS, max_chain_len);
++}
++
+ static u32 sidtab_level_from_count(u32 count)
+ {
+ 	u32 capacity = SIDTAB_LEAF_ENTRIES;
+@@ -88,7 +151,8 @@
+ 	return 0;
+ }
+ 
+-static struct context *sidtab_do_lookup(struct sidtab *s, u32 index, int alloc)
++static struct sidtab_entry_leaf *sidtab_do_lookup(struct sidtab *s, u32 index,
++						  int alloc)
+ {
+ 	union sidtab_entry_inner *entry;
+ 	u32 level, capacity_shift, leaf_index = index / SIDTAB_LEAF_ENTRIES;
+@@ -125,7 +189,7 @@
+ 		if (!entry->ptr_leaf)
+ 			return NULL;
+ 	}
+-	return &entry->ptr_leaf->entries[index % SIDTAB_LEAF_ENTRIES].context;
++	return &entry->ptr_leaf->entries[index % SIDTAB_LEAF_ENTRIES];
+ }
+ 
+ static struct context *sidtab_lookup(struct sidtab *s, u32 index)
+@@ -136,12 +200,12 @@
+ 	if (index >= count)
+ 		return NULL;
+ 
+-	return sidtab_do_lookup(s, index, 0);
++	return &sidtab_do_lookup(s, index, 0)->context;
+ }
+ 
+ static struct context *sidtab_lookup_initial(struct sidtab *s, u32 sid)
+ {
+-	return s->isids[sid - 1].set ? &s->isids[sid - 1].context : NULL;
++	return s->isids[sid - 1].set ? &s->isids[sid - 1].leaf.context : NULL;
+ }
+ 
+ static struct context *sidtab_search_core(struct sidtab *s, u32 sid, int force)
+@@ -150,7 +214,7 @@
+ 
+ 	if (sid != 0) {
+ 		if (sid > SECINITSID_NUM)
+-			context = sidtab_lookup(s, sid - (SECINITSID_NUM + 1));
++			context = sidtab_lookup(s, sid_to_index(sid));
+ 		else
+ 			context = sidtab_lookup_initial(s, sid);
+ 		if (context && (!context->len || force))
+@@ -170,117 +234,30 @@
+ 	return sidtab_search_core(s, sid, 1);
+ }
+ 
+-static int sidtab_find_context(union sidtab_entry_inner entry,
+-			       u32 *pos, u32 count, u32 level,
+-			       struct context *context, u32 *index)
+-{
+-	int rc;
+-	u32 i;
+-
+-	if (level != 0) {
+-		struct sidtab_node_inner *node = entry.ptr_inner;
+-
+-		i = 0;
+-		while (i < SIDTAB_INNER_ENTRIES && *pos < count) {
+-			rc = sidtab_find_context(node->entries[i],
+-						 pos, count, level - 1,
+-						 context, index);
+-			if (rc == 0)
+-				return 0;
+-			i++;
+-		}
+-	} else {
+-		struct sidtab_node_leaf *node = entry.ptr_leaf;
+-
+-		i = 0;
+-		while (i < SIDTAB_LEAF_ENTRIES && *pos < count) {
+-			if (context_cmp(&node->entries[i].context, context)) {
+-				*index = *pos;
+-				return 0;
+-			}
+-			(*pos)++;
+-			i++;
+-		}
+-	}
+-	return -ENOENT;
+-}
+-
+-static void sidtab_rcache_update(struct sidtab *s, u32 index, u32 pos)
+-{
+-	while (pos > 0) {
+-		WRITE_ONCE(s->rcache[pos], READ_ONCE(s->rcache[pos - 1]));
+-		--pos;
+-	}
+-	WRITE_ONCE(s->rcache[0], index);
+-}
+-
+-static void sidtab_rcache_push(struct sidtab *s, u32 index)
+-{
+-	sidtab_rcache_update(s, index, SIDTAB_RCACHE_SIZE - 1);
+-}
+-
+-static int sidtab_rcache_search(struct sidtab *s, struct context *context,
+-				u32 *index)
+-{
+-	u32 i;
+-
+-	for (i = 0; i < SIDTAB_RCACHE_SIZE; i++) {
+-		u32 v = READ_ONCE(s->rcache[i]);
+-
+-		if (v >= SIDTAB_MAX)
+-			continue;
+-
+-		if (context_cmp(sidtab_do_lookup(s, v, 0), context)) {
+-			sidtab_rcache_update(s, v, i);
+-			*index = v;
+-			return 0;
+-		}
+-	}
+-	return -ENOENT;
+-}
+-
+-static int sidtab_reverse_lookup(struct sidtab *s, struct context *context,
+-				 u32 *index)
++int sidtab_context_to_sid(struct sidtab *s, struct context *context,
++			  u32 *sid)
+ {
+ 	unsigned long flags;
+-	u32 count, count_locked, level, pos;
++	u32 count;
+ 	struct sidtab_convert_params *convert;
+-	struct context *dst, *dst_convert;
++	struct sidtab_entry_leaf *dst, *dst_convert;
+ 	int rc;
+ 
+-	rc = sidtab_rcache_search(s, context, index);
+-	if (rc == 0)
+-		return 0;
+-
+-	/* read entries only after reading count */
+-	count = smp_load_acquire(&s->count);
+-	level = sidtab_level_from_count(count);
+-
+-	pos = 0;
+-	rc = sidtab_find_context(s->roots[level], &pos, count, level,
+-				 context, index);
+-	if (rc == 0) {
+-		sidtab_rcache_push(s, *index);
++	*sid = context_to_sid(s, context);
++	if (*sid)
+ 		return 0;
+-	}
+ 
+ 	/* lock-free search failed: lock, re-search, and insert if not found */
+ 	spin_lock_irqsave(&s->lock, flags);
+ 
+-	convert = s->convert;
+-	count_locked = s->count;
+-	level = sidtab_level_from_count(count_locked);
++	rc = 0;
++	*sid = context_to_sid(s, context);
++	if (*sid)
++		goto out_unlock;
+ 
+-	/* if count has changed before we acquired the lock, then catch up */
+-	while (count < count_locked) {
+-		if (context_cmp(sidtab_do_lookup(s, count, 0), context)) {
+-			sidtab_rcache_push(s, count);
+-			*index = count;
+-			rc = 0;
+-			goto out_unlock;
+-		}
+-		++count;
+-	}
++	/* read entries only after reading count */
++	count = smp_load_acquire(&s->count);
++	convert = s->convert;
+ 
+ 	/* bail out if we already reached max entries */
+ 	rc = -EOVERFLOW;
+@@ -293,7 +270,9 @@
+ 	if (!dst)
+ 		goto out_unlock;
+ 
+-	rc = context_cpy(dst, context);
++	dst->sid = index_to_sid(count);
++
++	rc = context_cpy(&dst->context, context);
+ 	if (rc)
+ 		goto out_unlock;
+ 
+@@ -305,29 +284,32 @@
+ 		rc = -ENOMEM;
+ 		dst_convert = sidtab_do_lookup(convert->target, count, 1);
+ 		if (!dst_convert) {
+-			context_destroy(dst);
++			context_destroy(&dst->context);
+ 			goto out_unlock;
+ 		}
+ 
+-		rc = convert->func(context, dst_convert, convert->args);
++		rc = convert->func(context, &dst_convert->context,
++				convert->args);
+ 		if (rc) {
+-			context_destroy(dst);
++			context_destroy(&dst->context);
+ 			goto out_unlock;
+ 		}
+-
+-		/* at this point we know the insert won't fail */
++		dst_convert->sid = index_to_sid(count);
+ 		convert->target->count = count + 1;
++
++		hash_add_rcu(convert->target->context_to_sid,
++				&dst_convert->list, dst_convert->context.hash);
+ 	}
+ 
+ 	if (context->len)
+ 		pr_info("SELinux:  Context %s is not valid (left unmapped).\n",
+ 			context->str);
+ 
+-	sidtab_rcache_push(s, count);
+-	*index = count;
++	*sid = index_to_sid(count);
+ 
+-	/* write entries before writing new count */
++	/* write entries before updating count */
+ 	smp_store_release(&s->count, count + 1);
++	hash_add_rcu(s->context_to_sid, &dst->list, dst->context.hash);
+ 
+ 	rc = 0;
+ out_unlock:
+@@ -335,25 +317,19 @@
+ 	return rc;
+ }
+ 
+-int sidtab_context_to_sid(struct sidtab *s, struct context *context, u32 *sid)
++static void sidtab_convert_hashtable(struct sidtab *s, u32 count)
+ {
+-	int rc;
++	struct sidtab_entry_leaf *entry;
+ 	u32 i;
+ 
+-	for (i = 0; i < SECINITSID_NUM; i++) {
+-		struct sidtab_isid_entry *entry = &s->isids[i];
++	for (i = 0; i < count; i++) {
++		entry = sidtab_do_lookup(s, i, 0);
++		entry->sid = index_to_sid(i);
+ 
+-		if (entry->set && context_cmp(context, &entry->context)) {
+-			*sid = i + 1;
+-			return 0;
+-		}
+-	}
++		hash_add_rcu(s->context_to_sid, &entry->list,
++				entry->context.hash);
+ 
+-	rc = sidtab_reverse_lookup(s, context, sid);
+-	if (rc)
+-		return rc;
+-	*sid += SECINITSID_NUM + 1;
+-	return 0;
++	}
+ }
+ 
+ static int sidtab_convert_tree(union sidtab_entry_inner *edst,
+@@ -400,6 +376,7 @@
+ 		}
+ 		cond_resched();
+ 	}
++
+ 	return 0;
+ }
+ 
+@@ -435,7 +412,7 @@
+ 	/* enable live convert of new entries */
+ 	s->convert = params;
+ 
+-	/* we can safely do the rest of the conversion outside the lock */
++	/* we can safely convert the tree outside the lock */
+ 	spin_unlock_irqrestore(&s->lock, flags);
+ 
+ 	pr_info("SELinux:  Converting %u SID table entries...\n", count);
+@@ -449,8 +426,17 @@
+ 		spin_lock_irqsave(&s->lock, flags);
+ 		s->convert = NULL;
+ 		spin_unlock_irqrestore(&s->lock, flags);
++		return rc;
+ 	}
+-	return rc;
++	/*
++	 * The hashtable can also be modified in sidtab_context_to_sid()
++	 * so we must re-acquire the lock here.
++	 */
++	spin_lock_irqsave(&s->lock, flags);
++	sidtab_convert_hashtable(params->target, count);
++	spin_unlock_irqrestore(&s->lock, flags);
++
++	return 0;
+ }
+ 
+ static void sidtab_destroy_tree(union sidtab_entry_inner entry, u32 level)
+@@ -484,11 +470,16 @@
+ 
+ 	for (i = 0; i < SECINITSID_NUM; i++)
+ 		if (s->isids[i].set)
+-			context_destroy(&s->isids[i].context);
++			context_destroy(&s->isids[i].leaf.context);
+ 
+ 	level = SIDTAB_MAX_LEVEL;
+ 	while (level && !s->roots[level].ptr_inner)
+ 		--level;
+ 
+ 	sidtab_destroy_tree(s->roots[level], level);
++	/*
++	 * The context_to_sid hashtable's objects are all shared
++	 * with the isids array and context tree, and so don't need
++	 * to be cleaned up here.
++	 */
+ }
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/selinux/ss/sidtab.h b/security/selinux/ss/sidtab.h
+--- a/security/selinux/ss/sidtab.h	2026-04-10 14:05:40.003680236 +0800
++++ b/security/selinux/ss/sidtab.h	2026-02-09 11:25:59.865697727 +0800
+@@ -13,11 +13,14 @@
+ 
+ #include <linux/spinlock_types.h>
+ #include <linux/log2.h>
++#include <linux/hashtable.h>
+ 
+ #include "context.h"
+ 
+ struct sidtab_entry_leaf {
++	u32 sid;
+ 	struct context context;
++	struct hlist_node list;
+ };
+ 
+ struct sidtab_node_inner;
+@@ -57,7 +60,7 @@
+ 
+ struct sidtab_isid_entry {
+ 	int set;
+-	struct context context;
++	struct sidtab_entry_leaf leaf;
+ };
+ 
+ struct sidtab_convert_params {
+@@ -66,7 +69,8 @@
+ 	struct sidtab *target;
+ };
+ 
+-#define SIDTAB_RCACHE_SIZE 3
++#define SIDTAB_HASH_BITS CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS
++#define SIDTAB_HASH_BUCKETS (1 << SIDTAB_HASH_BITS)
+ 
+ struct sidtab {
+ 	/*
+@@ -83,11 +87,11 @@
+ 	struct sidtab_convert_params *convert;
+ 	spinlock_t lock;
+ 
+-	/* reverse lookup cache - access atomically via {READ|WRITE}_ONCE() */
+-	u32 rcache[SIDTAB_RCACHE_SIZE];
+-
+ 	/* index == SID - 1 (no entry for SECSID_NULL) */
+ 	struct sidtab_isid_entry isids[SECINITSID_NUM];
++
++	/* Hash table for fast reverse context-to-sid lookups. */
++	DECLARE_HASHTABLE(context_to_sid, SIDTAB_HASH_BITS);
+ };
+ 
+ int sidtab_init(struct sidtab *s);
+@@ -101,6 +105,8 @@
+ 
+ void sidtab_destroy(struct sidtab *s);
+ 
++int sidtab_hash_stats(struct sidtab *sidtab, char *page);
++
+ #endif	/* _SS_SIDTAB_H_ */
+ 
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/security/smack/smack_lsm.c b/security/smack/smack_lsm.c
+--- a/security/smack/smack_lsm.c	2026-04-10 14:05:40.003680236 +0800
++++ b/security/smack/smack_lsm.c	2026-02-09 11:25:59.865697727 +0800
+@@ -290,7 +290,8 @@
+ 	if (buffer == NULL)
+ 		return ERR_PTR(-ENOMEM);
+ 
+-	rc = __vfs_getxattr(dp, ip, name, buffer, SMK_LONGLABEL);
++	rc = __vfs_getxattr(dp, ip, name, buffer, SMK_LONGLABEL,
++			    XATTR_NOSECURITY);
+ 	if (rc < 0)
+ 		skp = ERR_PTR(rc);
+ 	else if (rc == 0)
+@@ -3428,7 +3429,7 @@
+ 			} else {
+ 				rc = __vfs_getxattr(dp, inode,
+ 					XATTR_NAME_SMACKTRANSMUTE, trattr,
+-					TRANS_TRUE_SIZE);
++					TRANS_TRUE_SIZE, XATTR_NOSECURITY);
+ 				if (rc >= 0 && strncmp(trattr, TRANS_TRUE,
+ 						       TRANS_TRUE_SIZE) != 0)
+ 					rc = -EINVAL;

@@ -1,0 +1,11 @@
+--- a/Makefile	2026-04-20 14:03:41.123137864 +0800
++++ b/Makefile	2026-04-20 14:06:17.155232568 +0800
+@@ -483,7 +483,7 @@
+ 		   -Werror=return-type -Wno-format-security \
+ 		   -std=gnu89
+ ifndef CONFIG_KASAN
+-KBUILD_CFLAGS	+= -Werror
++KBUILD_CFLAGS	+= -Wno-error
+ endif
+ 
+ ifdef CONFIG_AMLOGIC_MODIFY

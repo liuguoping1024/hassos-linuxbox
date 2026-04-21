@@ -1,0 +1,3170 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/Kconfig b/drivers/mtd/Kconfig
+--- a/drivers/mtd/Kconfig	2026-04-10 14:05:36.275700863 +0800
++++ b/drivers/mtd/Kconfig	2026-02-09 11:25:57.089546175 +0800
+@@ -39,6 +39,7 @@
+ 	tristate "Caching block device access to MTD devices"
+ 	depends on BLOCK
+ 	select MTD_BLKDEVS
++	select AMLOGIC_NAND
+ 	help
+ 	  Although most flash chips have an erase size too large to be useful
+ 	  as block devices, it is possible to use MTD devices which are based
+@@ -58,6 +59,16 @@
+ 	  You do not need this option for use with the DiskOnChip devices. For
+ 	  those, enable NFTL support (CONFIG_NFTL) instead.
+ 
++config AMLOGIC_NAND
++	bool "Amlogic NAND modification"
++        default y
++	depends on MTD_BLOCK
++	help
++	  Add bad block handling for mtd block.
++
++          some filesystems or users don't care the bad blocks on raw NAND, so
++          if you want to handle bad blocks in mtd block layer, say Y here.
++
+ config MTD_BLOCK_RO
+ 	tristate "Readonly block device access to MTD devices"
+ 	depends on MTD_BLOCK!=y && BLOCK
+@@ -170,6 +181,16 @@
+ 	  buffer in a flash partition where it can be read back at some
+ 	  later point.
+ 
++config MTD_PSTORE
++	tristate "Log panic/oops to an MTD buffer based on pstore"
++	depends on PSTORE_BLK
++	help
++	  This enables panic and oops messages to be logged to a circular
++	  buffer in a flash partition where it can be read back as files after
++	  mounting pstore filesystem.
++
++	  If unsure, say N.
++
+ config MTD_SWAP
+ 	tristate "Swap on MTD device support"
+ 	depends on MTD && SWAP
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/Makefile b/drivers/mtd/Makefile
+--- a/drivers/mtd/Makefile	2026-04-10 14:05:36.275700863 +0800
++++ b/drivers/mtd/Makefile	2026-02-09 11:25:57.089546175 +0800
+@@ -20,6 +20,7 @@
+ obj-$(CONFIG_SSFDC)		+= ssfdc.o
+ obj-$(CONFIG_SM_FTL)		+= sm_ftl.o
+ obj-$(CONFIG_MTD_OOPS)		+= mtdoops.o
++obj-$(CONFIG_MTD_PSTORE)	+= mtdpstore.o
+ obj-$(CONFIG_MTD_SWAP)		+= mtdswap.o
+ 
+ nftl-objs		:= nftlcore.o nftlmount.o
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/mtdblock.c b/drivers/mtd/mtdblock.c
+--- a/drivers/mtd/mtdblock.c	2026-04-10 14:05:36.287700797 +0800
++++ b/drivers/mtd/mtdblock.c	2026-02-09 11:25:57.097546611 +0800
+@@ -29,6 +29,10 @@
+ 	unsigned long cache_offset;
+ 	unsigned int cache_size;
+ 	enum { STATE_EMPTY, STATE_CLEAN, STATE_DIRTY } cache_state;
++#ifdef CONFIG_AMLOGIC_NAND
++	unsigned int bad_cnt;
++	unsigned short *part_bbt;
++#endif
+ };
+ 
+ /*
+@@ -103,6 +107,28 @@
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_AMLOGIC_NAND
++static unsigned long map_block(struct mtdblk_dev *mtdblk, unsigned long pos)
++{
++	struct mtd_info *mtd = mtdblk->mbd.mtd;
++	int block, i;
++
++	if (!mtdblk->part_bbt)
++		return pos;
++
++	block = (int)(pos >> mtd->erasesize_shift);
++	for (i = 0; i < mtdblk->bad_cnt; i++) {
++		if (block >= mtdblk->part_bbt[i])
++			block++;
++		else
++			break;
++	}
++
++	/* form actual position */
++	return ((unsigned long)block * mtd->erasesize) |
++		(pos & (mtd->erasesize - 1));
++}
++#endif
+ 
+ static int do_cached_write (struct mtdblk_dev *mtdblk, unsigned long pos,
+ 			    int len, const char *buf)
+@@ -115,6 +141,10 @@
+ 	pr_debug("mtdblock: write on \"%s\" at 0x%lx, size 0x%x\n",
+ 		mtd->name, pos, len);
+ 
++#ifdef CONFIG_AMLOGIC_NAND
++	pos = map_block(mtdblk, pos);
++#endif
++
+ 	if (!sect_size)
+ 		return mtd_write(mtd, pos, len, &retlen, buf);
+ 
+@@ -173,7 +203,6 @@
+ 	return 0;
+ }
+ 
+-
+ static int do_cached_read (struct mtdblk_dev *mtdblk, unsigned long pos,
+ 			   int len, char *buf)
+ {
+@@ -185,6 +214,10 @@
+ 	pr_debug("mtdblock: read on \"%s\" at 0x%lx, size 0x%x\n",
+ 			mtd->name, pos, len);
+ 
++#ifdef CONFIG_AMLOGIC_NAND
++	pos = map_block(mtdblk, pos);
++#endif
++
+ 	if (!sect_size)
+ 		return mtd_read(mtd, pos, len, &retlen, buf);
+ 
+@@ -246,6 +279,9 @@
+ static int mtdblock_open(struct mtd_blktrans_dev *mbd)
+ {
+ 	struct mtdblk_dev *mtdblk = container_of(mbd, struct mtdblk_dev, mbd);
++#ifdef CONFIG_AMLOGIC_NAND
++	int block_cnt, i, bad_cnt = 0;
++#endif
+ 
+ 	pr_debug("mtdblock_open\n");
+ 
+@@ -263,6 +299,27 @@
+ 		mtdblk->cache_data = NULL;
+ 	}
+ 
++#ifdef CONFIG_AMLOGIC_NAND
++	mtdblk->part_bbt =  NULL;
++	if (!mtd_can_have_bb(mbd->mtd))
++		goto _ok;
++
++	block_cnt = mbd->mtd->size >> mbd->mtd->erasesize_shift;
++	for (i = 0; i < block_cnt; i++)
++		if (mtd_block_isbad(mbd->mtd, i * mbd->mtd->erasesize))
++			bad_cnt++;
++	mtdblk->bad_cnt = bad_cnt;
++	if (bad_cnt) {
++		mtdblk->part_bbt =
++		kmalloc_array(block_cnt, sizeof(*mtdblk->part_bbt), GFP_KERNEL);
++		bad_cnt = 0;
++		for (i = 0; i < block_cnt; i++)
++			if (mtd_block_isbad(mbd->mtd, i * mbd->mtd->erasesize))
++				mtdblk->part_bbt[bad_cnt++] = i;
++	}
++
++_ok:
++#endif
+ 	pr_debug("ok\n");
+ 
+ 	return 0;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/mtdpstore.c b/drivers/mtd/mtdpstore.c
+--- a/drivers/mtd/mtdpstore.c	1970-01-01 08:00:00.000000000 +0800
++++ b/drivers/mtd/mtdpstore.c	2026-02-09 11:25:57.097546611 +0800
+@@ -0,0 +1,578 @@
++// SPDX-License-Identifier: GPL-2.0
++
++#define dev_fmt(fmt) "mtdoops-pstore: " fmt
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/pstore_blk.h>
++#include <linux/mtd/mtd.h>
++#include <linux/bitops.h>
++
++static struct mtdpstore_context {
++	int index;
++	struct pstore_blk_config info;
++	struct pstore_device_info dev;
++	struct mtd_info *mtd;
++	unsigned long *rmmap;		/* removed bit map */
++	unsigned long *usedmap;		/* used bit map */
++	/*
++	 * used for panic write
++	 * As there are no block_isbad for panic case, we should keep this
++	 * status before panic to ensure panic_write not failed.
++	 */
++	unsigned long *badmap;		/* bad block bit map */
++} oops_cxt;
++
++static int mtdpstore_block_isbad(struct mtdpstore_context *cxt, loff_t off)
++{
++	int ret;
++	struct mtd_info *mtd = cxt->mtd;
++	u64 blknum;
++
++	off = ALIGN_DOWN(off, mtd->erasesize);
++	blknum = div_u64(off, mtd->erasesize);
++
++	if (test_bit(blknum, cxt->badmap))
++		return true;
++	ret = mtd_block_isbad(mtd, off);
++	if (ret < 0) {
++		dev_err(&mtd->dev, "mtd_block_isbad failed, aborting\n");
++		return ret;
++	} else if (ret > 0) {
++		set_bit(blknum, cxt->badmap);
++		return true;
++	}
++	return false;
++}
++
++static inline int mtdpstore_panic_block_isbad(struct mtdpstore_context *cxt,
++		loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u64 blknum;
++
++	off = ALIGN_DOWN(off, mtd->erasesize);
++	blknum = div_u64(off, mtd->erasesize);
++	return test_bit(blknum, cxt->badmap);
++}
++
++static inline void mtdpstore_mark_used(struct mtdpstore_context *cxt,
++		loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u64 zonenum = div_u64(off, cxt->info.kmsg_size);
++
++	dev_dbg(&mtd->dev, "mark zone %llu used\n", zonenum);
++	set_bit(zonenum, cxt->usedmap);
++}
++
++static inline void mtdpstore_mark_unused(struct mtdpstore_context *cxt,
++		loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u64 zonenum = div_u64(off, cxt->info.kmsg_size);
++
++	dev_dbg(&mtd->dev, "mark zone %llu unused\n", zonenum);
++	clear_bit(zonenum, cxt->usedmap);
++}
++
++static inline void mtdpstore_block_mark_unused(struct mtdpstore_context *cxt,
++		loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u32 zonecnt = mtd->erasesize / cxt->info.kmsg_size;
++	u64 zonenum;
++
++	off = ALIGN_DOWN(off, mtd->erasesize);
++	zonenum = div_u64(off, cxt->info.kmsg_size);
++	while (zonecnt > 0) {
++		dev_dbg(&mtd->dev, "mark zone %llu unused\n", zonenum);
++		clear_bit(zonenum, cxt->usedmap);
++		zonenum++;
++		zonecnt--;
++	}
++}
++
++static inline int mtdpstore_is_used(struct mtdpstore_context *cxt, loff_t off)
++{
++	u64 zonenum = div_u64(off, cxt->info.kmsg_size);
++	u64 blknum = div_u64(off, cxt->mtd->erasesize);
++
++	if (test_bit(blknum, cxt->badmap))
++		return true;
++	return test_bit(zonenum, cxt->usedmap);
++}
++
++static int mtdpstore_block_is_used(struct mtdpstore_context *cxt,
++		loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u32 zonecnt = mtd->erasesize / cxt->info.kmsg_size;
++	u64 zonenum;
++
++	off = ALIGN_DOWN(off, mtd->erasesize);
++	zonenum = div_u64(off, cxt->info.kmsg_size);
++	while (zonecnt > 0) {
++		if (test_bit(zonenum, cxt->usedmap))
++			return true;
++		zonenum++;
++		zonecnt--;
++	}
++	return false;
++}
++
++static int mtdpstore_is_empty(struct mtdpstore_context *cxt, char *buf,
++		size_t size)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	size_t sz;
++	int i;
++
++	sz = min_t(uint32_t, size, mtd->writesize / 4);
++	for (i = 0; i < sz; i++) {
++		if (buf[i] != (char)0xFF)
++			return false;
++	}
++	return true;
++}
++
++static void mtdpstore_mark_removed(struct mtdpstore_context *cxt, loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u64 zonenum = div_u64(off, cxt->info.kmsg_size);
++
++	dev_dbg(&mtd->dev, "mark zone %llu removed\n", zonenum);
++	set_bit(zonenum, cxt->rmmap);
++}
++
++static void mtdpstore_block_clear_removed(struct mtdpstore_context *cxt,
++		loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u32 zonecnt = mtd->erasesize / cxt->info.kmsg_size;
++	u64 zonenum;
++
++	off = ALIGN_DOWN(off, mtd->erasesize);
++	zonenum = div_u64(off, cxt->info.kmsg_size);
++	while (zonecnt > 0) {
++		clear_bit(zonenum, cxt->rmmap);
++		zonenum++;
++		zonecnt--;
++	}
++}
++
++static int mtdpstore_block_is_removed(struct mtdpstore_context *cxt,
++		loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u32 zonecnt = mtd->erasesize / cxt->info.kmsg_size;
++	u64 zonenum;
++
++	off = ALIGN_DOWN(off, mtd->erasesize);
++	zonenum = div_u64(off, cxt->info.kmsg_size);
++	while (zonecnt > 0) {
++		if (test_bit(zonenum, cxt->rmmap))
++			return true;
++		zonenum++;
++		zonecnt--;
++	}
++	return false;
++}
++
++static int mtdpstore_erase_do(struct mtdpstore_context *cxt, loff_t off)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	struct erase_info erase;
++	int ret;
++
++	off = ALIGN_DOWN(off, cxt->mtd->erasesize);
++	dev_dbg(&mtd->dev, "try to erase off 0x%llx\n", off);
++	erase.len = cxt->mtd->erasesize;
++	erase.addr = off;
++	ret = mtd_erase(cxt->mtd, &erase);
++	if (!ret)
++		mtdpstore_block_clear_removed(cxt, off);
++	else
++		dev_err(&mtd->dev, "erase of region [0x%llx, 0x%llx] on \"%s\" failed\n",
++		       (unsigned long long)erase.addr,
++		       (unsigned long long)erase.len, cxt->info.device);
++	return ret;
++}
++
++/*
++ * called while removing file
++ *
++ * Avoiding over erasing, do erase block only when the whole block is unused.
++ * If the block contains valid log, do erase lazily on flush_removed() when
++ * unregister.
++ */
++static ssize_t mtdpstore_erase(size_t size, loff_t off)
++{
++	struct mtdpstore_context *cxt = &oops_cxt;
++
++	if (mtdpstore_block_isbad(cxt, off))
++		return -EIO;
++
++	mtdpstore_mark_unused(cxt, off);
++
++	/* If the block still has valid data, mtdpstore do erase lazily */
++	if (likely(mtdpstore_block_is_used(cxt, off))) {
++		mtdpstore_mark_removed(cxt, off);
++		return 0;
++	}
++
++	/* all zones are unused, erase it */
++	return mtdpstore_erase_do(cxt, off);
++}
++
++/*
++ * What is security for mtdpstore?
++ * As there is no erase for panic case, we should ensure at least one zone
++ * is writable. Otherwise, panic write will fail.
++ * If zone is used, write operation will return -ENOMSG, which means that
++ * pstore/blk will try one by one until gets an empty zone. So, it is not
++ * needed to ensure the next zone is empty, but at least one.
++ */
++static int mtdpstore_security(struct mtdpstore_context *cxt, loff_t off)
++{
++	int ret = 0, i;
++	struct mtd_info *mtd = cxt->mtd;
++	u32 zonenum = (u32)div_u64(off, cxt->info.kmsg_size);
++	u32 zonecnt = (u32)div_u64(cxt->mtd->size, cxt->info.kmsg_size);
++	u32 blkcnt = (u32)div_u64(cxt->mtd->size, cxt->mtd->erasesize);
++	u32 erasesize = cxt->mtd->erasesize;
++
++	for (i = 0; i < zonecnt; i++) {
++		u32 num = (zonenum + i) % zonecnt;
++
++		/* found empty zone */
++		if (!test_bit(num, cxt->usedmap))
++			return 0;
++	}
++
++	/* If there is no any empty zone, we have no way but to do erase */
++	while (blkcnt--) {
++		div64_u64_rem(off + erasesize, cxt->mtd->size, (u64 *)&off);
++
++		if (mtdpstore_block_isbad(cxt, off))
++			continue;
++
++		ret = mtdpstore_erase_do(cxt, off);
++		if (!ret) {
++			mtdpstore_block_mark_unused(cxt, off);
++			break;
++		}
++	}
++
++	if (ret)
++		dev_err(&mtd->dev, "all blocks bad!\n");
++	dev_dbg(&mtd->dev, "end security\n");
++	return ret;
++}
++
++static ssize_t mtdpstore_write(const char *buf, size_t size, loff_t off)
++{
++	struct mtdpstore_context *cxt = &oops_cxt;
++	struct mtd_info *mtd = cxt->mtd;
++	size_t retlen;
++	int ret;
++
++	if (mtdpstore_block_isbad(cxt, off))
++		return -ENOMSG;
++
++	/* zone is used, please try next one */
++	if (mtdpstore_is_used(cxt, off))
++		return -ENOMSG;
++
++	dev_dbg(&mtd->dev, "try to write off 0x%llx size %zu\n", off, size);
++	ret = mtd_write(cxt->mtd, off, size, &retlen, (u_char *)buf);
++	if (ret < 0 || retlen != size) {
++		dev_err(&mtd->dev, "write failure at %lld (%zu of %zu written), err %d\n",
++				off, retlen, size, ret);
++		return -EIO;
++	}
++	mtdpstore_mark_used(cxt, off);
++
++	mtdpstore_security(cxt, off);
++	return retlen;
++}
++
++static inline bool mtdpstore_is_io_error(int ret)
++{
++	return ret < 0 && !mtd_is_bitflip(ret) && !mtd_is_eccerr(ret);
++}
++
++/*
++ * All zones will be read as pstore/blk will read zone one by one when do
++ * recover.
++ */
++static ssize_t mtdpstore_read(char *buf, size_t size, loff_t off)
++{
++	struct mtdpstore_context *cxt = &oops_cxt;
++	struct mtd_info *mtd = cxt->mtd;
++	size_t retlen, done;
++	int ret;
++
++	if (mtdpstore_block_isbad(cxt, off))
++		return -ENOMSG;
++
++	dev_dbg(&mtd->dev, "try to read off 0x%llx size %zu\n", off, size);
++	for (done = 0, retlen = 0; done < size; done += retlen) {
++		retlen = 0;
++
++		ret = mtd_read(cxt->mtd, off + done, size - done, &retlen,
++				(u_char *)buf + done);
++		if (mtdpstore_is_io_error(ret)) {
++			dev_err(&mtd->dev, "read failure at %lld (%zu of %zu read), err %d\n",
++					off + done, retlen, size - done, ret);
++			/* the zone may be broken, try next one */
++			return -ENOMSG;
++		}
++
++		/*
++		 * ECC error. The impact on log data is so small. Maybe we can
++		 * still read it and try to understand. So mtdpstore just hands
++		 * over what it gets and user can judge whether the data is
++		 * valid or not.
++		 */
++		if (mtd_is_eccerr(ret)) {
++			dev_err(&mtd->dev, "ecc error at %lld (%zu of %zu read), err %d\n",
++					off + done, retlen, size - done, ret);
++			/* driver may not set retlen when ecc error */
++			retlen = retlen == 0 ? size - done : retlen;
++		}
++	}
++
++	if (mtdpstore_is_empty(cxt, buf, size))
++		mtdpstore_mark_unused(cxt, off);
++	else
++		mtdpstore_mark_used(cxt, off);
++
++	mtdpstore_security(cxt, off);
++	return retlen;
++}
++
++static ssize_t mtdpstore_panic_write(const char *buf, size_t size, loff_t off)
++{
++	struct mtdpstore_context *cxt = &oops_cxt;
++	struct mtd_info *mtd = cxt->mtd;
++	size_t retlen;
++	int ret;
++
++	if (mtdpstore_panic_block_isbad(cxt, off))
++		return -ENOMSG;
++
++	/* zone is used, please try next one */
++	if (mtdpstore_is_used(cxt, off))
++		return -ENOMSG;
++
++	ret = mtd_panic_write(cxt->mtd, off, size, &retlen, (u_char *)buf);
++	if (ret < 0 || size != retlen) {
++		dev_err(&mtd->dev, "panic write failure at %lld (%zu of %zu read), err %d\n",
++				off, retlen, size, ret);
++		return -EIO;
++	}
++	mtdpstore_mark_used(cxt, off);
++
++	return retlen;
++}
++
++static void mtdpstore_notify_add(struct mtd_info *mtd)
++{
++	int ret;
++	struct mtdpstore_context *cxt = &oops_cxt;
++	struct pstore_blk_config *info = &cxt->info;
++	unsigned long longcnt;
++
++	if (!strcmp(mtd->name, info->device))
++		cxt->index = mtd->index;
++
++	if (mtd->index != cxt->index || cxt->index < 0)
++		return;
++
++	dev_dbg(&mtd->dev, "found matching MTD device %s\n", mtd->name);
++
++	if (mtd->size < info->kmsg_size * 2) {
++		dev_err(&mtd->dev, "MTD partition %d not big enough\n",
++				mtd->index);
++		return;
++	}
++	/*
++	 * kmsg_size must be aligned to 4096 Bytes, which is limited by
++	 * psblk. The default value of kmsg_size is 64KB. If kmsg_size
++	 * is larger than erasesize, some errors will occur since mtdpsotre
++	 * is designed on it.
++	 */
++	if (mtd->erasesize < info->kmsg_size) {
++		dev_err(&mtd->dev, "eraseblock size of MTD partition %d too small\n",
++				mtd->index);
++		return;
++	}
++	if (unlikely(info->kmsg_size % mtd->writesize)) {
++		dev_err(&mtd->dev, "record size %lu KB must align to write size %d KB\n",
++				info->kmsg_size / 1024,
++				mtd->writesize / 1024);
++		return;
++	}
++
++	longcnt = BITS_TO_LONGS(div_u64(mtd->size, info->kmsg_size));
++	cxt->rmmap = kcalloc(longcnt, sizeof(long), GFP_KERNEL);
++	cxt->usedmap = kcalloc(longcnt, sizeof(long), GFP_KERNEL);
++
++	longcnt = BITS_TO_LONGS(div_u64(mtd->size, mtd->erasesize));
++	cxt->badmap = kcalloc(longcnt, sizeof(long), GFP_KERNEL);
++
++	cxt->dev.total_size = mtd->size;
++	/* just support dmesg right now */
++	cxt->dev.flags = PSTORE_FLAGS_DMESG;
++	cxt->dev.read = mtdpstore_read;
++	cxt->dev.write = mtdpstore_write;
++	cxt->dev.erase = mtdpstore_erase;
++	cxt->dev.panic_write = mtdpstore_panic_write;
++
++	ret = register_pstore_device(&cxt->dev);
++	if (ret) {
++		dev_err(&mtd->dev, "mtd%d register to psblk failed\n",
++				mtd->index);
++		return;
++	}
++	cxt->mtd = mtd;
++	dev_info(&mtd->dev, "Attached to MTD device %d\n", mtd->index);
++}
++
++static int mtdpstore_flush_removed_do(struct mtdpstore_context *cxt,
++		loff_t off, size_t size)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	u_char *buf;
++	int ret;
++	size_t retlen;
++	struct erase_info erase;
++
++	buf = kmalloc(mtd->erasesize, GFP_KERNEL);
++	if (!buf)
++		return -ENOMEM;
++
++	/* 1st. read to cache */
++	ret = mtd_read(mtd, off, mtd->erasesize, &retlen, buf);
++	if (mtdpstore_is_io_error(ret))
++		goto free;
++
++	/* 2nd. erase block */
++	erase.len = mtd->erasesize;
++	erase.addr = off;
++	ret = mtd_erase(mtd, &erase);
++	if (ret)
++		goto free;
++
++	/* 3rd. write back */
++	while (size) {
++		unsigned int zonesize = cxt->info.kmsg_size;
++
++		/* there is valid data on block, write back */
++		if (mtdpstore_is_used(cxt, off)) {
++			ret = mtd_write(mtd, off, zonesize, &retlen, buf);
++			if (ret)
++				dev_err(&mtd->dev, "write failure at %lld (%zu of %u written), err %d\n",
++						off, retlen, zonesize, ret);
++		}
++
++		off += zonesize;
++		size -= min_t(unsigned int, zonesize, size);
++	}
++
++free:
++	kfree(buf);
++	return ret;
++}
++
++/*
++ * What does mtdpstore_flush_removed() do?
++ * When user remove any log file on pstore filesystem, mtdpstore should do
++ * something to ensure log file removed. If the whole block is no longer used,
++ * it's nice to erase the block. However if the block still contains valid log,
++ * what mtdpstore can do is to erase and write the valid log back.
++ */
++static int mtdpstore_flush_removed(struct mtdpstore_context *cxt)
++{
++	struct mtd_info *mtd = cxt->mtd;
++	int ret;
++	loff_t off;
++	u32 blkcnt = (u32)div_u64(mtd->size, mtd->erasesize);
++
++	for (off = 0; blkcnt > 0; blkcnt--, off += mtd->erasesize) {
++		ret = mtdpstore_block_isbad(cxt, off);
++		if (ret)
++			continue;
++
++		ret = mtdpstore_block_is_removed(cxt, off);
++		if (!ret)
++			continue;
++
++		ret = mtdpstore_flush_removed_do(cxt, off, mtd->erasesize);
++		if (ret)
++			return ret;
++	}
++	return 0;
++}
++
++static void mtdpstore_notify_remove(struct mtd_info *mtd)
++{
++	struct mtdpstore_context *cxt = &oops_cxt;
++
++	if (mtd->index != cxt->index || cxt->index < 0)
++		return;
++
++	mtdpstore_flush_removed(cxt);
++
++	unregister_pstore_device(&cxt->dev);
++	kfree(cxt->badmap);
++	kfree(cxt->usedmap);
++	kfree(cxt->rmmap);
++	cxt->mtd = NULL;
++	cxt->index = -1;
++}
++
++static struct mtd_notifier mtdpstore_notifier = {
++	.add	= mtdpstore_notify_add,
++	.remove	= mtdpstore_notify_remove,
++};
++
++static int __init mtdpstore_init(void)
++{
++	int ret;
++	struct mtdpstore_context *cxt = &oops_cxt;
++	struct pstore_blk_config *info = &cxt->info;
++
++	ret = pstore_blk_get_config(info);
++	if (unlikely(ret))
++		return ret;
++
++	if (strlen(info->device) == 0) {
++		pr_err("mtd device must be supplied (device name is empty)\n");
++		return -EINVAL;
++	}
++	if (!info->kmsg_size) {
++		pr_err("no backend enabled (kmsg_size is 0)\n");
++		return -EINVAL;
++	}
++
++	/* Setup the MTD device to use */
++	ret = kstrtoint((char *)info->device, 0, &cxt->index);
++	if (ret)
++		cxt->index = -1;
++
++	register_mtd_user(&mtdpstore_notifier);
++	return 0;
++}
++module_init(mtdpstore_init);
++
++static void __exit mtdpstore_exit(void)
++{
++	unregister_mtd_user(&mtdpstore_notifier);
++}
++module_exit(mtdpstore_exit);
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("WeiXiong Liao <liaoweixiong@allwinnertech.com>");
++MODULE_DESCRIPTION("MTD backend for pstore/blk");
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/core.c b/drivers/mtd/nand/core.c
+--- a/drivers/mtd/nand/core.c	2026-04-10 14:05:36.291700775 +0800
++++ b/drivers/mtd/nand/core.c	2026-02-09 11:25:57.097546611 +0800
+@@ -253,7 +253,11 @@
+ 	mtd->size = nanddev_size(nand);
+ 	mtd->owner = owner;
+ 
++#if IS_ENABLED(CONFIG_MTD_SPI_NAND_MESON)
++	return 0;
++#else
+ 	return nanddev_bbt_init(nand);
++#endif
+ }
+ EXPORT_SYMBOL_GPL(nanddev_init);
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/onenand/Makefile b/drivers/mtd/nand/onenand/Makefile
+--- a/drivers/mtd/nand/onenand/Makefile	2026-04-10 14:05:36.291700775 +0800
++++ b/drivers/mtd/nand/onenand/Makefile	2026-02-09 11:25:57.097546611 +0800
+@@ -9,6 +9,6 @@
+ # Board specific.
+ obj-$(CONFIG_MTD_ONENAND_GENERIC)	+= generic.o
+ obj-$(CONFIG_MTD_ONENAND_OMAP2)		+= omap2.o
+-obj-$(CONFIG_MTD_ONENAND_SAMSUNG)       += samsung.o
++obj-$(CONFIG_MTD_ONENAND_SAMSUNG)       += samsung_mtd.o
+ 
+ onenand-objs = onenand_base.o onenand_bbt.o
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/onenand/samsung.c b/drivers/mtd/nand/onenand/samsung.c
+--- a/drivers/mtd/nand/onenand/samsung.c	2026-04-10 14:05:36.291700775 +0800
++++ b/drivers/mtd/nand/onenand/samsung.c	1970-01-01 08:00:00.000000000 +0800
+@@ -1,1006 +0,0 @@
+-// SPDX-License-Identifier: GPL-2.0-only
+-/*
+- * Samsung S3C64XX/S5PC1XX OneNAND driver
+- *
+- *  Copyright © 2008-2010 Samsung Electronics
+- *  Kyungmin Park <kyungmin.park@samsung.com>
+- *  Marek Szyprowski <m.szyprowski@samsung.com>
+- *
+- * Implementation:
+- *	S3C64XX: emulate the pseudo BufferRAM
+- *	S5PC110: use DMA
+- */
+-
+-#include <linux/module.h>
+-#include <linux/platform_device.h>
+-#include <linux/sched.h>
+-#include <linux/slab.h>
+-#include <linux/mtd/mtd.h>
+-#include <linux/mtd/onenand.h>
+-#include <linux/mtd/partitions.h>
+-#include <linux/dma-mapping.h>
+-#include <linux/interrupt.h>
+-#include <linux/io.h>
+-
+-#include "samsung.h"
+-
+-enum soc_type {
+-	TYPE_S3C6400,
+-	TYPE_S3C6410,
+-	TYPE_S5PC110,
+-};
+-
+-#define ONENAND_ERASE_STATUS		0x00
+-#define ONENAND_MULTI_ERASE_SET		0x01
+-#define ONENAND_ERASE_START		0x03
+-#define ONENAND_UNLOCK_START		0x08
+-#define ONENAND_UNLOCK_END		0x09
+-#define ONENAND_LOCK_START		0x0A
+-#define ONENAND_LOCK_END		0x0B
+-#define ONENAND_LOCK_TIGHT_START	0x0C
+-#define ONENAND_LOCK_TIGHT_END		0x0D
+-#define ONENAND_UNLOCK_ALL		0x0E
+-#define ONENAND_OTP_ACCESS		0x12
+-#define ONENAND_SPARE_ACCESS_ONLY	0x13
+-#define ONENAND_MAIN_ACCESS_ONLY	0x14
+-#define ONENAND_ERASE_VERIFY		0x15
+-#define ONENAND_MAIN_SPARE_ACCESS	0x16
+-#define ONENAND_PIPELINE_READ		0x4000
+-
+-#define MAP_00				(0x0)
+-#define MAP_01				(0x1)
+-#define MAP_10				(0x2)
+-#define MAP_11				(0x3)
+-
+-#define S3C64XX_CMD_MAP_SHIFT		24
+-
+-#define S3C6400_FBA_SHIFT		10
+-#define S3C6400_FPA_SHIFT		4
+-#define S3C6400_FSA_SHIFT		2
+-
+-#define S3C6410_FBA_SHIFT		12
+-#define S3C6410_FPA_SHIFT		6
+-#define S3C6410_FSA_SHIFT		4
+-
+-/* S5PC110 specific definitions */
+-#define S5PC110_DMA_SRC_ADDR		0x400
+-#define S5PC110_DMA_SRC_CFG		0x404
+-#define S5PC110_DMA_DST_ADDR		0x408
+-#define S5PC110_DMA_DST_CFG		0x40C
+-#define S5PC110_DMA_TRANS_SIZE		0x414
+-#define S5PC110_DMA_TRANS_CMD		0x418
+-#define S5PC110_DMA_TRANS_STATUS	0x41C
+-#define S5PC110_DMA_TRANS_DIR		0x420
+-#define S5PC110_INTC_DMA_CLR		0x1004
+-#define S5PC110_INTC_ONENAND_CLR	0x1008
+-#define S5PC110_INTC_DMA_MASK		0x1024
+-#define S5PC110_INTC_ONENAND_MASK	0x1028
+-#define S5PC110_INTC_DMA_PEND		0x1044
+-#define S5PC110_INTC_ONENAND_PEND	0x1048
+-#define S5PC110_INTC_DMA_STATUS		0x1064
+-#define S5PC110_INTC_ONENAND_STATUS	0x1068
+-
+-#define S5PC110_INTC_DMA_TD		(1 << 24)
+-#define S5PC110_INTC_DMA_TE		(1 << 16)
+-
+-#define S5PC110_DMA_CFG_SINGLE		(0x0 << 16)
+-#define S5PC110_DMA_CFG_4BURST		(0x2 << 16)
+-#define S5PC110_DMA_CFG_8BURST		(0x3 << 16)
+-#define S5PC110_DMA_CFG_16BURST		(0x4 << 16)
+-
+-#define S5PC110_DMA_CFG_INC		(0x0 << 8)
+-#define S5PC110_DMA_CFG_CNT		(0x1 << 8)
+-
+-#define S5PC110_DMA_CFG_8BIT		(0x0 << 0)
+-#define S5PC110_DMA_CFG_16BIT		(0x1 << 0)
+-#define S5PC110_DMA_CFG_32BIT		(0x2 << 0)
+-
+-#define S5PC110_DMA_SRC_CFG_READ	(S5PC110_DMA_CFG_16BURST | \
+-					S5PC110_DMA_CFG_INC | \
+-					S5PC110_DMA_CFG_16BIT)
+-#define S5PC110_DMA_DST_CFG_READ	(S5PC110_DMA_CFG_16BURST | \
+-					S5PC110_DMA_CFG_INC | \
+-					S5PC110_DMA_CFG_32BIT)
+-#define S5PC110_DMA_SRC_CFG_WRITE	(S5PC110_DMA_CFG_16BURST | \
+-					S5PC110_DMA_CFG_INC | \
+-					S5PC110_DMA_CFG_32BIT)
+-#define S5PC110_DMA_DST_CFG_WRITE	(S5PC110_DMA_CFG_16BURST | \
+-					S5PC110_DMA_CFG_INC | \
+-					S5PC110_DMA_CFG_16BIT)
+-
+-#define S5PC110_DMA_TRANS_CMD_TDC	(0x1 << 18)
+-#define S5PC110_DMA_TRANS_CMD_TEC	(0x1 << 16)
+-#define S5PC110_DMA_TRANS_CMD_TR	(0x1 << 0)
+-
+-#define S5PC110_DMA_TRANS_STATUS_TD	(0x1 << 18)
+-#define S5PC110_DMA_TRANS_STATUS_TB	(0x1 << 17)
+-#define S5PC110_DMA_TRANS_STATUS_TE	(0x1 << 16)
+-
+-#define S5PC110_DMA_DIR_READ		0x0
+-#define S5PC110_DMA_DIR_WRITE		0x1
+-
+-struct s3c_onenand {
+-	struct mtd_info	*mtd;
+-	struct platform_device	*pdev;
+-	enum soc_type	type;
+-	void __iomem	*base;
+-	void __iomem	*ahb_addr;
+-	int		bootram_command;
+-	void		*page_buf;
+-	void		*oob_buf;
+-	unsigned int	(*mem_addr)(int fba, int fpa, int fsa);
+-	unsigned int	(*cmd_map)(unsigned int type, unsigned int val);
+-	void __iomem	*dma_addr;
+-	unsigned long	phys_base;
+-	struct completion	complete;
+-};
+-
+-#define CMD_MAP_00(dev, addr)		(dev->cmd_map(MAP_00, ((addr) << 1)))
+-#define CMD_MAP_01(dev, mem_addr)	(dev->cmd_map(MAP_01, (mem_addr)))
+-#define CMD_MAP_10(dev, mem_addr)	(dev->cmd_map(MAP_10, (mem_addr)))
+-#define CMD_MAP_11(dev, addr)		(dev->cmd_map(MAP_11, ((addr) << 2)))
+-
+-static struct s3c_onenand *onenand;
+-
+-static inline int s3c_read_reg(int offset)
+-{
+-	return readl(onenand->base + offset);
+-}
+-
+-static inline void s3c_write_reg(int value, int offset)
+-{
+-	writel(value, onenand->base + offset);
+-}
+-
+-static inline int s3c_read_cmd(unsigned int cmd)
+-{
+-	return readl(onenand->ahb_addr + cmd);
+-}
+-
+-static inline void s3c_write_cmd(int value, unsigned int cmd)
+-{
+-	writel(value, onenand->ahb_addr + cmd);
+-}
+-
+-#ifdef SAMSUNG_DEBUG
+-static void s3c_dump_reg(void)
+-{
+-	int i;
+-
+-	for (i = 0; i < 0x400; i += 0x40) {
+-		printk(KERN_INFO "0x%08X: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+-			(unsigned int) onenand->base + i,
+-			s3c_read_reg(i), s3c_read_reg(i + 0x10),
+-			s3c_read_reg(i + 0x20), s3c_read_reg(i + 0x30));
+-	}
+-}
+-#endif
+-
+-static unsigned int s3c64xx_cmd_map(unsigned type, unsigned val)
+-{
+-	return (type << S3C64XX_CMD_MAP_SHIFT) | val;
+-}
+-
+-static unsigned int s3c6400_mem_addr(int fba, int fpa, int fsa)
+-{
+-	return (fba << S3C6400_FBA_SHIFT) | (fpa << S3C6400_FPA_SHIFT) |
+-		(fsa << S3C6400_FSA_SHIFT);
+-}
+-
+-static unsigned int s3c6410_mem_addr(int fba, int fpa, int fsa)
+-{
+-	return (fba << S3C6410_FBA_SHIFT) | (fpa << S3C6410_FPA_SHIFT) |
+-		(fsa << S3C6410_FSA_SHIFT);
+-}
+-
+-static void s3c_onenand_reset(void)
+-{
+-	unsigned long timeout = 0x10000;
+-	int stat;
+-
+-	s3c_write_reg(ONENAND_MEM_RESET_COLD, MEM_RESET_OFFSET);
+-	while (1 && timeout--) {
+-		stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
+-		if (stat & RST_CMP)
+-			break;
+-	}
+-	stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
+-	s3c_write_reg(stat, INT_ERR_ACK_OFFSET);
+-
+-	/* Clear interrupt */
+-	s3c_write_reg(0x0, INT_ERR_ACK_OFFSET);
+-	/* Clear the ECC status */
+-	s3c_write_reg(0x0, ECC_ERR_STAT_OFFSET);
+-}
+-
+-static unsigned short s3c_onenand_readw(void __iomem *addr)
+-{
+-	struct onenand_chip *this = onenand->mtd->priv;
+-	struct device *dev = &onenand->pdev->dev;
+-	int reg = addr - this->base;
+-	int word_addr = reg >> 1;
+-	int value;
+-
+-	/* It's used for probing time */
+-	switch (reg) {
+-	case ONENAND_REG_MANUFACTURER_ID:
+-		return s3c_read_reg(MANUFACT_ID_OFFSET);
+-	case ONENAND_REG_DEVICE_ID:
+-		return s3c_read_reg(DEVICE_ID_OFFSET);
+-	case ONENAND_REG_VERSION_ID:
+-		return s3c_read_reg(FLASH_VER_ID_OFFSET);
+-	case ONENAND_REG_DATA_BUFFER_SIZE:
+-		return s3c_read_reg(DATA_BUF_SIZE_OFFSET);
+-	case ONENAND_REG_TECHNOLOGY:
+-		return s3c_read_reg(TECH_OFFSET);
+-	case ONENAND_REG_SYS_CFG1:
+-		return s3c_read_reg(MEM_CFG_OFFSET);
+-
+-	/* Used at unlock all status */
+-	case ONENAND_REG_CTRL_STATUS:
+-		return 0;
+-
+-	case ONENAND_REG_WP_STATUS:
+-		return ONENAND_WP_US;
+-
+-	default:
+-		break;
+-	}
+-
+-	/* BootRAM access control */
+-	if ((unsigned int) addr < ONENAND_DATARAM && onenand->bootram_command) {
+-		if (word_addr == 0)
+-			return s3c_read_reg(MANUFACT_ID_OFFSET);
+-		if (word_addr == 1)
+-			return s3c_read_reg(DEVICE_ID_OFFSET);
+-		if (word_addr == 2)
+-			return s3c_read_reg(FLASH_VER_ID_OFFSET);
+-	}
+-
+-	value = s3c_read_cmd(CMD_MAP_11(onenand, word_addr)) & 0xffff;
+-	dev_info(dev, "%s: Illegal access at reg 0x%x, value 0x%x\n", __func__,
+-		 word_addr, value);
+-	return value;
+-}
+-
+-static void s3c_onenand_writew(unsigned short value, void __iomem *addr)
+-{
+-	struct onenand_chip *this = onenand->mtd->priv;
+-	struct device *dev = &onenand->pdev->dev;
+-	unsigned int reg = addr - this->base;
+-	unsigned int word_addr = reg >> 1;
+-
+-	/* It's used for probing time */
+-	switch (reg) {
+-	case ONENAND_REG_SYS_CFG1:
+-		s3c_write_reg(value, MEM_CFG_OFFSET);
+-		return;
+-
+-	case ONENAND_REG_START_ADDRESS1:
+-	case ONENAND_REG_START_ADDRESS2:
+-		return;
+-
+-	/* Lock/lock-tight/unlock/unlock_all */
+-	case ONENAND_REG_START_BLOCK_ADDRESS:
+-		return;
+-
+-	default:
+-		break;
+-	}
+-
+-	/* BootRAM access control */
+-	if ((unsigned int)addr < ONENAND_DATARAM) {
+-		if (value == ONENAND_CMD_READID) {
+-			onenand->bootram_command = 1;
+-			return;
+-		}
+-		if (value == ONENAND_CMD_RESET) {
+-			s3c_write_reg(ONENAND_MEM_RESET_COLD, MEM_RESET_OFFSET);
+-			onenand->bootram_command = 0;
+-			return;
+-		}
+-	}
+-
+-	dev_info(dev, "%s: Illegal access at reg 0x%x, value 0x%x\n", __func__,
+-		 word_addr, value);
+-
+-	s3c_write_cmd(value, CMD_MAP_11(onenand, word_addr));
+-}
+-
+-static int s3c_onenand_wait(struct mtd_info *mtd, int state)
+-{
+-	struct device *dev = &onenand->pdev->dev;
+-	unsigned int flags = INT_ACT;
+-	unsigned int stat, ecc;
+-	unsigned long timeout;
+-
+-	switch (state) {
+-	case FL_READING:
+-		flags |= BLK_RW_CMP | LOAD_CMP;
+-		break;
+-	case FL_WRITING:
+-		flags |= BLK_RW_CMP | PGM_CMP;
+-		break;
+-	case FL_ERASING:
+-		flags |= BLK_RW_CMP | ERS_CMP;
+-		break;
+-	case FL_LOCKING:
+-		flags |= BLK_RW_CMP;
+-		break;
+-	default:
+-		break;
+-	}
+-
+-	/* The 20 msec is enough */
+-	timeout = jiffies + msecs_to_jiffies(20);
+-	while (time_before(jiffies, timeout)) {
+-		stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
+-		if (stat & flags)
+-			break;
+-
+-		if (state != FL_READING)
+-			cond_resched();
+-	}
+-	/* To get correct interrupt status in timeout case */
+-	stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
+-	s3c_write_reg(stat, INT_ERR_ACK_OFFSET);
+-
+-	/*
+-	 * In the Spec. it checks the controller status first
+-	 * However if you get the correct information in case of
+-	 * power off recovery (POR) test, it should read ECC status first
+-	 */
+-	if (stat & LOAD_CMP) {
+-		ecc = s3c_read_reg(ECC_ERR_STAT_OFFSET);
+-		if (ecc & ONENAND_ECC_4BIT_UNCORRECTABLE) {
+-			dev_info(dev, "%s: ECC error = 0x%04x\n", __func__,
+-				 ecc);
+-			mtd->ecc_stats.failed++;
+-			return -EBADMSG;
+-		}
+-	}
+-
+-	if (stat & (LOCKED_BLK | ERS_FAIL | PGM_FAIL | LD_FAIL_ECC_ERR)) {
+-		dev_info(dev, "%s: controller error = 0x%04x\n", __func__,
+-			 stat);
+-		if (stat & LOCKED_BLK)
+-			dev_info(dev, "%s: it's locked error = 0x%04x\n",
+-				 __func__, stat);
+-
+-		return -EIO;
+-	}
+-
+-	return 0;
+-}
+-
+-static int s3c_onenand_command(struct mtd_info *mtd, int cmd, loff_t addr,
+-			       size_t len)
+-{
+-	struct onenand_chip *this = mtd->priv;
+-	unsigned int *m, *s;
+-	int fba, fpa, fsa = 0;
+-	unsigned int mem_addr, cmd_map_01, cmd_map_10;
+-	int i, mcount, scount;
+-	int index;
+-
+-	fba = (int) (addr >> this->erase_shift);
+-	fpa = (int) (addr >> this->page_shift);
+-	fpa &= this->page_mask;
+-
+-	mem_addr = onenand->mem_addr(fba, fpa, fsa);
+-	cmd_map_01 = CMD_MAP_01(onenand, mem_addr);
+-	cmd_map_10 = CMD_MAP_10(onenand, mem_addr);
+-
+-	switch (cmd) {
+-	case ONENAND_CMD_READ:
+-	case ONENAND_CMD_READOOB:
+-	case ONENAND_CMD_BUFFERRAM:
+-		ONENAND_SET_NEXT_BUFFERRAM(this);
+-	default:
+-		break;
+-	}
+-
+-	index = ONENAND_CURRENT_BUFFERRAM(this);
+-
+-	/*
+-	 * Emulate Two BufferRAMs and access with 4 bytes pointer
+-	 */
+-	m = onenand->page_buf;
+-	s = onenand->oob_buf;
+-
+-	if (index) {
+-		m += (this->writesize >> 2);
+-		s += (mtd->oobsize >> 2);
+-	}
+-
+-	mcount = mtd->writesize >> 2;
+-	scount = mtd->oobsize >> 2;
+-
+-	switch (cmd) {
+-	case ONENAND_CMD_READ:
+-		/* Main */
+-		for (i = 0; i < mcount; i++)
+-			*m++ = s3c_read_cmd(cmd_map_01);
+-		return 0;
+-
+-	case ONENAND_CMD_READOOB:
+-		s3c_write_reg(TSRF, TRANS_SPARE_OFFSET);
+-		/* Main */
+-		for (i = 0; i < mcount; i++)
+-			*m++ = s3c_read_cmd(cmd_map_01);
+-
+-		/* Spare */
+-		for (i = 0; i < scount; i++)
+-			*s++ = s3c_read_cmd(cmd_map_01);
+-
+-		s3c_write_reg(0, TRANS_SPARE_OFFSET);
+-		return 0;
+-
+-	case ONENAND_CMD_PROG:
+-		/* Main */
+-		for (i = 0; i < mcount; i++)
+-			s3c_write_cmd(*m++, cmd_map_01);
+-		return 0;
+-
+-	case ONENAND_CMD_PROGOOB:
+-		s3c_write_reg(TSRF, TRANS_SPARE_OFFSET);
+-
+-		/* Main - dummy write */
+-		for (i = 0; i < mcount; i++)
+-			s3c_write_cmd(0xffffffff, cmd_map_01);
+-
+-		/* Spare */
+-		for (i = 0; i < scount; i++)
+-			s3c_write_cmd(*s++, cmd_map_01);
+-
+-		s3c_write_reg(0, TRANS_SPARE_OFFSET);
+-		return 0;
+-
+-	case ONENAND_CMD_UNLOCK_ALL:
+-		s3c_write_cmd(ONENAND_UNLOCK_ALL, cmd_map_10);
+-		return 0;
+-
+-	case ONENAND_CMD_ERASE:
+-		s3c_write_cmd(ONENAND_ERASE_START, cmd_map_10);
+-		return 0;
+-
+-	default:
+-		break;
+-	}
+-
+-	return 0;
+-}
+-
+-static unsigned char *s3c_get_bufferram(struct mtd_info *mtd, int area)
+-{
+-	struct onenand_chip *this = mtd->priv;
+-	int index = ONENAND_CURRENT_BUFFERRAM(this);
+-	unsigned char *p;
+-
+-	if (area == ONENAND_DATARAM) {
+-		p = onenand->page_buf;
+-		if (index == 1)
+-			p += this->writesize;
+-	} else {
+-		p = onenand->oob_buf;
+-		if (index == 1)
+-			p += mtd->oobsize;
+-	}
+-
+-	return p;
+-}
+-
+-static int onenand_read_bufferram(struct mtd_info *mtd, int area,
+-				  unsigned char *buffer, int offset,
+-				  size_t count)
+-{
+-	unsigned char *p;
+-
+-	p = s3c_get_bufferram(mtd, area);
+-	memcpy(buffer, p + offset, count);
+-	return 0;
+-}
+-
+-static int onenand_write_bufferram(struct mtd_info *mtd, int area,
+-				   const unsigned char *buffer, int offset,
+-				   size_t count)
+-{
+-	unsigned char *p;
+-
+-	p = s3c_get_bufferram(mtd, area);
+-	memcpy(p + offset, buffer, count);
+-	return 0;
+-}
+-
+-static int (*s5pc110_dma_ops)(dma_addr_t dst, dma_addr_t src, size_t count, int direction);
+-
+-static int s5pc110_dma_poll(dma_addr_t dst, dma_addr_t src, size_t count, int direction)
+-{
+-	void __iomem *base = onenand->dma_addr;
+-	int status;
+-	unsigned long timeout;
+-
+-	writel(src, base + S5PC110_DMA_SRC_ADDR);
+-	writel(dst, base + S5PC110_DMA_DST_ADDR);
+-
+-	if (direction == S5PC110_DMA_DIR_READ) {
+-		writel(S5PC110_DMA_SRC_CFG_READ, base + S5PC110_DMA_SRC_CFG);
+-		writel(S5PC110_DMA_DST_CFG_READ, base + S5PC110_DMA_DST_CFG);
+-	} else {
+-		writel(S5PC110_DMA_SRC_CFG_WRITE, base + S5PC110_DMA_SRC_CFG);
+-		writel(S5PC110_DMA_DST_CFG_WRITE, base + S5PC110_DMA_DST_CFG);
+-	}
+-
+-	writel(count, base + S5PC110_DMA_TRANS_SIZE);
+-	writel(direction, base + S5PC110_DMA_TRANS_DIR);
+-
+-	writel(S5PC110_DMA_TRANS_CMD_TR, base + S5PC110_DMA_TRANS_CMD);
+-
+-	/*
+-	 * There's no exact timeout values at Spec.
+-	 * In real case it takes under 1 msec.
+-	 * So 20 msecs are enough.
+-	 */
+-	timeout = jiffies + msecs_to_jiffies(20);
+-
+-	do {
+-		status = readl(base + S5PC110_DMA_TRANS_STATUS);
+-		if (status & S5PC110_DMA_TRANS_STATUS_TE) {
+-			writel(S5PC110_DMA_TRANS_CMD_TEC,
+-					base + S5PC110_DMA_TRANS_CMD);
+-			return -EIO;
+-		}
+-	} while (!(status & S5PC110_DMA_TRANS_STATUS_TD) &&
+-		time_before(jiffies, timeout));
+-
+-	writel(S5PC110_DMA_TRANS_CMD_TDC, base + S5PC110_DMA_TRANS_CMD);
+-
+-	return 0;
+-}
+-
+-static irqreturn_t s5pc110_onenand_irq(int irq, void *data)
+-{
+-	void __iomem *base = onenand->dma_addr;
+-	int status, cmd = 0;
+-
+-	status = readl(base + S5PC110_INTC_DMA_STATUS);
+-
+-	if (likely(status & S5PC110_INTC_DMA_TD))
+-		cmd = S5PC110_DMA_TRANS_CMD_TDC;
+-
+-	if (unlikely(status & S5PC110_INTC_DMA_TE))
+-		cmd = S5PC110_DMA_TRANS_CMD_TEC;
+-
+-	writel(cmd, base + S5PC110_DMA_TRANS_CMD);
+-	writel(status, base + S5PC110_INTC_DMA_CLR);
+-
+-	if (!onenand->complete.done)
+-		complete(&onenand->complete);
+-
+-	return IRQ_HANDLED;
+-}
+-
+-static int s5pc110_dma_irq(dma_addr_t dst, dma_addr_t src, size_t count, int direction)
+-{
+-	void __iomem *base = onenand->dma_addr;
+-	int status;
+-
+-	status = readl(base + S5PC110_INTC_DMA_MASK);
+-	if (status) {
+-		status &= ~(S5PC110_INTC_DMA_TD | S5PC110_INTC_DMA_TE);
+-		writel(status, base + S5PC110_INTC_DMA_MASK);
+-	}
+-
+-	writel(src, base + S5PC110_DMA_SRC_ADDR);
+-	writel(dst, base + S5PC110_DMA_DST_ADDR);
+-
+-	if (direction == S5PC110_DMA_DIR_READ) {
+-		writel(S5PC110_DMA_SRC_CFG_READ, base + S5PC110_DMA_SRC_CFG);
+-		writel(S5PC110_DMA_DST_CFG_READ, base + S5PC110_DMA_DST_CFG);
+-	} else {
+-		writel(S5PC110_DMA_SRC_CFG_WRITE, base + S5PC110_DMA_SRC_CFG);
+-		writel(S5PC110_DMA_DST_CFG_WRITE, base + S5PC110_DMA_DST_CFG);
+-	}
+-
+-	writel(count, base + S5PC110_DMA_TRANS_SIZE);
+-	writel(direction, base + S5PC110_DMA_TRANS_DIR);
+-
+-	writel(S5PC110_DMA_TRANS_CMD_TR, base + S5PC110_DMA_TRANS_CMD);
+-
+-	wait_for_completion_timeout(&onenand->complete, msecs_to_jiffies(20));
+-
+-	return 0;
+-}
+-
+-static int s5pc110_read_bufferram(struct mtd_info *mtd, int area,
+-		unsigned char *buffer, int offset, size_t count)
+-{
+-	struct onenand_chip *this = mtd->priv;
+-	void __iomem *p;
+-	void *buf = (void *) buffer;
+-	dma_addr_t dma_src, dma_dst;
+-	int err, ofs, page_dma = 0;
+-	struct device *dev = &onenand->pdev->dev;
+-
+-	p = this->base + area;
+-	if (ONENAND_CURRENT_BUFFERRAM(this)) {
+-		if (area == ONENAND_DATARAM)
+-			p += this->writesize;
+-		else
+-			p += mtd->oobsize;
+-	}
+-
+-	if (offset & 3 || (size_t) buf & 3 ||
+-		!onenand->dma_addr || count != mtd->writesize)
+-		goto normal;
+-
+-	/* Handle vmalloc address */
+-	if (buf >= high_memory) {
+-		struct page *page;
+-
+-		if (((size_t) buf & PAGE_MASK) !=
+-		    ((size_t) (buf + count - 1) & PAGE_MASK))
+-			goto normal;
+-		page = vmalloc_to_page(buf);
+-		if (!page)
+-			goto normal;
+-
+-		/* Page offset */
+-		ofs = ((size_t) buf & ~PAGE_MASK);
+-		page_dma = 1;
+-
+-		/* DMA routine */
+-		dma_src = onenand->phys_base + (p - this->base);
+-		dma_dst = dma_map_page(dev, page, ofs, count, DMA_FROM_DEVICE);
+-	} else {
+-		/* DMA routine */
+-		dma_src = onenand->phys_base + (p - this->base);
+-		dma_dst = dma_map_single(dev, buf, count, DMA_FROM_DEVICE);
+-	}
+-	if (dma_mapping_error(dev, dma_dst)) {
+-		dev_err(dev, "Couldn't map a %d byte buffer for DMA\n", count);
+-		goto normal;
+-	}
+-	err = s5pc110_dma_ops(dma_dst, dma_src,
+-			count, S5PC110_DMA_DIR_READ);
+-
+-	if (page_dma)
+-		dma_unmap_page(dev, dma_dst, count, DMA_FROM_DEVICE);
+-	else
+-		dma_unmap_single(dev, dma_dst, count, DMA_FROM_DEVICE);
+-
+-	if (!err)
+-		return 0;
+-
+-normal:
+-	if (count != mtd->writesize) {
+-		/* Copy the bufferram to memory to prevent unaligned access */
+-		memcpy(this->page_buf, p, mtd->writesize);
+-		p = this->page_buf + offset;
+-	}
+-
+-	memcpy(buffer, p, count);
+-
+-	return 0;
+-}
+-
+-static int s5pc110_chip_probe(struct mtd_info *mtd)
+-{
+-	/* Now just return 0 */
+-	return 0;
+-}
+-
+-static int s3c_onenand_bbt_wait(struct mtd_info *mtd, int state)
+-{
+-	unsigned int flags = INT_ACT | LOAD_CMP;
+-	unsigned int stat;
+-	unsigned long timeout;
+-
+-	/* The 20 msec is enough */
+-	timeout = jiffies + msecs_to_jiffies(20);
+-	while (time_before(jiffies, timeout)) {
+-		stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
+-		if (stat & flags)
+-			break;
+-	}
+-	/* To get correct interrupt status in timeout case */
+-	stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
+-	s3c_write_reg(stat, INT_ERR_ACK_OFFSET);
+-
+-	if (stat & LD_FAIL_ECC_ERR) {
+-		s3c_onenand_reset();
+-		return ONENAND_BBT_READ_ERROR;
+-	}
+-
+-	if (stat & LOAD_CMP) {
+-		int ecc = s3c_read_reg(ECC_ERR_STAT_OFFSET);
+-		if (ecc & ONENAND_ECC_4BIT_UNCORRECTABLE) {
+-			s3c_onenand_reset();
+-			return ONENAND_BBT_READ_ERROR;
+-		}
+-	}
+-
+-	return 0;
+-}
+-
+-static void s3c_onenand_check_lock_status(struct mtd_info *mtd)
+-{
+-	struct onenand_chip *this = mtd->priv;
+-	struct device *dev = &onenand->pdev->dev;
+-	unsigned int block, end;
+-	int tmp;
+-
+-	end = this->chipsize >> this->erase_shift;
+-
+-	for (block = 0; block < end; block++) {
+-		unsigned int mem_addr = onenand->mem_addr(block, 0, 0);
+-		tmp = s3c_read_cmd(CMD_MAP_01(onenand, mem_addr));
+-
+-		if (s3c_read_reg(INT_ERR_STAT_OFFSET) & LOCKED_BLK) {
+-			dev_err(dev, "block %d is write-protected!\n", block);
+-			s3c_write_reg(LOCKED_BLK, INT_ERR_ACK_OFFSET);
+-		}
+-	}
+-}
+-
+-static void s3c_onenand_do_lock_cmd(struct mtd_info *mtd, loff_t ofs,
+-				    size_t len, int cmd)
+-{
+-	struct onenand_chip *this = mtd->priv;
+-	int start, end, start_mem_addr, end_mem_addr;
+-
+-	start = ofs >> this->erase_shift;
+-	start_mem_addr = onenand->mem_addr(start, 0, 0);
+-	end = start + (len >> this->erase_shift) - 1;
+-	end_mem_addr = onenand->mem_addr(end, 0, 0);
+-
+-	if (cmd == ONENAND_CMD_LOCK) {
+-		s3c_write_cmd(ONENAND_LOCK_START, CMD_MAP_10(onenand,
+-							     start_mem_addr));
+-		s3c_write_cmd(ONENAND_LOCK_END, CMD_MAP_10(onenand,
+-							   end_mem_addr));
+-	} else {
+-		s3c_write_cmd(ONENAND_UNLOCK_START, CMD_MAP_10(onenand,
+-							       start_mem_addr));
+-		s3c_write_cmd(ONENAND_UNLOCK_END, CMD_MAP_10(onenand,
+-							     end_mem_addr));
+-	}
+-
+-	this->wait(mtd, FL_LOCKING);
+-}
+-
+-static void s3c_unlock_all(struct mtd_info *mtd)
+-{
+-	struct onenand_chip *this = mtd->priv;
+-	loff_t ofs = 0;
+-	size_t len = this->chipsize;
+-
+-	if (this->options & ONENAND_HAS_UNLOCK_ALL) {
+-		/* Write unlock command */
+-		this->command(mtd, ONENAND_CMD_UNLOCK_ALL, 0, 0);
+-
+-		/* No need to check return value */
+-		this->wait(mtd, FL_LOCKING);
+-
+-		/* Workaround for all block unlock in DDP */
+-		if (!ONENAND_IS_DDP(this)) {
+-			s3c_onenand_check_lock_status(mtd);
+-			return;
+-		}
+-
+-		/* All blocks on another chip */
+-		ofs = this->chipsize >> 1;
+-		len = this->chipsize >> 1;
+-	}
+-
+-	s3c_onenand_do_lock_cmd(mtd, ofs, len, ONENAND_CMD_UNLOCK);
+-
+-	s3c_onenand_check_lock_status(mtd);
+-}
+-
+-static void s3c_onenand_setup(struct mtd_info *mtd)
+-{
+-	struct onenand_chip *this = mtd->priv;
+-
+-	onenand->mtd = mtd;
+-
+-	if (onenand->type == TYPE_S3C6400) {
+-		onenand->mem_addr = s3c6400_mem_addr;
+-		onenand->cmd_map = s3c64xx_cmd_map;
+-	} else if (onenand->type == TYPE_S3C6410) {
+-		onenand->mem_addr = s3c6410_mem_addr;
+-		onenand->cmd_map = s3c64xx_cmd_map;
+-	} else if (onenand->type == TYPE_S5PC110) {
+-		/* Use generic onenand functions */
+-		this->read_bufferram = s5pc110_read_bufferram;
+-		this->chip_probe = s5pc110_chip_probe;
+-		return;
+-	} else {
+-		BUG();
+-	}
+-
+-	this->read_word = s3c_onenand_readw;
+-	this->write_word = s3c_onenand_writew;
+-
+-	this->wait = s3c_onenand_wait;
+-	this->bbt_wait = s3c_onenand_bbt_wait;
+-	this->unlock_all = s3c_unlock_all;
+-	this->command = s3c_onenand_command;
+-
+-	this->read_bufferram = onenand_read_bufferram;
+-	this->write_bufferram = onenand_write_bufferram;
+-}
+-
+-static int s3c_onenand_probe(struct platform_device *pdev)
+-{
+-	struct onenand_platform_data *pdata;
+-	struct onenand_chip *this;
+-	struct mtd_info *mtd;
+-	struct resource *r;
+-	int size, err;
+-
+-	pdata = dev_get_platdata(&pdev->dev);
+-	/* No need to check pdata. the platform data is optional */
+-
+-	size = sizeof(struct mtd_info) + sizeof(struct onenand_chip);
+-	mtd = devm_kzalloc(&pdev->dev, size, GFP_KERNEL);
+-	if (!mtd)
+-		return -ENOMEM;
+-
+-	onenand = devm_kzalloc(&pdev->dev, sizeof(struct s3c_onenand),
+-			       GFP_KERNEL);
+-	if (!onenand)
+-		return -ENOMEM;
+-
+-	this = (struct onenand_chip *) &mtd[1];
+-	mtd->priv = this;
+-	mtd->dev.parent = &pdev->dev;
+-	onenand->pdev = pdev;
+-	onenand->type = platform_get_device_id(pdev)->driver_data;
+-
+-	s3c_onenand_setup(mtd);
+-
+-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+-	onenand->base = devm_ioremap_resource(&pdev->dev, r);
+-	if (IS_ERR(onenand->base))
+-		return PTR_ERR(onenand->base);
+-
+-	onenand->phys_base = r->start;
+-
+-	/* Set onenand_chip also */
+-	this->base = onenand->base;
+-
+-	/* Use runtime badblock check */
+-	this->options |= ONENAND_SKIP_UNLOCK_CHECK;
+-
+-	if (onenand->type != TYPE_S5PC110) {
+-		r = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+-		onenand->ahb_addr = devm_ioremap_resource(&pdev->dev, r);
+-		if (IS_ERR(onenand->ahb_addr))
+-			return PTR_ERR(onenand->ahb_addr);
+-
+-		/* Allocate 4KiB BufferRAM */
+-		onenand->page_buf = devm_kzalloc(&pdev->dev, SZ_4K,
+-						 GFP_KERNEL);
+-		if (!onenand->page_buf)
+-			return -ENOMEM;
+-
+-		/* Allocate 128 SpareRAM */
+-		onenand->oob_buf = devm_kzalloc(&pdev->dev, 128, GFP_KERNEL);
+-		if (!onenand->oob_buf)
+-			return -ENOMEM;
+-
+-		/* S3C doesn't handle subpage write */
+-		mtd->subpage_sft = 0;
+-		this->subpagesize = mtd->writesize;
+-
+-	} else { /* S5PC110 */
+-		r = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+-		onenand->dma_addr = devm_ioremap_resource(&pdev->dev, r);
+-		if (IS_ERR(onenand->dma_addr))
+-			return PTR_ERR(onenand->dma_addr);
+-
+-		s5pc110_dma_ops = s5pc110_dma_poll;
+-		/* Interrupt support */
+-		r = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+-		if (r) {
+-			init_completion(&onenand->complete);
+-			s5pc110_dma_ops = s5pc110_dma_irq;
+-			err = devm_request_irq(&pdev->dev, r->start,
+-					       s5pc110_onenand_irq,
+-					       IRQF_SHARED, "onenand",
+-					       &onenand);
+-			if (err) {
+-				dev_err(&pdev->dev, "failed to get irq\n");
+-				return err;
+-			}
+-		}
+-	}
+-
+-	err = onenand_scan(mtd, 1);
+-	if (err)
+-		return err;
+-
+-	if (onenand->type != TYPE_S5PC110) {
+-		/* S3C doesn't handle subpage write */
+-		mtd->subpage_sft = 0;
+-		this->subpagesize = mtd->writesize;
+-	}
+-
+-	if (s3c_read_reg(MEM_CFG_OFFSET) & ONENAND_SYS_CFG1_SYNC_READ)
+-		dev_info(&onenand->pdev->dev, "OneNAND Sync. Burst Read enabled\n");
+-
+-	err = mtd_device_register(mtd, pdata ? pdata->parts : NULL,
+-				  pdata ? pdata->nr_parts : 0);
+-	if (err) {
+-		dev_err(&pdev->dev, "failed to parse partitions and register the MTD device\n");
+-		onenand_release(mtd);
+-		return err;
+-	}
+-
+-	platform_set_drvdata(pdev, mtd);
+-
+-	return 0;
+-}
+-
+-static int s3c_onenand_remove(struct platform_device *pdev)
+-{
+-	struct mtd_info *mtd = platform_get_drvdata(pdev);
+-
+-	onenand_release(mtd);
+-
+-	return 0;
+-}
+-
+-static int s3c_pm_ops_suspend(struct device *dev)
+-{
+-	struct mtd_info *mtd = dev_get_drvdata(dev);
+-	struct onenand_chip *this = mtd->priv;
+-
+-	this->wait(mtd, FL_PM_SUSPENDED);
+-	return 0;
+-}
+-
+-static  int s3c_pm_ops_resume(struct device *dev)
+-{
+-	struct mtd_info *mtd = dev_get_drvdata(dev);
+-	struct onenand_chip *this = mtd->priv;
+-
+-	this->unlock_all(mtd);
+-	return 0;
+-}
+-
+-static const struct dev_pm_ops s3c_pm_ops = {
+-	.suspend	= s3c_pm_ops_suspend,
+-	.resume		= s3c_pm_ops_resume,
+-};
+-
+-static const struct platform_device_id s3c_onenand_driver_ids[] = {
+-	{
+-		.name		= "s3c6400-onenand",
+-		.driver_data	= TYPE_S3C6400,
+-	}, {
+-		.name		= "s3c6410-onenand",
+-		.driver_data	= TYPE_S3C6410,
+-	}, {
+-		.name		= "s5pc110-onenand",
+-		.driver_data	= TYPE_S5PC110,
+-	}, { },
+-};
+-MODULE_DEVICE_TABLE(platform, s3c_onenand_driver_ids);
+-
+-static struct platform_driver s3c_onenand_driver = {
+-	.driver         = {
+-		.name	= "samsung-onenand",
+-		.pm	= &s3c_pm_ops,
+-	},
+-	.id_table	= s3c_onenand_driver_ids,
+-	.probe          = s3c_onenand_probe,
+-	.remove         = s3c_onenand_remove,
+-};
+-
+-module_platform_driver(s3c_onenand_driver);
+-
+-MODULE_LICENSE("GPL");
+-MODULE_AUTHOR("Kyungmin Park <kyungmin.park@samsung.com>");
+-MODULE_DESCRIPTION("Samsung OneNAND controller support");
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/onenand/samsung_mtd.c b/drivers/mtd/nand/onenand/samsung_mtd.c
+--- a/drivers/mtd/nand/onenand/samsung_mtd.c	1970-01-01 08:00:00.000000000 +0800
++++ b/drivers/mtd/nand/onenand/samsung_mtd.c	2026-02-09 11:25:57.101546829 +0800
+@@ -0,0 +1,1006 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Samsung S3C64XX/S5PC1XX OneNAND driver
++ *
++ *  Copyright © 2008-2010 Samsung Electronics
++ *  Kyungmin Park <kyungmin.park@samsung.com>
++ *  Marek Szyprowski <m.szyprowski@samsung.com>
++ *
++ * Implementation:
++ *	S3C64XX: emulate the pseudo BufferRAM
++ *	S5PC110: use DMA
++ */
++
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/sched.h>
++#include <linux/slab.h>
++#include <linux/mtd/mtd.h>
++#include <linux/mtd/onenand.h>
++#include <linux/mtd/partitions.h>
++#include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
++#include <linux/io.h>
++
++#include "samsung.h"
++
++enum soc_type {
++	TYPE_S3C6400,
++	TYPE_S3C6410,
++	TYPE_S5PC110,
++};
++
++#define ONENAND_ERASE_STATUS		0x00
++#define ONENAND_MULTI_ERASE_SET		0x01
++#define ONENAND_ERASE_START		0x03
++#define ONENAND_UNLOCK_START		0x08
++#define ONENAND_UNLOCK_END		0x09
++#define ONENAND_LOCK_START		0x0A
++#define ONENAND_LOCK_END		0x0B
++#define ONENAND_LOCK_TIGHT_START	0x0C
++#define ONENAND_LOCK_TIGHT_END		0x0D
++#define ONENAND_UNLOCK_ALL		0x0E
++#define ONENAND_OTP_ACCESS		0x12
++#define ONENAND_SPARE_ACCESS_ONLY	0x13
++#define ONENAND_MAIN_ACCESS_ONLY	0x14
++#define ONENAND_ERASE_VERIFY		0x15
++#define ONENAND_MAIN_SPARE_ACCESS	0x16
++#define ONENAND_PIPELINE_READ		0x4000
++
++#define MAP_00				(0x0)
++#define MAP_01				(0x1)
++#define MAP_10				(0x2)
++#define MAP_11				(0x3)
++
++#define S3C64XX_CMD_MAP_SHIFT		24
++
++#define S3C6400_FBA_SHIFT		10
++#define S3C6400_FPA_SHIFT		4
++#define S3C6400_FSA_SHIFT		2
++
++#define S3C6410_FBA_SHIFT		12
++#define S3C6410_FPA_SHIFT		6
++#define S3C6410_FSA_SHIFT		4
++
++/* S5PC110 specific definitions */
++#define S5PC110_DMA_SRC_ADDR		0x400
++#define S5PC110_DMA_SRC_CFG		0x404
++#define S5PC110_DMA_DST_ADDR		0x408
++#define S5PC110_DMA_DST_CFG		0x40C
++#define S5PC110_DMA_TRANS_SIZE		0x414
++#define S5PC110_DMA_TRANS_CMD		0x418
++#define S5PC110_DMA_TRANS_STATUS	0x41C
++#define S5PC110_DMA_TRANS_DIR		0x420
++#define S5PC110_INTC_DMA_CLR		0x1004
++#define S5PC110_INTC_ONENAND_CLR	0x1008
++#define S5PC110_INTC_DMA_MASK		0x1024
++#define S5PC110_INTC_ONENAND_MASK	0x1028
++#define S5PC110_INTC_DMA_PEND		0x1044
++#define S5PC110_INTC_ONENAND_PEND	0x1048
++#define S5PC110_INTC_DMA_STATUS		0x1064
++#define S5PC110_INTC_ONENAND_STATUS	0x1068
++
++#define S5PC110_INTC_DMA_TD		(1 << 24)
++#define S5PC110_INTC_DMA_TE		(1 << 16)
++
++#define S5PC110_DMA_CFG_SINGLE		(0x0 << 16)
++#define S5PC110_DMA_CFG_4BURST		(0x2 << 16)
++#define S5PC110_DMA_CFG_8BURST		(0x3 << 16)
++#define S5PC110_DMA_CFG_16BURST		(0x4 << 16)
++
++#define S5PC110_DMA_CFG_INC		(0x0 << 8)
++#define S5PC110_DMA_CFG_CNT		(0x1 << 8)
++
++#define S5PC110_DMA_CFG_8BIT		(0x0 << 0)
++#define S5PC110_DMA_CFG_16BIT		(0x1 << 0)
++#define S5PC110_DMA_CFG_32BIT		(0x2 << 0)
++
++#define S5PC110_DMA_SRC_CFG_READ	(S5PC110_DMA_CFG_16BURST | \
++					S5PC110_DMA_CFG_INC | \
++					S5PC110_DMA_CFG_16BIT)
++#define S5PC110_DMA_DST_CFG_READ	(S5PC110_DMA_CFG_16BURST | \
++					S5PC110_DMA_CFG_INC | \
++					S5PC110_DMA_CFG_32BIT)
++#define S5PC110_DMA_SRC_CFG_WRITE	(S5PC110_DMA_CFG_16BURST | \
++					S5PC110_DMA_CFG_INC | \
++					S5PC110_DMA_CFG_32BIT)
++#define S5PC110_DMA_DST_CFG_WRITE	(S5PC110_DMA_CFG_16BURST | \
++					S5PC110_DMA_CFG_INC | \
++					S5PC110_DMA_CFG_16BIT)
++
++#define S5PC110_DMA_TRANS_CMD_TDC	(0x1 << 18)
++#define S5PC110_DMA_TRANS_CMD_TEC	(0x1 << 16)
++#define S5PC110_DMA_TRANS_CMD_TR	(0x1 << 0)
++
++#define S5PC110_DMA_TRANS_STATUS_TD	(0x1 << 18)
++#define S5PC110_DMA_TRANS_STATUS_TB	(0x1 << 17)
++#define S5PC110_DMA_TRANS_STATUS_TE	(0x1 << 16)
++
++#define S5PC110_DMA_DIR_READ		0x0
++#define S5PC110_DMA_DIR_WRITE		0x1
++
++struct s3c_onenand {
++	struct mtd_info	*mtd;
++	struct platform_device	*pdev;
++	enum soc_type	type;
++	void __iomem	*base;
++	void __iomem	*ahb_addr;
++	int		bootram_command;
++	void		*page_buf;
++	void		*oob_buf;
++	unsigned int	(*mem_addr)(int fba, int fpa, int fsa);
++	unsigned int	(*cmd_map)(unsigned int type, unsigned int val);
++	void __iomem	*dma_addr;
++	unsigned long	phys_base;
++	struct completion	complete;
++};
++
++#define CMD_MAP_00(dev, addr)		(dev->cmd_map(MAP_00, ((addr) << 1)))
++#define CMD_MAP_01(dev, mem_addr)	(dev->cmd_map(MAP_01, (mem_addr)))
++#define CMD_MAP_10(dev, mem_addr)	(dev->cmd_map(MAP_10, (mem_addr)))
++#define CMD_MAP_11(dev, addr)		(dev->cmd_map(MAP_11, ((addr) << 2)))
++
++static struct s3c_onenand *onenand;
++
++static inline int s3c_read_reg(int offset)
++{
++	return readl(onenand->base + offset);
++}
++
++static inline void s3c_write_reg(int value, int offset)
++{
++	writel(value, onenand->base + offset);
++}
++
++static inline int s3c_read_cmd(unsigned int cmd)
++{
++	return readl(onenand->ahb_addr + cmd);
++}
++
++static inline void s3c_write_cmd(int value, unsigned int cmd)
++{
++	writel(value, onenand->ahb_addr + cmd);
++}
++
++#ifdef SAMSUNG_DEBUG
++static void s3c_dump_reg(void)
++{
++	int i;
++
++	for (i = 0; i < 0x400; i += 0x40) {
++		printk(KERN_INFO "0x%08X: 0x%08x 0x%08x 0x%08x 0x%08x\n",
++			(unsigned int) onenand->base + i,
++			s3c_read_reg(i), s3c_read_reg(i + 0x10),
++			s3c_read_reg(i + 0x20), s3c_read_reg(i + 0x30));
++	}
++}
++#endif
++
++static unsigned int s3c64xx_cmd_map(unsigned type, unsigned val)
++{
++	return (type << S3C64XX_CMD_MAP_SHIFT) | val;
++}
++
++static unsigned int s3c6400_mem_addr(int fba, int fpa, int fsa)
++{
++	return (fba << S3C6400_FBA_SHIFT) | (fpa << S3C6400_FPA_SHIFT) |
++		(fsa << S3C6400_FSA_SHIFT);
++}
++
++static unsigned int s3c6410_mem_addr(int fba, int fpa, int fsa)
++{
++	return (fba << S3C6410_FBA_SHIFT) | (fpa << S3C6410_FPA_SHIFT) |
++		(fsa << S3C6410_FSA_SHIFT);
++}
++
++static void s3c_onenand_reset(void)
++{
++	unsigned long timeout = 0x10000;
++	int stat;
++
++	s3c_write_reg(ONENAND_MEM_RESET_COLD, MEM_RESET_OFFSET);
++	while (1 && timeout--) {
++		stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
++		if (stat & RST_CMP)
++			break;
++	}
++	stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
++	s3c_write_reg(stat, INT_ERR_ACK_OFFSET);
++
++	/* Clear interrupt */
++	s3c_write_reg(0x0, INT_ERR_ACK_OFFSET);
++	/* Clear the ECC status */
++	s3c_write_reg(0x0, ECC_ERR_STAT_OFFSET);
++}
++
++static unsigned short s3c_onenand_readw(void __iomem *addr)
++{
++	struct onenand_chip *this = onenand->mtd->priv;
++	struct device *dev = &onenand->pdev->dev;
++	int reg = addr - this->base;
++	int word_addr = reg >> 1;
++	int value;
++
++	/* It's used for probing time */
++	switch (reg) {
++	case ONENAND_REG_MANUFACTURER_ID:
++		return s3c_read_reg(MANUFACT_ID_OFFSET);
++	case ONENAND_REG_DEVICE_ID:
++		return s3c_read_reg(DEVICE_ID_OFFSET);
++	case ONENAND_REG_VERSION_ID:
++		return s3c_read_reg(FLASH_VER_ID_OFFSET);
++	case ONENAND_REG_DATA_BUFFER_SIZE:
++		return s3c_read_reg(DATA_BUF_SIZE_OFFSET);
++	case ONENAND_REG_TECHNOLOGY:
++		return s3c_read_reg(TECH_OFFSET);
++	case ONENAND_REG_SYS_CFG1:
++		return s3c_read_reg(MEM_CFG_OFFSET);
++
++	/* Used at unlock all status */
++	case ONENAND_REG_CTRL_STATUS:
++		return 0;
++
++	case ONENAND_REG_WP_STATUS:
++		return ONENAND_WP_US;
++
++	default:
++		break;
++	}
++
++	/* BootRAM access control */
++	if ((unsigned int) addr < ONENAND_DATARAM && onenand->bootram_command) {
++		if (word_addr == 0)
++			return s3c_read_reg(MANUFACT_ID_OFFSET);
++		if (word_addr == 1)
++			return s3c_read_reg(DEVICE_ID_OFFSET);
++		if (word_addr == 2)
++			return s3c_read_reg(FLASH_VER_ID_OFFSET);
++	}
++
++	value = s3c_read_cmd(CMD_MAP_11(onenand, word_addr)) & 0xffff;
++	dev_info(dev, "%s: Illegal access at reg 0x%x, value 0x%x\n", __func__,
++		 word_addr, value);
++	return value;
++}
++
++static void s3c_onenand_writew(unsigned short value, void __iomem *addr)
++{
++	struct onenand_chip *this = onenand->mtd->priv;
++	struct device *dev = &onenand->pdev->dev;
++	unsigned int reg = addr - this->base;
++	unsigned int word_addr = reg >> 1;
++
++	/* It's used for probing time */
++	switch (reg) {
++	case ONENAND_REG_SYS_CFG1:
++		s3c_write_reg(value, MEM_CFG_OFFSET);
++		return;
++
++	case ONENAND_REG_START_ADDRESS1:
++	case ONENAND_REG_START_ADDRESS2:
++		return;
++
++	/* Lock/lock-tight/unlock/unlock_all */
++	case ONENAND_REG_START_BLOCK_ADDRESS:
++		return;
++
++	default:
++		break;
++	}
++
++	/* BootRAM access control */
++	if ((unsigned int)addr < ONENAND_DATARAM) {
++		if (value == ONENAND_CMD_READID) {
++			onenand->bootram_command = 1;
++			return;
++		}
++		if (value == ONENAND_CMD_RESET) {
++			s3c_write_reg(ONENAND_MEM_RESET_COLD, MEM_RESET_OFFSET);
++			onenand->bootram_command = 0;
++			return;
++		}
++	}
++
++	dev_info(dev, "%s: Illegal access at reg 0x%x, value 0x%x\n", __func__,
++		 word_addr, value);
++
++	s3c_write_cmd(value, CMD_MAP_11(onenand, word_addr));
++}
++
++static int s3c_onenand_wait(struct mtd_info *mtd, int state)
++{
++	struct device *dev = &onenand->pdev->dev;
++	unsigned int flags = INT_ACT;
++	unsigned int stat, ecc;
++	unsigned long timeout;
++
++	switch (state) {
++	case FL_READING:
++		flags |= BLK_RW_CMP | LOAD_CMP;
++		break;
++	case FL_WRITING:
++		flags |= BLK_RW_CMP | PGM_CMP;
++		break;
++	case FL_ERASING:
++		flags |= BLK_RW_CMP | ERS_CMP;
++		break;
++	case FL_LOCKING:
++		flags |= BLK_RW_CMP;
++		break;
++	default:
++		break;
++	}
++
++	/* The 20 msec is enough */
++	timeout = jiffies + msecs_to_jiffies(20);
++	while (time_before(jiffies, timeout)) {
++		stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
++		if (stat & flags)
++			break;
++
++		if (state != FL_READING)
++			cond_resched();
++	}
++	/* To get correct interrupt status in timeout case */
++	stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
++	s3c_write_reg(stat, INT_ERR_ACK_OFFSET);
++
++	/*
++	 * In the Spec. it checks the controller status first
++	 * However if you get the correct information in case of
++	 * power off recovery (POR) test, it should read ECC status first
++	 */
++	if (stat & LOAD_CMP) {
++		ecc = s3c_read_reg(ECC_ERR_STAT_OFFSET);
++		if (ecc & ONENAND_ECC_4BIT_UNCORRECTABLE) {
++			dev_info(dev, "%s: ECC error = 0x%04x\n", __func__,
++				 ecc);
++			mtd->ecc_stats.failed++;
++			return -EBADMSG;
++		}
++	}
++
++	if (stat & (LOCKED_BLK | ERS_FAIL | PGM_FAIL | LD_FAIL_ECC_ERR)) {
++		dev_info(dev, "%s: controller error = 0x%04x\n", __func__,
++			 stat);
++		if (stat & LOCKED_BLK)
++			dev_info(dev, "%s: it's locked error = 0x%04x\n",
++				 __func__, stat);
++
++		return -EIO;
++	}
++
++	return 0;
++}
++
++static int s3c_onenand_command(struct mtd_info *mtd, int cmd, loff_t addr,
++			       size_t len)
++{
++	struct onenand_chip *this = mtd->priv;
++	unsigned int *m, *s;
++	int fba, fpa, fsa = 0;
++	unsigned int mem_addr, cmd_map_01, cmd_map_10;
++	int i, mcount, scount;
++	int index;
++
++	fba = (int) (addr >> this->erase_shift);
++	fpa = (int) (addr >> this->page_shift);
++	fpa &= this->page_mask;
++
++	mem_addr = onenand->mem_addr(fba, fpa, fsa);
++	cmd_map_01 = CMD_MAP_01(onenand, mem_addr);
++	cmd_map_10 = CMD_MAP_10(onenand, mem_addr);
++
++	switch (cmd) {
++	case ONENAND_CMD_READ:
++	case ONENAND_CMD_READOOB:
++	case ONENAND_CMD_BUFFERRAM:
++		ONENAND_SET_NEXT_BUFFERRAM(this);
++	default:
++		break;
++	}
++
++	index = ONENAND_CURRENT_BUFFERRAM(this);
++
++	/*
++	 * Emulate Two BufferRAMs and access with 4 bytes pointer
++	 */
++	m = onenand->page_buf;
++	s = onenand->oob_buf;
++
++	if (index) {
++		m += (this->writesize >> 2);
++		s += (mtd->oobsize >> 2);
++	}
++
++	mcount = mtd->writesize >> 2;
++	scount = mtd->oobsize >> 2;
++
++	switch (cmd) {
++	case ONENAND_CMD_READ:
++		/* Main */
++		for (i = 0; i < mcount; i++)
++			*m++ = s3c_read_cmd(cmd_map_01);
++		return 0;
++
++	case ONENAND_CMD_READOOB:
++		s3c_write_reg(TSRF, TRANS_SPARE_OFFSET);
++		/* Main */
++		for (i = 0; i < mcount; i++)
++			*m++ = s3c_read_cmd(cmd_map_01);
++
++		/* Spare */
++		for (i = 0; i < scount; i++)
++			*s++ = s3c_read_cmd(cmd_map_01);
++
++		s3c_write_reg(0, TRANS_SPARE_OFFSET);
++		return 0;
++
++	case ONENAND_CMD_PROG:
++		/* Main */
++		for (i = 0; i < mcount; i++)
++			s3c_write_cmd(*m++, cmd_map_01);
++		return 0;
++
++	case ONENAND_CMD_PROGOOB:
++		s3c_write_reg(TSRF, TRANS_SPARE_OFFSET);
++
++		/* Main - dummy write */
++		for (i = 0; i < mcount; i++)
++			s3c_write_cmd(0xffffffff, cmd_map_01);
++
++		/* Spare */
++		for (i = 0; i < scount; i++)
++			s3c_write_cmd(*s++, cmd_map_01);
++
++		s3c_write_reg(0, TRANS_SPARE_OFFSET);
++		return 0;
++
++	case ONENAND_CMD_UNLOCK_ALL:
++		s3c_write_cmd(ONENAND_UNLOCK_ALL, cmd_map_10);
++		return 0;
++
++	case ONENAND_CMD_ERASE:
++		s3c_write_cmd(ONENAND_ERASE_START, cmd_map_10);
++		return 0;
++
++	default:
++		break;
++	}
++
++	return 0;
++}
++
++static unsigned char *s3c_get_bufferram(struct mtd_info *mtd, int area)
++{
++	struct onenand_chip *this = mtd->priv;
++	int index = ONENAND_CURRENT_BUFFERRAM(this);
++	unsigned char *p;
++
++	if (area == ONENAND_DATARAM) {
++		p = onenand->page_buf;
++		if (index == 1)
++			p += this->writesize;
++	} else {
++		p = onenand->oob_buf;
++		if (index == 1)
++			p += mtd->oobsize;
++	}
++
++	return p;
++}
++
++static int onenand_read_bufferram(struct mtd_info *mtd, int area,
++				  unsigned char *buffer, int offset,
++				  size_t count)
++{
++	unsigned char *p;
++
++	p = s3c_get_bufferram(mtd, area);
++	memcpy(buffer, p + offset, count);
++	return 0;
++}
++
++static int onenand_write_bufferram(struct mtd_info *mtd, int area,
++				   const unsigned char *buffer, int offset,
++				   size_t count)
++{
++	unsigned char *p;
++
++	p = s3c_get_bufferram(mtd, area);
++	memcpy(p + offset, buffer, count);
++	return 0;
++}
++
++static int (*s5pc110_dma_ops)(dma_addr_t dst, dma_addr_t src, size_t count, int direction);
++
++static int s5pc110_dma_poll(dma_addr_t dst, dma_addr_t src, size_t count, int direction)
++{
++	void __iomem *base = onenand->dma_addr;
++	int status;
++	unsigned long timeout;
++
++	writel(src, base + S5PC110_DMA_SRC_ADDR);
++	writel(dst, base + S5PC110_DMA_DST_ADDR);
++
++	if (direction == S5PC110_DMA_DIR_READ) {
++		writel(S5PC110_DMA_SRC_CFG_READ, base + S5PC110_DMA_SRC_CFG);
++		writel(S5PC110_DMA_DST_CFG_READ, base + S5PC110_DMA_DST_CFG);
++	} else {
++		writel(S5PC110_DMA_SRC_CFG_WRITE, base + S5PC110_DMA_SRC_CFG);
++		writel(S5PC110_DMA_DST_CFG_WRITE, base + S5PC110_DMA_DST_CFG);
++	}
++
++	writel(count, base + S5PC110_DMA_TRANS_SIZE);
++	writel(direction, base + S5PC110_DMA_TRANS_DIR);
++
++	writel(S5PC110_DMA_TRANS_CMD_TR, base + S5PC110_DMA_TRANS_CMD);
++
++	/*
++	 * There's no exact timeout values at Spec.
++	 * In real case it takes under 1 msec.
++	 * So 20 msecs are enough.
++	 */
++	timeout = jiffies + msecs_to_jiffies(20);
++
++	do {
++		status = readl(base + S5PC110_DMA_TRANS_STATUS);
++		if (status & S5PC110_DMA_TRANS_STATUS_TE) {
++			writel(S5PC110_DMA_TRANS_CMD_TEC,
++					base + S5PC110_DMA_TRANS_CMD);
++			return -EIO;
++		}
++	} while (!(status & S5PC110_DMA_TRANS_STATUS_TD) &&
++		time_before(jiffies, timeout));
++
++	writel(S5PC110_DMA_TRANS_CMD_TDC, base + S5PC110_DMA_TRANS_CMD);
++
++	return 0;
++}
++
++static irqreturn_t s5pc110_onenand_irq(int irq, void *data)
++{
++	void __iomem *base = onenand->dma_addr;
++	int status, cmd = 0;
++
++	status = readl(base + S5PC110_INTC_DMA_STATUS);
++
++	if (likely(status & S5PC110_INTC_DMA_TD))
++		cmd = S5PC110_DMA_TRANS_CMD_TDC;
++
++	if (unlikely(status & S5PC110_INTC_DMA_TE))
++		cmd = S5PC110_DMA_TRANS_CMD_TEC;
++
++	writel(cmd, base + S5PC110_DMA_TRANS_CMD);
++	writel(status, base + S5PC110_INTC_DMA_CLR);
++
++	if (!onenand->complete.done)
++		complete(&onenand->complete);
++
++	return IRQ_HANDLED;
++}
++
++static int s5pc110_dma_irq(dma_addr_t dst, dma_addr_t src, size_t count, int direction)
++{
++	void __iomem *base = onenand->dma_addr;
++	int status;
++
++	status = readl(base + S5PC110_INTC_DMA_MASK);
++	if (status) {
++		status &= ~(S5PC110_INTC_DMA_TD | S5PC110_INTC_DMA_TE);
++		writel(status, base + S5PC110_INTC_DMA_MASK);
++	}
++
++	writel(src, base + S5PC110_DMA_SRC_ADDR);
++	writel(dst, base + S5PC110_DMA_DST_ADDR);
++
++	if (direction == S5PC110_DMA_DIR_READ) {
++		writel(S5PC110_DMA_SRC_CFG_READ, base + S5PC110_DMA_SRC_CFG);
++		writel(S5PC110_DMA_DST_CFG_READ, base + S5PC110_DMA_DST_CFG);
++	} else {
++		writel(S5PC110_DMA_SRC_CFG_WRITE, base + S5PC110_DMA_SRC_CFG);
++		writel(S5PC110_DMA_DST_CFG_WRITE, base + S5PC110_DMA_DST_CFG);
++	}
++
++	writel(count, base + S5PC110_DMA_TRANS_SIZE);
++	writel(direction, base + S5PC110_DMA_TRANS_DIR);
++
++	writel(S5PC110_DMA_TRANS_CMD_TR, base + S5PC110_DMA_TRANS_CMD);
++
++	wait_for_completion_timeout(&onenand->complete, msecs_to_jiffies(20));
++
++	return 0;
++}
++
++static int s5pc110_read_bufferram(struct mtd_info *mtd, int area,
++		unsigned char *buffer, int offset, size_t count)
++{
++	struct onenand_chip *this = mtd->priv;
++	void __iomem *p;
++	void *buf = (void *) buffer;
++	dma_addr_t dma_src, dma_dst;
++	int err, ofs, page_dma = 0;
++	struct device *dev = &onenand->pdev->dev;
++
++	p = this->base + area;
++	if (ONENAND_CURRENT_BUFFERRAM(this)) {
++		if (area == ONENAND_DATARAM)
++			p += this->writesize;
++		else
++			p += mtd->oobsize;
++	}
++
++	if (offset & 3 || (size_t) buf & 3 ||
++		!onenand->dma_addr || count != mtd->writesize)
++		goto normal;
++
++	/* Handle vmalloc address */
++	if (buf >= high_memory) {
++		struct page *page;
++
++		if (((size_t) buf & PAGE_MASK) !=
++		    ((size_t) (buf + count - 1) & PAGE_MASK))
++			goto normal;
++		page = vmalloc_to_page(buf);
++		if (!page)
++			goto normal;
++
++		/* Page offset */
++		ofs = ((size_t) buf & ~PAGE_MASK);
++		page_dma = 1;
++
++		/* DMA routine */
++		dma_src = onenand->phys_base + (p - this->base);
++		dma_dst = dma_map_page(dev, page, ofs, count, DMA_FROM_DEVICE);
++	} else {
++		/* DMA routine */
++		dma_src = onenand->phys_base + (p - this->base);
++		dma_dst = dma_map_single(dev, buf, count, DMA_FROM_DEVICE);
++	}
++	if (dma_mapping_error(dev, dma_dst)) {
++		dev_err(dev, "Couldn't map a %d byte buffer for DMA\n", count);
++		goto normal;
++	}
++	err = s5pc110_dma_ops(dma_dst, dma_src,
++			count, S5PC110_DMA_DIR_READ);
++
++	if (page_dma)
++		dma_unmap_page(dev, dma_dst, count, DMA_FROM_DEVICE);
++	else
++		dma_unmap_single(dev, dma_dst, count, DMA_FROM_DEVICE);
++
++	if (!err)
++		return 0;
++
++normal:
++	if (count != mtd->writesize) {
++		/* Copy the bufferram to memory to prevent unaligned access */
++		memcpy(this->page_buf, p, mtd->writesize);
++		p = this->page_buf + offset;
++	}
++
++	memcpy(buffer, p, count);
++
++	return 0;
++}
++
++static int s5pc110_chip_probe(struct mtd_info *mtd)
++{
++	/* Now just return 0 */
++	return 0;
++}
++
++static int s3c_onenand_bbt_wait(struct mtd_info *mtd, int state)
++{
++	unsigned int flags = INT_ACT | LOAD_CMP;
++	unsigned int stat;
++	unsigned long timeout;
++
++	/* The 20 msec is enough */
++	timeout = jiffies + msecs_to_jiffies(20);
++	while (time_before(jiffies, timeout)) {
++		stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
++		if (stat & flags)
++			break;
++	}
++	/* To get correct interrupt status in timeout case */
++	stat = s3c_read_reg(INT_ERR_STAT_OFFSET);
++	s3c_write_reg(stat, INT_ERR_ACK_OFFSET);
++
++	if (stat & LD_FAIL_ECC_ERR) {
++		s3c_onenand_reset();
++		return ONENAND_BBT_READ_ERROR;
++	}
++
++	if (stat & LOAD_CMP) {
++		int ecc = s3c_read_reg(ECC_ERR_STAT_OFFSET);
++		if (ecc & ONENAND_ECC_4BIT_UNCORRECTABLE) {
++			s3c_onenand_reset();
++			return ONENAND_BBT_READ_ERROR;
++		}
++	}
++
++	return 0;
++}
++
++static void s3c_onenand_check_lock_status(struct mtd_info *mtd)
++{
++	struct onenand_chip *this = mtd->priv;
++	struct device *dev = &onenand->pdev->dev;
++	unsigned int block, end;
++	int tmp;
++
++	end = this->chipsize >> this->erase_shift;
++
++	for (block = 0; block < end; block++) {
++		unsigned int mem_addr = onenand->mem_addr(block, 0, 0);
++		tmp = s3c_read_cmd(CMD_MAP_01(onenand, mem_addr));
++
++		if (s3c_read_reg(INT_ERR_STAT_OFFSET) & LOCKED_BLK) {
++			dev_err(dev, "block %d is write-protected!\n", block);
++			s3c_write_reg(LOCKED_BLK, INT_ERR_ACK_OFFSET);
++		}
++	}
++}
++
++static void s3c_onenand_do_lock_cmd(struct mtd_info *mtd, loff_t ofs,
++				    size_t len, int cmd)
++{
++	struct onenand_chip *this = mtd->priv;
++	int start, end, start_mem_addr, end_mem_addr;
++
++	start = ofs >> this->erase_shift;
++	start_mem_addr = onenand->mem_addr(start, 0, 0);
++	end = start + (len >> this->erase_shift) - 1;
++	end_mem_addr = onenand->mem_addr(end, 0, 0);
++
++	if (cmd == ONENAND_CMD_LOCK) {
++		s3c_write_cmd(ONENAND_LOCK_START, CMD_MAP_10(onenand,
++							     start_mem_addr));
++		s3c_write_cmd(ONENAND_LOCK_END, CMD_MAP_10(onenand,
++							   end_mem_addr));
++	} else {
++		s3c_write_cmd(ONENAND_UNLOCK_START, CMD_MAP_10(onenand,
++							       start_mem_addr));
++		s3c_write_cmd(ONENAND_UNLOCK_END, CMD_MAP_10(onenand,
++							     end_mem_addr));
++	}
++
++	this->wait(mtd, FL_LOCKING);
++}
++
++static void s3c_unlock_all(struct mtd_info *mtd)
++{
++	struct onenand_chip *this = mtd->priv;
++	loff_t ofs = 0;
++	size_t len = this->chipsize;
++
++	if (this->options & ONENAND_HAS_UNLOCK_ALL) {
++		/* Write unlock command */
++		this->command(mtd, ONENAND_CMD_UNLOCK_ALL, 0, 0);
++
++		/* No need to check return value */
++		this->wait(mtd, FL_LOCKING);
++
++		/* Workaround for all block unlock in DDP */
++		if (!ONENAND_IS_DDP(this)) {
++			s3c_onenand_check_lock_status(mtd);
++			return;
++		}
++
++		/* All blocks on another chip */
++		ofs = this->chipsize >> 1;
++		len = this->chipsize >> 1;
++	}
++
++	s3c_onenand_do_lock_cmd(mtd, ofs, len, ONENAND_CMD_UNLOCK);
++
++	s3c_onenand_check_lock_status(mtd);
++}
++
++static void s3c_onenand_setup(struct mtd_info *mtd)
++{
++	struct onenand_chip *this = mtd->priv;
++
++	onenand->mtd = mtd;
++
++	if (onenand->type == TYPE_S3C6400) {
++		onenand->mem_addr = s3c6400_mem_addr;
++		onenand->cmd_map = s3c64xx_cmd_map;
++	} else if (onenand->type == TYPE_S3C6410) {
++		onenand->mem_addr = s3c6410_mem_addr;
++		onenand->cmd_map = s3c64xx_cmd_map;
++	} else if (onenand->type == TYPE_S5PC110) {
++		/* Use generic onenand functions */
++		this->read_bufferram = s5pc110_read_bufferram;
++		this->chip_probe = s5pc110_chip_probe;
++		return;
++	} else {
++		BUG();
++	}
++
++	this->read_word = s3c_onenand_readw;
++	this->write_word = s3c_onenand_writew;
++
++	this->wait = s3c_onenand_wait;
++	this->bbt_wait = s3c_onenand_bbt_wait;
++	this->unlock_all = s3c_unlock_all;
++	this->command = s3c_onenand_command;
++
++	this->read_bufferram = onenand_read_bufferram;
++	this->write_bufferram = onenand_write_bufferram;
++}
++
++static int s3c_onenand_probe(struct platform_device *pdev)
++{
++	struct onenand_platform_data *pdata;
++	struct onenand_chip *this;
++	struct mtd_info *mtd;
++	struct resource *r;
++	int size, err;
++
++	pdata = dev_get_platdata(&pdev->dev);
++	/* No need to check pdata. the platform data is optional */
++
++	size = sizeof(struct mtd_info) + sizeof(struct onenand_chip);
++	mtd = devm_kzalloc(&pdev->dev, size, GFP_KERNEL);
++	if (!mtd)
++		return -ENOMEM;
++
++	onenand = devm_kzalloc(&pdev->dev, sizeof(struct s3c_onenand),
++			       GFP_KERNEL);
++	if (!onenand)
++		return -ENOMEM;
++
++	this = (struct onenand_chip *) &mtd[1];
++	mtd->priv = this;
++	mtd->dev.parent = &pdev->dev;
++	onenand->pdev = pdev;
++	onenand->type = platform_get_device_id(pdev)->driver_data;
++
++	s3c_onenand_setup(mtd);
++
++	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	onenand->base = devm_ioremap_resource(&pdev->dev, r);
++	if (IS_ERR(onenand->base))
++		return PTR_ERR(onenand->base);
++
++	onenand->phys_base = r->start;
++
++	/* Set onenand_chip also */
++	this->base = onenand->base;
++
++	/* Use runtime badblock check */
++	this->options |= ONENAND_SKIP_UNLOCK_CHECK;
++
++	if (onenand->type != TYPE_S5PC110) {
++		r = platform_get_resource(pdev, IORESOURCE_MEM, 1);
++		onenand->ahb_addr = devm_ioremap_resource(&pdev->dev, r);
++		if (IS_ERR(onenand->ahb_addr))
++			return PTR_ERR(onenand->ahb_addr);
++
++		/* Allocate 4KiB BufferRAM */
++		onenand->page_buf = devm_kzalloc(&pdev->dev, SZ_4K,
++						 GFP_KERNEL);
++		if (!onenand->page_buf)
++			return -ENOMEM;
++
++		/* Allocate 128 SpareRAM */
++		onenand->oob_buf = devm_kzalloc(&pdev->dev, 128, GFP_KERNEL);
++		if (!onenand->oob_buf)
++			return -ENOMEM;
++
++		/* S3C doesn't handle subpage write */
++		mtd->subpage_sft = 0;
++		this->subpagesize = mtd->writesize;
++
++	} else { /* S5PC110 */
++		r = platform_get_resource(pdev, IORESOURCE_MEM, 1);
++		onenand->dma_addr = devm_ioremap_resource(&pdev->dev, r);
++		if (IS_ERR(onenand->dma_addr))
++			return PTR_ERR(onenand->dma_addr);
++
++		s5pc110_dma_ops = s5pc110_dma_poll;
++		/* Interrupt support */
++		r = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
++		if (r) {
++			init_completion(&onenand->complete);
++			s5pc110_dma_ops = s5pc110_dma_irq;
++			err = devm_request_irq(&pdev->dev, r->start,
++					       s5pc110_onenand_irq,
++					       IRQF_SHARED, "onenand",
++					       &onenand);
++			if (err) {
++				dev_err(&pdev->dev, "failed to get irq\n");
++				return err;
++			}
++		}
++	}
++
++	err = onenand_scan(mtd, 1);
++	if (err)
++		return err;
++
++	if (onenand->type != TYPE_S5PC110) {
++		/* S3C doesn't handle subpage write */
++		mtd->subpage_sft = 0;
++		this->subpagesize = mtd->writesize;
++	}
++
++	if (s3c_read_reg(MEM_CFG_OFFSET) & ONENAND_SYS_CFG1_SYNC_READ)
++		dev_info(&onenand->pdev->dev, "OneNAND Sync. Burst Read enabled\n");
++
++	err = mtd_device_register(mtd, pdata ? pdata->parts : NULL,
++				  pdata ? pdata->nr_parts : 0);
++	if (err) {
++		dev_err(&pdev->dev, "failed to parse partitions and register the MTD device\n");
++		onenand_release(mtd);
++		return err;
++	}
++
++	platform_set_drvdata(pdev, mtd);
++
++	return 0;
++}
++
++static int s3c_onenand_remove(struct platform_device *pdev)
++{
++	struct mtd_info *mtd = platform_get_drvdata(pdev);
++
++	onenand_release(mtd);
++
++	return 0;
++}
++
++static int s3c_pm_ops_suspend(struct device *dev)
++{
++	struct mtd_info *mtd = dev_get_drvdata(dev);
++	struct onenand_chip *this = mtd->priv;
++
++	this->wait(mtd, FL_PM_SUSPENDED);
++	return 0;
++}
++
++static  int s3c_pm_ops_resume(struct device *dev)
++{
++	struct mtd_info *mtd = dev_get_drvdata(dev);
++	struct onenand_chip *this = mtd->priv;
++
++	this->unlock_all(mtd);
++	return 0;
++}
++
++static const struct dev_pm_ops s3c_pm_ops = {
++	.suspend	= s3c_pm_ops_suspend,
++	.resume		= s3c_pm_ops_resume,
++};
++
++static const struct platform_device_id s3c_onenand_driver_ids[] = {
++	{
++		.name		= "s3c6400-onenand",
++		.driver_data	= TYPE_S3C6400,
++	}, {
++		.name		= "s3c6410-onenand",
++		.driver_data	= TYPE_S3C6410,
++	}, {
++		.name		= "s5pc110-onenand",
++		.driver_data	= TYPE_S5PC110,
++	}, { },
++};
++MODULE_DEVICE_TABLE(platform, s3c_onenand_driver_ids);
++
++static struct platform_driver s3c_onenand_driver = {
++	.driver         = {
++		.name	= "samsung-onenand",
++		.pm	= &s3c_pm_ops,
++	},
++	.id_table	= s3c_onenand_driver_ids,
++	.probe          = s3c_onenand_probe,
++	.remove         = s3c_onenand_remove,
++};
++
++module_platform_driver(s3c_onenand_driver);
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Kyungmin Park <kyungmin.park@samsung.com>");
++MODULE_DESCRIPTION("Samsung OneNAND controller support");
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/raw/internals.h b/drivers/mtd/nand/raw/internals.h
+--- a/drivers/mtd/nand/raw/internals.h	2026-04-10 14:05:36.295700752 +0800
++++ b/drivers/mtd/nand/raw/internals.h	2026-02-09 11:25:57.109547265 +0800
+@@ -32,6 +32,10 @@
+ #define NAND_MFR_STMICRO	0x20
+ #define NAND_MFR_TOSHIBA	0x98
+ #define NAND_MFR_WINBOND	0xef
++#ifdef CONFIG_AMLOGIC_MODIFY
++#define NAND_MFR_DOSILICON	0xf8
++#define NAND_MFR_ZETTA		0xba
++#endif
+ 
+ /**
+  * struct nand_manufacturer_ops - NAND Manufacturer operations
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/raw/Makefile b/drivers/mtd/nand/raw/Makefile
+--- a/drivers/mtd/nand/raw/Makefile	2026-04-10 14:05:36.291700775 +0800
++++ b/drivers/mtd/nand/raw/Makefile	2026-02-09 11:25:57.101546829 +0800
+@@ -56,7 +56,6 @@
+ obj-$(CONFIG_MTD_NAND_MXIC)		+= mxic_nand.o
+ obj-$(CONFIG_MTD_NAND_TEGRA)		+= tegra_nand.o
+ obj-$(CONFIG_MTD_NAND_STM32_FMC2)	+= stm32_fmc2_nand.o
+-obj-$(CONFIG_MTD_NAND_MESON)		+= meson_nand.o
+ 
+ nand-objs := nand_base.o nand_legacy.o nand_bbt.o nand_timings.o nand_ids.o
+ nand-objs += nand_onfi.o
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/raw/meson_nand.c b/drivers/mtd/nand/raw/meson_nand.c
+--- a/drivers/mtd/nand/raw/meson_nand.c	2026-04-10 14:05:36.299700730 +0800
++++ b/drivers/mtd/nand/raw/meson_nand.c	2026-02-09 11:25:57.113547485 +0800
+@@ -1357,10 +1357,10 @@
+ 
+ static const struct of_device_id meson_nfc_id_table[] = {
+ 	{
+-		.compatible = "amlogic,meson-gxl-nfc",
++		.compatible = "amlogic,meson-nfc-full-ecc",
+ 		.data = &meson_gxl_data,
+ 	}, {
+-		.compatible = "amlogic,meson-axg-nfc",
++		.compatible = "amlogic,meson-nfc-single-ecc",
+ 		.data = &meson_axg_data,
+ 	},
+ 	{}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/raw/nand_bbt.c b/drivers/mtd/nand/raw/nand_bbt.c
+--- a/drivers/mtd/nand/raw/nand_bbt.c	2026-04-10 14:05:36.299700730 +0800
++++ b/drivers/mtd/nand/raw/nand_bbt.c	2026-02-09 11:25:57.117547703 +0800
+@@ -65,6 +65,25 @@
+ 
+ #include "internals.h"
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++#include <linux/amlogic/aml_mtd_nand.h>
++
++#define BBT_BLOCK_GOOD		NAND_BLOCK_GOOD
++#define BBT_BLOCK_WORN		NAND_BLOCK_BAD
++#define BBT_BLOCK_FACTORY_BAD	NAND_FACTORY_BAD
++#define BBT_BLOCK_RESERVED	0x03
++
++static inline uint8_t bbt_get_entry(struct nand_chip *chip, int block)
++{
++	return chip->bbt[block];
++}
++
++static inline void bbt_mark_entry(struct nand_chip *chip, int block,
++		uint8_t mark)
++{
++	chip->bbt[block] = mark;
++}
++#else
+ #define BBT_BLOCK_GOOD		0x00
+ #define BBT_BLOCK_WORN		0x01
+ #define BBT_BLOCK_RESERVED	0x02
+@@ -86,6 +105,7 @@
+ 	uint8_t msk = (mark & BBT_ENTRY_MASK) << ((block & BBT_ENTRY_MASK) * 2);
+ 	chip->bbt[block >> BBT_ENTRY_SHIFT] |= msk;
+ }
++#endif
+ 
+ static int check_pattern_no_oob(uint8_t *buf, struct nand_bbt_descr *td)
+ {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/spi/core.c b/drivers/mtd/nand/spi/core.c
+--- a/drivers/mtd/nand/spi/core.c	2026-04-10 14:05:36.307700686 +0800
++++ b/drivers/mtd/nand/spi/core.c	2026-02-09 11:25:57.129548358 +0800
+@@ -375,11 +375,19 @@
+ 	struct spi_mem_op op = SPINAND_READID_OP(0, spinand->scratchbuf,
+ 						 SPINAND_MAX_ID_LEN);
+ 	int ret;
+-
++#ifdef CONFIG_AMLOGIC_MODIFY
++	int i;
++#endif
+ 	ret = spi_mem_exec_op(spinand->spimem, &op);
+ 	if (!ret)
+ 		memcpy(buf, spinand->scratchbuf, SPINAND_MAX_ID_LEN);
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++	/* Success or failure print id */
++	for (i = 0; i < SPINAND_MAX_ID_LEN; i++)
++		dev_info(&spinand->spimem->spi->dev, "id[%d] = 0x%x\n",
++			 i, spinand->id.data[i]);
++#endif
+ 	return ret;
+ }
+ 
+@@ -529,6 +537,35 @@
+ 	return ret ? ret : max_bitflips;
+ }
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++static int spinand_append_info_page(struct mtd_info *mtd,
++				    struct nand_page_io_req *last_req)
++{
++	struct spinand_device *spinand = mtd_to_spinand(mtd);
++	struct nand_device *nand = mtd_to_nanddev(mtd);
++	struct nand_page_io_req req;
++	int page;
++	u8 *buf;
++	int ret = 0;
++
++	page = nanddev_pos_to_row(nand, &last_req->pos);
++	if (!last_req->pos.target && spinand_is_info_page(nand, page)) {
++		req = *last_req;
++		req.datalen = mtd->writesize;
++		req.dataoffs = 0;
++		req.ooblen = 0;
++		buf = kzalloc(mtd->writesize, GFP_KERNEL);
++		req.databuf.in = buf;
++		spinand_set_info_page(mtd, buf);
++		nanddev_pos_next_page(nand, &req.pos);
++		ret = spinand_write_page(spinand, &req);
++		kfree(buf);
++		pr_info("%s: %d\n", __func__, page);
++	}
++	return ret;
++}
++#endif
++
+ static int spinand_mtd_write(struct mtd_info *mtd, loff_t to,
+ 			     struct mtd_oob_ops *ops)
+ {
+@@ -556,6 +593,13 @@
+ 		if (ret)
+ 			break;
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++		/* spinand add info page support */
++		ret = spinand_append_info_page(mtd, &iter.req);
++		if (ret)
++			break;
++#endif
++
+ 		ops->retlen += iter.req.datalen;
+ 		ops->oobretlen += iter.req.ooblen;
+ 	}
+@@ -1052,7 +1096,9 @@
+ 	/* Propagate ECC information to mtd_info */
+ 	mtd->ecc_strength = nand->eccreq.strength;
+ 	mtd->ecc_step_size = nand->eccreq.step_size;
+-
++#ifdef CONFIG_AMLOGIC_MODIFY
++	mtd->bitflip_threshold = mtd->ecc_strength;
++#endif
+ 	return 0;
+ 
+ err_cleanup_nanddev:
+@@ -1099,7 +1145,13 @@
+ 	if (ret)
+ 		return ret;
+ 
++#if (IS_ENABLED(CONFIG_AMLOGIC_MODIFY) && IS_ENABLED(CONFIG_MTD_SPI_NAND_MESON) && \
++	IS_ENABLED(CONFIG_MTD_RESV_MESON))
++	meson_spinand_init(spinand, mtd);
++	ret = meson_add_mtd_partitions(mtd);
++#else
+ 	ret = mtd_device_register(mtd, NULL, 0);
++#endif
+ 	if (ret)
+ 		goto err_spinand_cleanup;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/spi/Kconfig b/drivers/mtd/nand/spi/Kconfig
+--- a/drivers/mtd/nand/spi/Kconfig	2026-04-10 14:05:36.307700686 +0800
++++ b/drivers/mtd/nand/spi/Kconfig	2026-02-09 11:25:57.129548358 +0800
+@@ -6,3 +6,18 @@
+ 	select SPI_MEM
+ 	help
+ 	  This is the framework for the SPI NAND device drivers.
++
++if MTD_SPI_NAND
++
++config MTD_SPI_NAND_MESON
++        tristate "MESON SPI NAND support"
++        default n
++	select MTD_RESV_MESON
++	select SPI_MESON_SPIFC
++        depends on MTD_SPI_NAND && AMLOGIC_MODIFY
++        help
++          This is based on MTD_SPI_NAND, adding partition and rsv management.
++          Say Y, Will register partitions according to dts and add rsv management.
++          Say N, Only register one mtd device.
++
++endif #MTD_SPI_NAND
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/spi/macronix.c b/drivers/mtd/nand/spi/macronix.c
+--- a/drivers/mtd/nand/spi/macronix.c	2026-04-10 14:05:36.307700686 +0800
++++ b/drivers/mtd/nand/spi/macronix.c	2026-02-09 11:25:57.129548358 +0800
+@@ -124,15 +124,15 @@
+ 	int ret;
+ 
+ 	/*
+-	 * Macronix SPI NAND read ID needs a dummy byte, so the first byte in
+-	 * raw_id is garbage.
++	 * Macronix SPI NAND read ID needs a dummy byte, now add dummy to
++	 * the operation of read id, So the 0th byte is the vendor ID.
+ 	 */
+-	if (id[1] != SPINAND_MFR_MACRONIX)
++	if (id[0] != SPINAND_MFR_MACRONIX)
+ 		return 0;
+ 
+ 	ret = spinand_match_and_init(spinand, macronix_spinand_table,
+ 				     ARRAY_SIZE(macronix_spinand_table),
+-				     id[2]);
++				     id[1]);
+ 	if (ret)
+ 		return ret;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/spi/micron.c b/drivers/mtd/nand/spi/micron.c
+--- a/drivers/mtd/nand/spi/micron.c	2026-04-10 14:05:36.307700686 +0800
++++ b/drivers/mtd/nand/spi/micron.c	2026-02-09 11:25:57.129548358 +0800
+@@ -108,14 +108,14 @@
+ 	int ret;
+ 
+ 	/*
+-	 * Micron SPI NAND read ID need a dummy byte,
+-	 * so the first byte in raw_id is dummy.
++	 * Micron SPI NAND read ID needs a dummy byte, now add dummy to
++	 * the operation of read id, So the 0th byte is the vendor ID.
+ 	 */
+-	if (id[1] != SPINAND_MFR_MICRON)
++	if (id[0] != SPINAND_MFR_MICRON)
+ 		return 0;
+ 
+ 	ret = spinand_match_and_init(spinand, micron_spinand_table,
+-				     ARRAY_SIZE(micron_spinand_table), id[2]);
++				     ARRAY_SIZE(micron_spinand_table), id[1]);
+ 	if (ret)
+ 		return ret;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/spi/paragon.c b/drivers/mtd/nand/spi/paragon.c
+--- a/drivers/mtd/nand/spi/paragon.c	2026-04-10 14:05:36.307700686 +0800
++++ b/drivers/mtd/nand/spi/paragon.c	2026-02-09 11:25:57.129548358 +0800
+@@ -122,14 +122,16 @@
+ 	u8 *id = spinand->id.data;
+ 	int ret;
+ 
+-	/* Read ID returns [0][MID][DID] */
+-
+-	if (id[1] != SPINAND_MFR_PARAGON)
++	/*
++	 * PARAGON SPI NAND read ID needs a dummy byte, now add dummy to
++	 * the operation of read id, So the 0th byte is the vendor ID.
++	 */
++	if (id[0] != SPINAND_MFR_PARAGON)
+ 		return 0;
+ 
+ 	ret = spinand_match_and_init(spinand, paragon_spinand_table,
+ 				     ARRAY_SIZE(paragon_spinand_table),
+-				     id[2]);
++				     id[1]);
+ 	if (ret)
+ 		return ret;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/spi/toshiba.c b/drivers/mtd/nand/spi/toshiba.c
+--- a/drivers/mtd/nand/spi/toshiba.c	2026-04-10 14:05:36.307700686 +0800
++++ b/drivers/mtd/nand/spi/toshiba.c	2026-02-09 11:25:57.129548358 +0800
+@@ -162,15 +162,15 @@
+ 	int ret;
+ 
+ 	/*
+-	 * Toshiba SPI NAND read ID needs a dummy byte,
+-	 * so the first byte in id is garbage.
++	 * TOSHIBA SPI NAND read ID needs a dummy byte, now add dummy to
++	 * the operation of read id, So the 0th byte is the vendor ID.
+ 	 */
+-	if (id[1] != SPINAND_MFR_TOSHIBA)
++	if (id[0] != SPINAND_MFR_TOSHIBA)
+ 		return 0;
+ 
+ 	ret = spinand_match_and_init(spinand, toshiba_spinand_table,
+ 				     ARRAY_SIZE(toshiba_spinand_table),
+-				     id[2]);
++				     id[1]);
+ 	if (ret)
+ 		return ret;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/nand/spi/winbond.c b/drivers/mtd/nand/spi/winbond.c
+--- a/drivers/mtd/nand/spi/winbond.c	2026-04-10 14:05:36.307700686 +0800
++++ b/drivers/mtd/nand/spi/winbond.c	2026-02-09 11:25:57.129548358 +0800
+@@ -105,14 +105,14 @@
+ 	int ret;
+ 
+ 	/*
+-	 * Winbond SPI NAND read ID need a dummy byte,
+-	 * so the first byte in raw_id is dummy.
++	 * Winbond SPI NAND read ID needs a dummy byte, now add dummy to
++	 * the operation of read id, So the 0th byte is the vendor ID.
+ 	 */
+-	if (id[1] != SPINAND_MFR_WINBOND)
++	if (id[0] != SPINAND_MFR_WINBOND)
+ 		return 0;
+ 
+ 	ret = spinand_match_and_init(spinand, winbond_spinand_table,
+-				     ARRAY_SIZE(winbond_spinand_table), id[2]);
++				     ARRAY_SIZE(winbond_spinand_table), id[1]);
+ 	if (ret)
+ 		return ret;
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/mtd/spi-nor/spi-nor.c b/drivers/mtd/spi-nor/spi-nor.c
+--- a/drivers/mtd/spi-nor/spi-nor.c	2026-04-10 14:05:36.311700664 +0800
++++ b/drivers/mtd/spi-nor/spi-nor.c	2026-02-09 11:25:57.141549013 +0800
+@@ -22,7 +22,9 @@
+ #include <linux/sched/task_stack.h>
+ #include <linux/spi/flash.h>
+ #include <linux/mtd/spi-nor.h>
+-
++#ifdef CONFIG_AMLOGIC_MODIFY
++#include <linux/gpio.h>
++#endif
+ /* Define max times to check status register before we give up. */
+ 
+ /*
+@@ -2505,6 +2507,18 @@
+ 	/* XMC (Wuhan Xinxin Semiconductor Manufacturing Corp.) */
+ 	{ "XM25QH64A", INFO(0x207017, 0, 64 * 1024, 128, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
+ 	{ "XM25QH128A", INFO(0x207018, 0, 64 * 1024, 256, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
++
++	{"GD25Q80C", INFO(0xc84014, 0x0, 64 * 1024, 16,
++		SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
++		SPI_NOR_4B_OPCODES | SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB) },
++	{"FM25Q08A", INFO(0xa14014, 0x0, 64 * 1024, 16,
++		SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
++		SPI_NOR_4B_OPCODES) },
++	{"BY25D80", INFO(0x684014, 0x0, 64 * 1024, 16,
++		SECT_4K | SPI_NOR_DUAL_READ) },
++	{"P25Q80H", INFO(0x856014, 0x0, 64 * 1024, 16,
++		SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
++		SPI_NOR_4B_OPCODES) },
+ 	{ },
+ };
+ 
+@@ -4983,6 +4997,9 @@
+ 	struct spi_device *spi = spimem->spi;
+ 	struct flash_platform_data *data = dev_get_platdata(&spi->dev);
+ 	struct spi_nor *nor;
++#ifdef CONFIG_AMLOGIC_MODIFY
++	struct pinctrl *pc;
++#endif
+ 	/*
+ 	 * Enable all caps by default. The core will mask them after
+ 	 * checking what's really supported using spi_mem_supports_op().
+@@ -5021,8 +5038,17 @@
+ 		flash_name = spi->modalias;
+ 
+ 	ret = spi_nor_scan(nor, flash_name, &hwcaps);
+-	if (ret)
++	if (ret) {
++#ifdef CONFIG_AMLOGIC_MODIFY
++		if (gpio_is_valid(spi->cs_gpio))
++			gpio_free(spi->cs_gpio);
++		pc = spi->controller->dev.parent->pins->p;
++		/* put twice here if get pc with devm_pinctrl_get */
++		if (pc)
++			devm_pinctrl_put(pc);
++#endif
+ 		return ret;
++	}
+ 
+ 	/*
+ 	 * None of the existing parts have > 512B pages, but let's play safe

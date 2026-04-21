@@ -10,3 +10,6 @@ output*/
 
 # vscode generated files
 .vscode*
+
+# Build & debug logs
+*.log

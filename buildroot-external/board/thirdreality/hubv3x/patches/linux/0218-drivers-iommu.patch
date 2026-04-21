@@ -1,0 +1,2166 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/amd_iommu.c b/drivers/iommu/amd_iommu.c
+--- a/drivers/iommu/amd_iommu.c	2026-04-10 14:05:35.679704167 +0800
++++ b/drivers/iommu/amd_iommu.c	2026-02-09 11:25:56.721526088 +0800
+@@ -3098,7 +3098,8 @@
+ }
+ 
+ static int amd_iommu_map(struct iommu_domain *dom, unsigned long iova,
+-			 phys_addr_t paddr, size_t page_size, int iommu_prot)
++			 phys_addr_t paddr, size_t page_size, int iommu_prot,
++			 gfp_t gfp)
+ {
+ 	struct protection_domain *domain = to_pdomain(dom);
+ 	int prot = 0;
+@@ -3113,7 +3114,7 @@
+ 		prot |= IOMMU_PROT_IW;
+ 
+ 	mutex_lock(&domain->api_lock);
+-	ret = iommu_map_page(domain, iova, paddr, page_size, prot, GFP_KERNEL);
++	ret = iommu_map_page(domain, iova, paddr, page_size, prot, gfp);
+ 	mutex_unlock(&domain->api_lock);
+ 
+ 	domain_flush_np_cache(domain, iova, page_size);
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/arm-smmu.c b/drivers/iommu/arm-smmu.c
+--- a/drivers/iommu/arm-smmu.c	2026-04-10 14:05:35.683704145 +0800
++++ b/drivers/iommu/arm-smmu.c	2026-02-09 11:25:56.721526088 +0800
+@@ -27,8 +27,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+ #include <linux/iopoll.h>
+-#include <linux/init.h>
+-#include <linux/moduleparam.h>
++#include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/of_device.h>
+@@ -59,10 +58,6 @@
+ #define MSI_IOVA_LENGTH			0x100000
+ 
+ static int force_stage;
+-/*
+- * not really modular, but the easiest way to keep compat with existing
+- * bootargs behaviour is to continue using module_param() here.
+- */
+ module_param(force_stage, int, S_IRUGO);
+ MODULE_PARM_DESC(force_stage,
+ 	"Force SMMU mappings to be installed at a particular stage of translation. A value of '1' or '2' forces the corresponding stage. All other values are ignored (i.e. no stage is forced). Note that selecting a specific stage will disable support for nested translation.");
+@@ -72,24 +67,10 @@
+ MODULE_PARM_DESC(disable_bypass,
+ 	"Disable bypass streams such that incoming transactions from devices that are not attached to an iommu domain will report an abort back to the device and will not be allowed to pass through the SMMU.");
+ 
+-struct arm_smmu_s2cr {
+-	struct iommu_group		*group;
+-	int				count;
+-	enum arm_smmu_s2cr_type		type;
+-	enum arm_smmu_s2cr_privcfg	privcfg;
+-	u8				cbndx;
+-};
+-
+ #define s2cr_init_val (struct arm_smmu_s2cr){				\
+ 	.type = disable_bypass ? S2CR_TYPE_FAULT : S2CR_TYPE_BYPASS,	\
+ }
+ 
+-struct arm_smmu_smr {
+-	u16				mask;
+-	u16				id;
+-	bool				valid;
+-};
+-
+ struct arm_smmu_cb {
+ 	u64				ttbr[2];
+ 	u32				tcr[2];
+@@ -130,6 +111,12 @@
+ 	return container_of(dom, struct arm_smmu_domain, domain);
+ }
+ 
++static struct platform_driver arm_smmu_driver;
++static struct iommu_ops arm_smmu_ops;
++
++#ifdef CONFIG_ARM_SMMU_LEGACY_DT_BINDINGS
++static int arm_smmu_bus_init(struct iommu_ops *ops);
++
+ static struct device_node *dev_get_dev_node(struct device *dev)
+ {
+ 	if (dev_is_pci(dev)) {
+@@ -165,9 +152,6 @@
+ 	return err == -ENOENT ? 0 : err;
+ }
+ 
+-static struct platform_driver arm_smmu_driver;
+-static struct iommu_ops arm_smmu_ops;
+-
+ static int arm_smmu_register_legacy_master(struct device *dev,
+ 					   struct arm_smmu_device **smmu)
+ {
+@@ -219,9 +203,40 @@
+ 	return err;
+ }
+ 
+-static int __arm_smmu_alloc_bitmap(unsigned long *map, int start, int end)
++/*
++ * With the legacy DT binding in play, we have no guarantees about
++ * probe order, but then we're also not doing default domains, so we can
++ * delay setting bus ops until we're sure every possible SMMU is ready,
++ * and that way ensure that no add_device() calls get missed.
++ */
++static int arm_smmu_legacy_bus_init(void)
++{
++	if (using_legacy_binding)
++		return arm_smmu_bus_init(&arm_smmu_ops);
++	return 0;
++}
++device_initcall_sync(arm_smmu_legacy_bus_init);
++#else
++static int arm_smmu_register_legacy_master(struct device *dev,
++					   struct arm_smmu_device **smmu)
++{
++	return -ENODEV;
++}
++#endif /* CONFIG_ARM_SMMU_LEGACY_DT_BINDINGS */
++
++static int __arm_smmu_alloc_cb(struct arm_smmu_device *smmu, int start,
++			       struct device *dev)
+ {
++	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
++	unsigned long *map = smmu->context_map;
++	int end = smmu->num_context_banks;
+ 	int idx;
++	int i;
++
++	for_each_cfg_sme(fwspec, i, idx) {
++		if (smmu->s2crs[idx].pinned)
++			return smmu->s2crs[idx].cbndx;
++	}
+ 
+ 	do {
+ 		idx = find_next_zero_bit(map, end, start);
+@@ -626,7 +641,8 @@
+ }
+ 
+ static int arm_smmu_init_domain_context(struct iommu_domain *domain,
+-					struct arm_smmu_device *smmu)
++					struct arm_smmu_device *smmu,
++					struct device *dev)
+ {
+ 	int irq, start, ret = 0;
+ 	unsigned long ias, oas;
+@@ -740,8 +756,7 @@
+ 		ret = -EINVAL;
+ 		goto out_unlock;
+ 	}
+-	ret = __arm_smmu_alloc_bitmap(smmu->context_map, start,
+-				      smmu->num_context_banks);
++	ret = __arm_smmu_alloc_cb(smmu, start, dev);
+ 	if (ret < 0)
+ 		goto out_unlock;
+ 
+@@ -929,24 +944,43 @@
+  */
+ static void arm_smmu_test_smr_masks(struct arm_smmu_device *smmu)
+ {
++	u32 s2cr;
+ 	u32 smr;
++	int idx;
+ 
+ 	if (!smmu->smrs)
+ 		return;
+ 
++	for (idx = 0; idx < smmu->num_mapping_groups; idx++) {
++		if (smmu->features & ARM_SMMU_FEAT_EXIDS) {
++			s2cr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_S2CR(idx));
++			if (!FIELD_GET(S2CR_EXIDVALID, s2cr))
++				break;
++		} else {
++			smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(idx));
++			if (!FIELD_GET(SMR_VALID, smr))
++				break;
++		}
++	}
++
++	if (idx == smmu->num_mapping_groups) {
++		dev_err(smmu->dev, "Unable to compute streamid_mask\n");
++		return;
++	}
++
+ 	/*
+ 	 * SMR.ID bits may not be preserved if the corresponding MASK
+ 	 * bits are set, so check each one separately. We can reject
+ 	 * masters later if they try to claim IDs outside these masks.
+ 	 */
+ 	smr = FIELD_PREP(SMR_ID, smmu->streamid_mask);
+-	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_SMR(0), smr);
+-	smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(0));
++	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_SMR(idx), smr);
++	smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(idx));
+ 	smmu->streamid_mask = FIELD_GET(SMR_ID, smr);
+ 
+ 	smr = FIELD_PREP(SMR_MASK, smmu->streamid_mask);
+-	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_SMR(0), smr);
+-	smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(0));
++	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_SMR(idx), smr);
++	smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(idx));
+ 	smmu->smr_mask_mask = FIELD_GET(SMR_MASK, smr);
+ }
+ 
+@@ -994,12 +1028,19 @@
+ 
+ static bool arm_smmu_free_sme(struct arm_smmu_device *smmu, int idx)
+ {
++	bool pinned = smmu->s2crs[idx].pinned;
++	u8 cbndx = smmu->s2crs[idx].cbndx;;
++
+ 	if (--smmu->s2crs[idx].count)
+ 		return false;
+ 
+ 	smmu->s2crs[idx] = s2cr_init_val;
+-	if (smmu->smrs)
++	if (pinned) {
++		smmu->s2crs[idx].pinned = true;
++		smmu->s2crs[idx].cbndx = cbndx;
++	} else if (smmu->smrs) {
+ 		smmu->smrs[idx].valid = false;
++	}
+ 
+ 	return true;
+ }
+@@ -1135,7 +1176,7 @@
+ 		return ret;
+ 
+ 	/* Ensure that the domain is finalised */
+-	ret = arm_smmu_init_domain_context(domain, smmu);
++	ret = arm_smmu_init_domain_context(domain, smmu, dev);
+ 	if (ret < 0)
+ 		goto rpm_put;
+ 
+@@ -1160,7 +1201,7 @@
+ }
+ 
+ static int arm_smmu_map(struct iommu_domain *domain, unsigned long iova,
+-			phys_addr_t paddr, size_t size, int prot)
++			phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct io_pgtable_ops *ops = to_smmu_domain(domain)->pgtbl_ops;
+ 	struct arm_smmu_device *smmu = to_smmu_domain(domain)->smmu;
+@@ -1882,6 +1923,7 @@
+ 	{ .compatible = "qcom,smmu-v2", .data = &qcom_smmuv2 },
+ 	{ },
+ };
++MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
+ 
+ #ifdef CONFIG_ACPI
+ static int acpi_smmu_get_data(u32 model, struct arm_smmu_device *smmu)
+@@ -1968,8 +2010,10 @@
+ 
+ 	legacy_binding = of_find_property(dev->of_node, "mmu-masters", NULL);
+ 	if (legacy_binding && !using_generic_binding) {
+-		if (!using_legacy_binding)
+-			pr_notice("deprecated \"mmu-masters\" DT property in use; DMA API support unavailable\n");
++		if (!using_legacy_binding) {
++			pr_notice("deprecated \"mmu-masters\" DT property in use; %s support unavailable\n",
++				  IS_ENABLED(CONFIG_ARM_SMMU_LEGACY_DT_BINDINGS) ? "DMA API" : "SMMU");
++		}
+ 		using_legacy_binding = true;
+ 	} else if (!legacy_binding && !using_legacy_binding) {
+ 		using_generic_binding = true;
+@@ -1984,25 +2028,50 @@
+ 	return 0;
+ }
+ 
+-static void arm_smmu_bus_init(void)
++static int arm_smmu_bus_init(struct iommu_ops *ops)
+ {
++	int err;
++
+ 	/* Oh, for a proper bus abstraction */
+-	if (!iommu_present(&platform_bus_type))
+-		bus_set_iommu(&platform_bus_type, &arm_smmu_ops);
++	if (!iommu_present(&platform_bus_type)) {
++		err = bus_set_iommu(&platform_bus_type, ops);
++		if (err)
++			return err;
++	}
+ #ifdef CONFIG_ARM_AMBA
+-	if (!iommu_present(&amba_bustype))
+-		bus_set_iommu(&amba_bustype, &arm_smmu_ops);
++	if (!iommu_present(&amba_bustype)) {
++		err = bus_set_iommu(&amba_bustype, ops);
++		if (err)
++			goto err_reset_platform_ops;
++	}
+ #endif
+ #ifdef CONFIG_PCI
+ 	if (!iommu_present(&pci_bus_type)) {
+-		pci_request_acs();
+-		bus_set_iommu(&pci_bus_type, &arm_smmu_ops);
++		err = bus_set_iommu(&pci_bus_type, ops);
++		if (err)
++			goto err_reset_amba_ops;
+ 	}
+ #endif
+ #ifdef CONFIG_FSL_MC_BUS
+-	if (!iommu_present(&fsl_mc_bus_type))
+-		bus_set_iommu(&fsl_mc_bus_type, &arm_smmu_ops);
++	if (!iommu_present(&fsl_mc_bus_type)) {
++		err = bus_set_iommu(&fsl_mc_bus_type, ops);
++		if (err)
++			goto err_reset_pci_ops;
++	}
++#endif
++	return 0;
++
++err_reset_pci_ops: __maybe_unused;
++#ifdef CONFIG_PCI
++	bus_set_iommu(&pci_bus_type, NULL);
+ #endif
++err_reset_amba_ops: __maybe_unused;
++#ifdef CONFIG_ARM_AMBA
++	bus_set_iommu(&amba_bustype, NULL);
++#endif
++err_reset_platform_ops: __maybe_unused;
++	bus_set_iommu(&platform_bus_type, NULL);
++	return err;
+ }
+ 
+ static int arm_smmu_device_probe(struct platform_device *pdev)
+@@ -2150,35 +2219,25 @@
+ 	 * ready to handle default domain setup as soon as any SMMU exists.
+ 	 */
+ 	if (!using_legacy_binding)
+-		arm_smmu_bus_init();
++		return arm_smmu_bus_init(&arm_smmu_ops);
+ 
+ 	return 0;
+ }
+ 
+-/*
+- * With the legacy DT binding in play, though, we have no guarantees about
+- * probe order, but then we're also not doing default domains, so we can
+- * delay setting bus ops until we're sure every possible SMMU is ready,
+- * and that way ensure that no add_device() calls get missed.
+- */
+-static int arm_smmu_legacy_bus_init(void)
+-{
+-	if (using_legacy_binding)
+-		arm_smmu_bus_init();
+-	return 0;
+-}
+-device_initcall_sync(arm_smmu_legacy_bus_init);
+-
+-static void arm_smmu_device_shutdown(struct platform_device *pdev)
++static int arm_smmu_device_remove(struct platform_device *pdev)
+ {
+ 	struct arm_smmu_device *smmu = platform_get_drvdata(pdev);
+ 
+ 	if (!smmu)
+-		return;
++		return -ENODEV;
+ 
+ 	if (!bitmap_empty(smmu->context_map, ARM_SMMU_MAX_CBS))
+ 		dev_err(&pdev->dev, "removing device with active domains!\n");
+ 
++	arm_smmu_bus_init(NULL);
++	iommu_device_unregister(&smmu->iommu);
++	iommu_device_sysfs_remove(&smmu->iommu);
++
+ 	arm_smmu_rpm_get(smmu);
+ 	/* Turn the thing off */
+ 	arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_sCR0, sCR0_CLIENTPD);
+@@ -2190,6 +2249,12 @@
+ 		clk_bulk_disable(smmu->num_clks, smmu->clks);
+ 
+ 	clk_bulk_unprepare(smmu->num_clks, smmu->clks);
++	return 0;
++}
++
++static void arm_smmu_device_shutdown(struct platform_device *pdev)
++{
++	arm_smmu_device_remove(pdev);
+ }
+ 
+ static int __maybe_unused arm_smmu_runtime_resume(struct device *dev)
+@@ -2242,9 +2307,14 @@
+ 		.name			= "arm-smmu",
+ 		.of_match_table		= of_match_ptr(arm_smmu_of_match),
+ 		.pm			= &arm_smmu_pm_ops,
+-		.suppress_bind_attrs	= true,
++		.suppress_bind_attrs    = true,
+ 	},
+ 	.probe	= arm_smmu_device_probe,
++	.remove	= arm_smmu_device_remove,
+ 	.shutdown = arm_smmu_device_shutdown,
+ };
+-builtin_platform_driver(arm_smmu_driver);
++module_platform_driver(arm_smmu_driver);
++
++MODULE_DESCRIPTION("IOMMU API for ARM architected SMMU implementations");
++MODULE_AUTHOR("Will Deacon <will@kernel.org>");
++MODULE_LICENSE("GPL v2");
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/arm-smmu.h b/drivers/iommu/arm-smmu.h
+--- a/drivers/iommu/arm-smmu.h	2026-04-10 14:05:35.683704145 +0800
++++ b/drivers/iommu/arm-smmu.h	2026-02-09 11:25:56.721526088 +0800
+@@ -222,6 +222,21 @@
+ 	QCOM_SMMUV2,
+ };
+ 
++struct arm_smmu_s2cr {
++	struct iommu_group		*group;
++	int				count;
++	enum arm_smmu_s2cr_type		type;
++	enum arm_smmu_s2cr_privcfg	privcfg;
++	u8				cbndx;
++	bool				pinned;
++};
++
++struct arm_smmu_smr {
++	u16				mask;
++	u16				id;
++	bool				valid;
++};
++
+ struct arm_smmu_device {
+ 	struct device			*dev;
+ 
+@@ -398,5 +413,8 @@
+ 	arm_smmu_writeq((s), ARM_SMMU_CB((s), (n)), (o), (v))
+ 
+ struct arm_smmu_device *arm_smmu_impl_init(struct arm_smmu_device *smmu);
++struct arm_smmu_device *qcom_smmu_impl_init(struct arm_smmu_device *smmu);
++
++int arm_mmu500_reset(struct arm_smmu_device *smmu);
+ 
+ #endif /* _ARM_SMMU_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/arm-smmu-impl.c b/drivers/iommu/arm-smmu-impl.c
+--- a/drivers/iommu/arm-smmu-impl.c	2026-04-10 14:05:35.683704145 +0800
++++ b/drivers/iommu/arm-smmu-impl.c	2026-02-09 11:25:56.721526088 +0800
+@@ -109,7 +109,7 @@
+ #define ARM_MMU500_ACR_S2CRB_TLBEN	(1 << 10)
+ #define ARM_MMU500_ACR_SMTNMB_TLBEN	(1 << 8)
+ 
+-static int arm_mmu500_reset(struct arm_smmu_device *smmu)
++int arm_mmu500_reset(struct arm_smmu_device *smmu)
+ {
+ 	u32 reg, major;
+ 	int i;
+@@ -170,5 +170,8 @@
+ 				  "calxeda,smmu-secure-config-access"))
+ 		smmu->impl = &calxeda_impl;
+ 
++	if (of_device_is_compatible(smmu->dev->of_node, "qcom,sdm845-smmu-500"))
++		return qcom_smmu_impl_init(smmu);
++
+ 	return smmu;
+ }
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/arm-smmu-qcom.c b/drivers/iommu/arm-smmu-qcom.c
+--- a/drivers/iommu/arm-smmu-qcom.c	1970-01-01 08:00:00.000000000 +0800
++++ b/drivers/iommu/arm-smmu-qcom.c	2026-02-09 11:25:56.721526088 +0800
+@@ -0,0 +1,86 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2019, The Linux Foundation. All rights reserved.
++ */
++
++#include <linux/bitfield.h>
++#include <linux/qcom_scm.h>
++
++#include "arm-smmu.h"
++
++struct qcom_smmu {
++	struct arm_smmu_device smmu;
++};
++
++static int qcom_sdm845_smmu500_cfg_probe(struct arm_smmu_device *smmu)
++{
++	u32 s2cr;
++	u32 smr;
++	int i;
++
++	for (i = 0; i < smmu->num_mapping_groups; i++) {
++		smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(i));
++		s2cr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_S2CR(i));
++
++		smmu->smrs[i].mask = FIELD_GET(SMR_MASK, smr);
++		smmu->smrs[i].id = FIELD_GET(SMR_ID, smr);
++		if (smmu->features & ARM_SMMU_FEAT_EXIDS)
++			smmu->smrs[i].valid = FIELD_GET(S2CR_EXIDVALID, s2cr);
++		else
++			smmu->smrs[i].valid = FIELD_GET(SMR_VALID, smr);
++
++		smmu->s2crs[i].group = NULL;
++		smmu->s2crs[i].count = 0;
++		smmu->s2crs[i].type = FIELD_GET(S2CR_TYPE, s2cr);
++		smmu->s2crs[i].privcfg = FIELD_GET(S2CR_PRIVCFG, s2cr);
++		smmu->s2crs[i].cbndx = FIELD_GET(S2CR_CBNDX, s2cr);
++
++		if (!smmu->smrs[i].valid)
++			continue;
++
++		smmu->s2crs[i].pinned = true;
++		bitmap_set(smmu->context_map, smmu->s2crs[i].cbndx, 1);
++	}
++
++	return 0;
++}
++
++static int qcom_sdm845_smmu500_reset(struct arm_smmu_device *smmu)
++{
++	int ret;
++
++	arm_mmu500_reset(smmu);
++
++	/*
++	 * To address performance degradation in non-real time clients,
++	 * such as USB and UFS, turn off wait-for-safe on sdm845 based boards,
++	 * such as MTP and db845, whose firmwares implement secure monitor
++	 * call handlers to turn on/off the wait-for-safe logic.
++	 */
++	ret = qcom_scm_qsmmu500_wait_safe_toggle(0);
++	if (ret)
++		dev_warn(smmu->dev, "Failed to turn off SAFE logic\n");
++
++	return ret;
++}
++
++static const struct arm_smmu_impl qcom_smmu_impl = {
++	.cfg_probe = qcom_sdm845_smmu500_cfg_probe,
++	.reset = qcom_sdm845_smmu500_reset,
++};
++
++struct arm_smmu_device *qcom_smmu_impl_init(struct arm_smmu_device *smmu)
++{
++	struct qcom_smmu *qsmmu;
++
++	qsmmu = devm_kzalloc(smmu->dev, sizeof(*qsmmu), GFP_KERNEL);
++	if (!qsmmu)
++		return ERR_PTR(-ENOMEM);
++
++	qsmmu->smmu = *smmu;
++
++	qsmmu->smmu.impl = &qcom_smmu_impl;
++	devm_kfree(smmu->dev, smmu);
++
++	return &qsmmu->smmu;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/arm-smmu-v3.c b/drivers/iommu/arm-smmu-v3.c
+--- a/drivers/iommu/arm-smmu-v3.c	2026-04-10 14:05:35.683704145 +0800
++++ b/drivers/iommu/arm-smmu-v3.c	2026-02-09 11:25:56.721526088 +0800
+@@ -21,8 +21,7 @@
+ #include <linux/io-pgtable.h>
+ #include <linux/iommu.h>
+ #include <linux/iopoll.h>
+-#include <linux/init.h>
+-#include <linux/moduleparam.h>
++#include <linux/module.h>
+ #include <linux/msi.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+@@ -33,6 +32,10 @@
+ #include <linux/platform_device.h>
+ 
+ #include <linux/amba/bus.h>
++#ifdef CONFIG_AMLOGIC_MODIFY
++#include <dt-bindings/memory/meson-p1-sid-map.h>
++#include <linux/arm-smccc.h>
++#endif
+ 
+ /* MMIO registers */
+ #define ARM_SMMU_IDR0			0x0
+@@ -384,11 +387,11 @@
+ #define MSI_IOVA_BASE			0x8000000
+ #define MSI_IOVA_LENGTH			0x100000
+ 
+-/*
+- * not really modular, but the easiest way to keep compat with existing
+- * bootargs behaviour is to continue using module_param_named here.
+- */
++#ifdef CONFIG_AMLOGIC_MODIFY
++static bool disable_bypass;
++#else
+ static bool disable_bypass = 1;
++#endif
+ module_param_named(disable_bypass, disable_bypass, bool, S_IRUGO);
+ MODULE_PARM_DESC(disable_bypass,
+ 	"Disable bypass streams such that incoming transactions from devices that are not attached to an iommu domain will report an abort back to the device and will not be allowed to pass through the SMMU.");
+@@ -673,6 +676,17 @@
+ 	const char *prop;
+ };
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++struct aml_irq_cmd {
++	unsigned int smc_irq_cmd;
++};
++
++struct aml_irq_cmd irq_cmd;
++
++#define AML_IRQ_CLEAR	0
++#define AML_IRQ_ENABLE	1
++#endif
++
+ static struct arm_smmu_option_prop arm_smmu_options[] = {
+ 	{ ARM_SMMU_OPT_SKIP_PREFETCH, "hisilicon,broken-prefetch-cmd" },
+ 	{ ARM_SMMU_OPT_PAGE0_REGS_ONLY, "cavium,cn9900-broken-page1-regspace"},
+@@ -1845,6 +1859,13 @@
+ 
+ static irqreturn_t arm_smmu_combined_irq_handler(int irq, void *dev)
+ {
++#ifdef CONFIG_AMLOGIC_MODIFY
++	struct arm_smccc_res res;
++
++	arm_smccc_smc(irq_cmd.smc_irq_cmd, AML_IRQ_CLEAR,
++		      1, 0, 0, 0, 0, 0, &res);
++#endif
++
+ 	arm_smmu_gerror_handler(irq, dev);
+ 	return IRQ_WAKE_THREAD;
+ }
+@@ -2450,7 +2471,7 @@
+ }
+ 
+ static int arm_smmu_map(struct iommu_domain *domain, unsigned long iova,
+-			phys_addr_t paddr, size_t size, int prot)
++			phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct io_pgtable_ops *ops = to_smmu_domain(domain)->pgtbl_ops;
+ 
+@@ -2485,7 +2506,7 @@
+ {
+ 	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
+ 
+-	arm_smmu_tlb_inv_range(gather->start, gather->end - gather->start,
++	arm_smmu_tlb_inv_range(gather->start, gather->end - gather->start + 1,
+ 			       gather->pgsize, true, smmu_domain);
+ }
+ 
+@@ -3428,6 +3449,10 @@
+ 	/* SID/SSID sizes */
+ 	smmu->ssid_bits = FIELD_GET(IDR1_SSIDSIZE, reg);
+ 	smmu->sid_bits = FIELD_GET(IDR1_SIDSIZE, reg);
++#ifdef CONFIG_AMLOGIC_MODIFY
++	/* for select the line stream table */
++	smmu->sid_bits = 7;
++#endif
+ 
+ 	/*
+ 	 * If the SMMU supports fewer bits than would fill a single L2 stream
+@@ -3572,6 +3597,149 @@
+ 		return SZ_128K;
+ }
+ 
++static int arm_smmu_set_bus_ops(struct iommu_ops *ops)
++{
++	int err;
++
++#ifdef CONFIG_PCI
++	if (pci_bus_type.iommu_ops != ops) {
++		err = bus_set_iommu(&pci_bus_type, ops);
++		if (err)
++			return err;
++	}
++#endif
++#ifdef CONFIG_ARM_AMBA
++	if (amba_bustype.iommu_ops != ops) {
++		err = bus_set_iommu(&amba_bustype, ops);
++		if (err)
++			goto err_reset_pci_ops;
++	}
++#endif
++	if (platform_bus_type.iommu_ops != ops) {
++		err = bus_set_iommu(&platform_bus_type, ops);
++		if (err)
++			goto err_reset_amba_ops;
++	}
++
++	return 0;
++
++err_reset_amba_ops:
++#ifdef CONFIG_ARM_AMBA
++	bus_set_iommu(&amba_bustype, NULL);
++#endif
++err_reset_pci_ops: __maybe_unused;
++#ifdef CONFIG_PCI
++	bus_set_iommu(&pci_bus_type, NULL);
++#endif
++	return err;
++}
++
++#ifdef CONFIG_AMLOGIC_MODIFY
++static int init_streamid_reg(u32 *paddr)
++{
++	int i = 0;
++	u32 ctrl_tmp;
++
++	unsigned int p1_sid_array[] = {
++		/* MMU_CTRL_SID_REG0 */
++		P1_SID_MOP_A,
++		P1_SID_MOP_B,
++		/* MMU_CTRL_SID_REG1 */
++		P1_SID_DEP_A,
++		P1_SID_DEP_B,
++		/* MMU_CTRL_SID_REG2 */
++		P1_SID_VFE,
++		P1_SID_GE2D,
++		/* MMU_CTRL_SID_REG3 */
++		P1_SID_DEWARP_A,
++		P1_SID_DEWARP_B,
++		/* MMU_CTRL_SID_REG4 */
++		P1_SID_DEWARP_C,
++		P1_SID_RESERVED,
++		/* MMU_CTRL_SID_REG5 */
++		P1_SID_NNA_A,
++		P1_SID_NNA_B,
++		/* MMU_CTRL_SID_REG6 */
++		P1_SID_NNA_C,
++		P1_SID_NNA_D,
++		/* MMU_CTRL_SID_REG7 */
++		P1_SID_NNA_E,
++		P1_SID_NNA_F,
++		/* MMU_CTRL_SID_REG8 */
++		P1_SID_USB3_A,
++		P1_SID_USB3_B,
++		/* MMU_CTRL_SID_REG9 */
++		P1_SID_USB3_C,
++		P1_SID_PCIE,
++		/* MMU_CTRL_SID_REG10 */
++		P1_SID_M4,
++		P1_SID_DSP_A,
++		/* MMU_CTRL_SID_REG11 */
++		P1_SID_DSP_B,
++		P1_SID_AOCPU,
++		/* MMU_CTRL_SID_REG12 */
++		P1_SID_JTAG,
++		P1_SID_DEV0_P0_SPICC0,
++		/* MMU_CTRL_SID_REG13 */
++		P1_SID_DEV0_P1_SPICC1,
++		P1_SID_DEV0_P2_RESERVED,
++		/* MMU_CTRL_SID_REG14 */
++		P1_SID_DEV0_P3_SDEMMCA,
++		P1_SID_DEV0_P4_RESERVED,
++		/* MMU_CTRL_SID_REG15 */
++		P1_SID_DEV0_P5_SPICC2,
++		P1_SID_DEV0_P6_RESERVED,
++		/* MMU_CTRL_SID_REG16 */
++		P1_SID_DEV0_P7_RESERVED,
++		P1_SID_DEV1_P0_RESERVED,
++		/* MMU_CTRL_SID_REG17 */
++		P1_SID_DEV1_P1_RESERVED,
++		P1_SID_DEV1_P2_ETH,
++		/* MMU_CTRL_SID_REG18 */
++		P1_SID_DEV1_P3_AIFIFO,
++		P1_SID_DEV1_P4_AUDMA,
++		/* MMU_CTRL_SID_REG19 */
++		P1_SID_DEV1_P5_SPICC3,
++		P1_SID_DEV1_P6_SPICC4,
++		/* MMU_CTRL_SID_REG20 */
++		P1_SID_DEV1_P7_SPICC5,
++		P1_SID_DEV2_P0_AUDIO,
++		/* MMU_CTRL_SID_REG21 */
++		P1_SID_DEV2_P1_RESERVED,
++		P1_SID_DEV2_P2_RESERVED,
++		/* MMU_CTRL_SID_REG22 */
++		P1_SID_DEV2_P3_RESERVED,
++		P1_SID_DEV2_P4_RESERVED,
++		/* MMU_CTRL_SID_REG23 */
++		P1_SID_DEV2_P5_RESERVED,
++		P1_SID_DEV2_P6_RESERVED,
++		/* MMU_CTRL_SID_REG24 */
++		P1_SID_DEV2_P7_RESERVED,
++		P1_SID_EMMC,
++		/* MMU_CTRL_SID_REG25 */
++		P1_SID_DMA,
++		P1_SID_RESERVED,
++		/* MMU_CTRL_SID_REG26 */
++		P1_SID_ISP_A,
++		P1_SID_ISP_B,
++		/* MMU_CTRL_SID_REG27 */
++		P1_SID_ISP_C,
++		P1_SID_ISP_D,
++		/* MMU_CTRL_SID_REG28 */
++		P1_SID_ISP_E,
++		P1_SID_RESERVED
++	};
++
++	for (i = 0; i < 29; i++) {
++		ctrl_tmp = p1_sid_array[2 * i] +
++			   (p1_sid_array[2 * i + 1] << 16);
++		writel_relaxed(ctrl_tmp, paddr + i);
++	}
++
++	return 0;
++}
++#endif
++
+ static int arm_smmu_device_probe(struct platform_device *pdev)
+ {
+ 	int irq, ret;
+@@ -3580,6 +3748,13 @@
+ 	struct arm_smmu_device *smmu;
+ 	struct device *dev = &pdev->dev;
+ 	bool bypass;
++#ifdef CONFIG_AMLOGIC_MODIFY
++	int i = 0;
++	void __iomem *smmu_ctrl_base, *smmu_ctrl_sid_base;
++	u32 ctrl_tmp;
++	struct arm_smccc_res smc_res;
++	struct device_node *np = pdev->dev.of_node;
++#endif
+ 
+ 	smmu = devm_kzalloc(dev, sizeof(*smmu), GFP_KERNEL);
+ 	if (!smmu) {
+@@ -3611,6 +3786,41 @@
+ 	if (IS_ERR(smmu->base))
+ 		return PTR_ERR(smmu->base);
+ 
++#ifdef CONFIG_AMLOGIC_MODIFY
++	/* map the mmu ctrl register */
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
++	smmu_ctrl_base = devm_ioremap_resource(dev, res);
++	if (IS_ERR(smmu_ctrl_base))
++		return PTR_ERR(smmu->base);
++
++	/* set the TBU mode 2 */
++	for (i = 9; i < 32; i = i + 2) {
++		ctrl_tmp = readl_relaxed(smmu_ctrl_base + i * 4);
++		ctrl_tmp &= ~(3 << 20);
++		ctrl_tmp |= (2 << 20);
++		writel_relaxed(ctrl_tmp, smmu_ctrl_base + i * 4);
++	}
++
++	devm_iounmap(dev, smmu_ctrl_base);
++
++	/* init the stream ID in MMU_CTRL_SID_REGx */
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
++	smmu_ctrl_sid_base = devm_ioremap_resource(dev, res);
++	if (IS_ERR(smmu_ctrl_sid_base))
++		return PTR_ERR(smmu->base);
++
++	init_streamid_reg(smmu_ctrl_sid_base);
++
++	of_node_get(np);
++	ret = of_property_read_u32(np, "smc_irq_cmd", &irq_cmd.smc_irq_cmd);
++	if (ret) {
++		dev_err(&pdev->dev, "please config smc_irq_cmd\n");
++		return ret;
++	}
++	arm_smccc_smc(irq_cmd.smc_irq_cmd, AML_IRQ_ENABLE,
++		      1, 0, 0, 0, 0, 0, &smc_res);
++#endif
++
+ 	/* Interrupt lines */
+ 
+ 	irq = platform_get_irq_byname_optional(pdev, "combined");
+@@ -3662,48 +3872,44 @@
+ 		return ret;
+ 	}
+ 
+-#ifdef CONFIG_PCI
+-	if (pci_bus_type.iommu_ops != &arm_smmu_ops) {
+-		pci_request_acs();
+-		ret = bus_set_iommu(&pci_bus_type, &arm_smmu_ops);
+-		if (ret)
+-			return ret;
+-	}
+-#endif
+-#ifdef CONFIG_ARM_AMBA
+-	if (amba_bustype.iommu_ops != &arm_smmu_ops) {
+-		ret = bus_set_iommu(&amba_bustype, &arm_smmu_ops);
+-		if (ret)
+-			return ret;
+-	}
+-#endif
+-	if (platform_bus_type.iommu_ops != &arm_smmu_ops) {
+-		ret = bus_set_iommu(&platform_bus_type, &arm_smmu_ops);
+-		if (ret)
+-			return ret;
+-	}
+-	return 0;
++	return arm_smmu_set_bus_ops(&arm_smmu_ops);
+ }
+ 
+-static void arm_smmu_device_shutdown(struct platform_device *pdev)
++static int arm_smmu_device_remove(struct platform_device *pdev)
+ {
+ 	struct arm_smmu_device *smmu = platform_get_drvdata(pdev);
+ 
++	arm_smmu_set_bus_ops(NULL);
++	iommu_device_unregister(&smmu->iommu);
++	iommu_device_sysfs_remove(&smmu->iommu);
+ 	arm_smmu_device_disable(smmu);
++
++	return 0;
++}
++
++static void arm_smmu_device_shutdown(struct platform_device *pdev)
++{
++	arm_smmu_device_remove(pdev);
+ }
+ 
+ static const struct of_device_id arm_smmu_of_match[] = {
+ 	{ .compatible = "arm,smmu-v3", },
+ 	{ },
+ };
++MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
+ 
+ static struct platform_driver arm_smmu_driver = {
+ 	.driver	= {
+-		.name		= "arm-smmu-v3",
+-		.of_match_table	= of_match_ptr(arm_smmu_of_match),
+-		.suppress_bind_attrs = true,
++		.name			= "arm-smmu-v3",
++		.of_match_table		= of_match_ptr(arm_smmu_of_match),
++		.suppress_bind_attrs	= true,
+ 	},
+ 	.probe	= arm_smmu_device_probe,
++	.remove	= arm_smmu_device_remove,
+ 	.shutdown = arm_smmu_device_shutdown,
+ };
+-builtin_platform_driver(arm_smmu_driver);
++module_platform_driver(arm_smmu_driver);
++
++MODULE_DESCRIPTION("IOMMU API for ARM architected SMMUv3 implementations");
++MODULE_AUTHOR("Will Deacon <will@kernel.org>");
++MODULE_LICENSE("GPL v2");
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/dma-iommu.c b/drivers/iommu/dma-iommu.c
+--- a/drivers/iommu/dma-iommu.c	2026-04-10 14:05:35.683704145 +0800
++++ b/drivers/iommu/dma-iommu.c	2026-02-09 11:25:56.721526088 +0800
+@@ -354,6 +354,52 @@
+ 	return iova_reserve_iommu_regions(dev, domain);
+ }
+ 
++/*
++ * Should be called prior to using dma-apis
++ */
++int iommu_dma_reserve_iova(struct device *dev, dma_addr_t base,
++			   u64 size)
++{
++	struct iommu_domain *domain;
++	struct iommu_dma_cookie *cookie;
++	struct iova_domain *iovad;
++	unsigned long pfn_lo, pfn_hi;
++
++	domain = iommu_get_domain_for_dev(dev);
++	if (!domain || !domain->iova_cookie)
++		return -EINVAL;
++
++	cookie = domain->iova_cookie;
++	iovad = &cookie->iovad;
++
++	/* iova will be freed automatically by put_iova_domain() */
++	pfn_lo = iova_pfn(iovad, base);
++	pfn_hi = iova_pfn(iovad, base + size - 1);
++	if (!reserve_iova(iovad, pfn_lo, pfn_hi))
++		return -EINVAL;
++
++	return 0;
++}
++EXPORT_SYMBOL(iommu_dma_reserve_iova);
++
++/*
++ * Should be called prior to using dma-apis.
++ */
++int iommu_dma_enable_best_fit_algo(struct device *dev)
++{
++	struct iommu_domain *domain;
++	struct iova_domain *iovad;
++
++	domain = iommu_get_domain_for_dev(dev);
++	if (!domain || !domain->iova_cookie)
++		return -EINVAL;
++
++	iovad = &((struct iommu_dma_cookie *)domain->iova_cookie)->iovad;
++	iovad->best_fit = true;
++	return 0;
++}
++EXPORT_SYMBOL(iommu_dma_enable_best_fit_algo);
++
+ /**
+  * dma_info_to_prot - Translate DMA API directions and attributes to IOMMU API
+  *                    page flags.
+@@ -477,7 +523,7 @@
+ 	if (!iova)
+ 		return DMA_MAPPING_ERROR;
+ 
+-	if (iommu_map(domain, iova, phys - iova_off, size, prot)) {
++	if (iommu_map_atomic(domain, iova, phys - iova_off, size, prot)) {
+ 		iommu_dma_free_iova(cookie, iova, size);
+ 		return DMA_MAPPING_ERROR;
+ 	}
+@@ -612,7 +658,7 @@
+ 			arch_dma_prep_coherent(sg_page(sg), sg->length);
+ 	}
+ 
+-	if (iommu_map_sg(domain, iova, sgt.sgl, sgt.orig_nents, ioprot)
++	if (iommu_map_sg_atomic(domain, iova, sgt.sgl, sgt.orig_nents, ioprot)
+ 			< size)
+ 		goto out_free_sg;
+ 
+@@ -872,7 +918,7 @@
+ 	 * We'll leave any physical concatenation to the IOMMU driver's
+ 	 * implementation - it knows better than we do.
+ 	 */
+-	if (iommu_map_sg(domain, iova, sg, nents, prot) < iova_len)
++	if (iommu_map_sg_atomic(domain, iova, sg, nents, prot) < iova_len)
+ 		goto out_free_iova;
+ 
+ 	return __finalise_sg(dev, sg, nents, iova);
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/exynos-iommu.c b/drivers/iommu/exynos-iommu.c
+--- a/drivers/iommu/exynos-iommu.c	2026-04-10 14:05:35.683704145 +0800
++++ b/drivers/iommu/exynos-iommu.c	2026-02-09 11:25:56.721526088 +0800
+@@ -1073,7 +1073,7 @@
+  */
+ static int exynos_iommu_map(struct iommu_domain *iommu_domain,
+ 			    unsigned long l_iova, phys_addr_t paddr, size_t size,
+-			    int prot)
++			    int prot, gfp_t gfp)
+ {
+ 	struct exynos_iommu_domain *domain = to_exynos_domain(iommu_domain);
+ 	sysmmu_pte_t *entry;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/intel-iommu.c b/drivers/iommu/intel-iommu.c
+--- a/drivers/iommu/intel-iommu.c	2026-04-10 14:05:35.687704123 +0800
++++ b/drivers/iommu/intel-iommu.c	2026-02-09 11:25:56.725526306 +0800
+@@ -5453,7 +5453,7 @@
+ 
+ static int intel_iommu_map(struct iommu_domain *domain,
+ 			   unsigned long iova, phys_addr_t hpa,
+-			   size_t size, int iommu_prot)
++			   size_t size, int iommu_prot, gfp_t gfp)
+ {
+ 	struct dmar_domain *dmar_domain = to_dmar_domain(domain);
+ 	u64 max_addr;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/iommu.c b/drivers/iommu/iommu.c
+--- a/drivers/iommu/iommu.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/iommu.c	2026-02-09 11:25:56.725526306 +0800
+@@ -22,6 +22,7 @@
+ #include <linux/bitops.h>
+ #include <linux/property.h>
+ #include <linux/fsl/mc.h>
++#include <linux/module.h>
+ #include <trace/events/iommu.h>
+ 
+ static struct kset *iommu_group_kset;
+@@ -141,6 +142,7 @@
+ 	spin_unlock(&iommu_device_lock);
+ 	return 0;
+ }
++EXPORT_SYMBOL_GPL(iommu_device_register);
+ 
+ void iommu_device_unregister(struct iommu_device *iommu)
+ {
+@@ -148,6 +150,7 @@
+ 	list_del(&iommu->list);
+ 	spin_unlock(&iommu_device_lock);
+ }
++EXPORT_SYMBOL_GPL(iommu_device_unregister);
+ 
+ static struct iommu_param *iommu_get_dev_param(struct device *dev)
+ {
+@@ -183,10 +186,21 @@
+ 	if (!iommu_get_dev_param(dev))
+ 		return -ENOMEM;
+ 
++	if (!try_module_get(ops->owner)) {
++		ret = -EINVAL;
++		goto err_free_dev_param;
++	}
++
+ 	ret = ops->add_device(dev);
+ 	if (ret)
+-		iommu_free_dev_param(dev);
++		goto err_module_put;
+ 
++	return 0;
++
++err_module_put:
++	module_put(ops->owner);
++err_free_dev_param:
++	iommu_free_dev_param(dev);
+ 	return ret;
+ }
+ 
+@@ -197,7 +211,10 @@
+ 	if (dev->iommu_group)
+ 		ops->remove_device(dev);
+ 
+-	iommu_free_dev_param(dev);
++	if (dev->iommu_param) {
++		module_put(ops->owner);
++		iommu_free_dev_param(dev);
++	}
+ }
+ 
+ static struct iommu_domain *__iommu_domain_alloc(struct bus_type *bus,
+@@ -289,8 +306,8 @@
+  * Elements are sorted by start address and overlapping segments
+  * of the same type are merged.
+  */
+-int iommu_insert_resv_region(struct iommu_resv_region *new,
+-			     struct list_head *regions)
++static int iommu_insert_resv_region(struct iommu_resv_region *new,
++				    struct list_head *regions)
+ {
+ 	struct iommu_resv_region *iter, *tmp, *nr, *top;
+ 	LIST_HEAD(stack);
+@@ -890,6 +907,7 @@
+ 	kobject_get(group->devices_kobj);
+ 	return group;
+ }
++EXPORT_SYMBOL_GPL(iommu_group_ref_get);
+ 
+ /**
+  * iommu_group_put - Decrement group reference
+@@ -1263,6 +1281,7 @@
+ {
+ 	return iommu_group_alloc();
+ }
++EXPORT_SYMBOL_GPL(generic_device_group);
+ 
+ /*
+  * Use standard PCI bus topology, isolation features, and DMA alias quirks
+@@ -1330,6 +1349,7 @@
+ 	/* No shared group found, allocate new */
+ 	return iommu_group_alloc();
+ }
++EXPORT_SYMBOL_GPL(pci_device_group);
+ 
+ /* Get the IOMMU group for device on fsl-mc bus */
+ struct iommu_group *fsl_mc_device_group(struct device *dev)
+@@ -1342,6 +1362,7 @@
+ 		group = iommu_group_alloc();
+ 	return group;
+ }
++EXPORT_SYMBOL_GPL(fsl_mc_device_group);
+ 
+ /**
+  * iommu_group_get_for_dev - Find or create the IOMMU group for a device
+@@ -1410,6 +1431,7 @@
+ 
+ 	return group;
+ }
++EXPORT_SYMBOL_GPL(iommu_group_get_for_dev);
+ 
+ struct iommu_domain *iommu_group_default_domain(struct iommu_group *group)
+ {
+@@ -1540,6 +1562,11 @@
+ {
+ 	int err;
+ 
++	if (ops == NULL) {
++		bus->iommu_ops = NULL;
++		return 0;
++	}
++
+ 	if (bus->iommu_ops != NULL)
+ 		return -EBUSY;
+ 
+@@ -1858,8 +1885,8 @@
+ 	return pgsize;
+ }
+ 
+-int iommu_map(struct iommu_domain *domain, unsigned long iova,
+-	      phys_addr_t paddr, size_t size, int prot)
++static int __iommu_map(struct iommu_domain *domain, unsigned long iova,
++		       phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	const struct iommu_ops *ops = domain->ops;
+ 	unsigned long orig_iova = iova;
+@@ -1896,8 +1923,8 @@
+ 
+ 		pr_debug("mapping: iova 0x%lx pa %pa pgsize 0x%zx\n",
+ 			 iova, &paddr, pgsize);
++		ret = ops->map(domain, iova, paddr, pgsize, prot, gfp);
+ 
+-		ret = ops->map(domain, iova, paddr, pgsize, prot);
+ 		if (ret)
+ 			break;
+ 
+@@ -1906,9 +1933,6 @@
+ 		size -= pgsize;
+ 	}
+ 
+-	if (ops->iotlb_sync_map)
+-		ops->iotlb_sync_map(domain);
+-
+ 	/* unroll mapping in case something went wrong */
+ 	if (ret)
+ 		iommu_unmap(domain, orig_iova, orig_size - size);
+@@ -1917,8 +1941,35 @@
+ 
+ 	return ret;
+ }
++
++static int _iommu_map(struct iommu_domain *domain, unsigned long iova,
++		      phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
++{
++	const struct iommu_ops *ops = domain->ops;
++	int ret;
++
++	ret = __iommu_map(domain, iova, paddr, size, prot, gfp);
++	if (ret == 0 && ops->iotlb_sync_map)
++		ops->iotlb_sync_map(domain, iova, size);
++
++	return ret;
++}
++
++int iommu_map(struct iommu_domain *domain, unsigned long iova,
++	      phys_addr_t paddr, size_t size, int prot)
++{
++	might_sleep();
++	return _iommu_map(domain, iova, paddr, size, prot, GFP_KERNEL);
++}
+ EXPORT_SYMBOL_GPL(iommu_map);
+ 
++int iommu_map_atomic(struct iommu_domain *domain, unsigned long iova,
++	      phys_addr_t paddr, size_t size, int prot)
++{
++	return _iommu_map(domain, iova, paddr, size, prot, GFP_ATOMIC);
++}
++EXPORT_SYMBOL_GPL(iommu_map_atomic);
++
+ static size_t __iommu_unmap(struct iommu_domain *domain,
+ 			    unsigned long iova, size_t size,
+ 			    struct iommu_iotlb_gather *iotlb_gather)
+@@ -1995,9 +2046,11 @@
+ }
+ EXPORT_SYMBOL_GPL(iommu_unmap_fast);
+ 
+-size_t iommu_map_sg(struct iommu_domain *domain, unsigned long iova,
+-		    struct scatterlist *sg, unsigned int nents, int prot)
++static size_t __iommu_map_sg(struct iommu_domain *domain, unsigned long iova,
++			     struct scatterlist *sg, unsigned int nents, int prot,
++			     gfp_t gfp)
+ {
++	const struct iommu_ops *ops = domain->ops;
+ 	size_t len = 0, mapped = 0;
+ 	phys_addr_t start;
+ 	unsigned int i = 0;
+@@ -2007,7 +2060,9 @@
+ 		phys_addr_t s_phys = sg_phys(sg);
+ 
+ 		if (len && s_phys != start + len) {
+-			ret = iommu_map(domain, iova + mapped, start, len, prot);
++			ret = __iommu_map(domain, iova + mapped, start,
++					len, prot, gfp);
++
+ 			if (ret)
+ 				goto out_err;
+ 
+@@ -2026,6 +2081,8 @@
+ 			sg = sg_next(sg);
+ 	}
+ 
++	if (ops->iotlb_sync_map)
++		ops->iotlb_sync_map(domain, iova, mapped);
+ 	return mapped;
+ 
+ out_err:
+@@ -2035,8 +2092,22 @@
+ 	return 0;
+ 
+ }
++
++size_t iommu_map_sg(struct iommu_domain *domain, unsigned long iova,
++		    struct scatterlist *sg, unsigned int nents, int prot)
++{
++	might_sleep();
++	return __iommu_map_sg(domain, iova, sg, nents, prot, GFP_KERNEL);
++}
+ EXPORT_SYMBOL_GPL(iommu_map_sg);
+ 
++size_t iommu_map_sg_atomic(struct iommu_domain *domain, unsigned long iova,
++		    struct scatterlist *sg, unsigned int nents, int prot)
++{
++	return __iommu_map_sg(domain, iova, sg, nents, prot, GFP_ATOMIC);
++}
++EXPORT_SYMBOL_GPL(iommu_map_sg_atomic);
++
+ int iommu_domain_window_enable(struct iommu_domain *domain, u32 wnd_nr,
+ 			       phys_addr_t paddr, u64 size, int prot)
+ {
+@@ -2189,6 +2260,7 @@
+ 	region->type = type;
+ 	return region;
+ }
++EXPORT_SYMBOL_GPL(iommu_alloc_resv_region);
+ 
+ static int
+ request_default_domain_for_dev(struct device *dev, unsigned long type)
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/iommu-sysfs.c b/drivers/iommu/iommu-sysfs.c
+--- a/drivers/iommu/iommu-sysfs.c	2026-04-10 14:05:35.687704123 +0800
++++ b/drivers/iommu/iommu-sysfs.c	2026-02-09 11:25:56.725526306 +0800
+@@ -87,6 +87,7 @@
+ 	put_device(iommu->dev);
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(iommu_device_sysfs_add);
+ 
+ void iommu_device_sysfs_remove(struct iommu_device *iommu)
+ {
+@@ -94,6 +95,8 @@
+ 	device_unregister(iommu->dev);
+ 	iommu->dev = NULL;
+ }
++EXPORT_SYMBOL_GPL(iommu_device_sysfs_remove);
++
+ /*
+  * IOMMU drivers can indicate a device is managed by a given IOMMU using
+  * this interface.  A link to the device will be created in the "devices"
+@@ -119,6 +122,7 @@
+ 
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(iommu_device_link);
+ 
+ void iommu_device_unlink(struct iommu_device *iommu, struct device *link)
+ {
+@@ -128,3 +132,4 @@
+ 	sysfs_remove_link(&link->kobj, "iommu");
+ 	sysfs_remove_link_from_group(&iommu->dev->kobj, "devices", dev_name(link));
+ }
++EXPORT_SYMBOL_GPL(iommu_device_unlink);
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/io-pgtable-arm-v7s.c b/drivers/iommu/io-pgtable-arm-v7s.c
+--- a/drivers/iommu/io-pgtable-arm-v7s.c	2026-04-10 14:05:35.687704123 +0800
++++ b/drivers/iommu/io-pgtable-arm-v7s.c	2026-02-09 11:25:56.725526306 +0800
+@@ -50,20 +50,26 @@
+  */
+ #define ARM_V7S_ADDR_BITS		32
+ #define _ARM_V7S_LVL_BITS(lvl)		(16 - (lvl) * 4)
++/* MediaTek: totally 34bits, 14bits at lvl1 and 8bits at lvl2. */
++#define _ARM_V7S_LVL_BITS_MTK(lvl)	(20 - (lvl) * 6)
+ #define ARM_V7S_LVL_SHIFT(lvl)		(ARM_V7S_ADDR_BITS - (4 + 8 * (lvl)))
+ #define ARM_V7S_TABLE_SHIFT		10
+ 
+-#define ARM_V7S_PTES_PER_LVL(lvl)	(1 << _ARM_V7S_LVL_BITS(lvl))
+-#define ARM_V7S_TABLE_SIZE(lvl)						\
+-	(ARM_V7S_PTES_PER_LVL(lvl) * sizeof(arm_v7s_iopte))
++#define ARM_V7S_PTES_PER_LVL(lvl, cfg)	({				\
++	!arm_v7s_is_mtk_enabled(cfg) ?					\
++	 (1 << _ARM_V7S_LVL_BITS(lvl)) : (1 << _ARM_V7S_LVL_BITS_MTK(lvl));\
++})
++
++#define ARM_V7S_TABLE_SIZE(lvl, cfg)					\
++	(ARM_V7S_PTES_PER_LVL(lvl, cfg) * sizeof(arm_v7s_iopte))
+ 
+ #define ARM_V7S_BLOCK_SIZE(lvl)		(1UL << ARM_V7S_LVL_SHIFT(lvl))
+ #define ARM_V7S_LVL_MASK(lvl)		((u32)(~0U << ARM_V7S_LVL_SHIFT(lvl)))
+ #define ARM_V7S_TABLE_MASK		((u32)(~0U << ARM_V7S_TABLE_SHIFT))
+-#define _ARM_V7S_IDX_MASK(lvl)		(ARM_V7S_PTES_PER_LVL(lvl) - 1)
+-#define ARM_V7S_LVL_IDX(addr, lvl)	({				\
++#define _ARM_V7S_IDX_MASK(lvl, cfg)	(ARM_V7S_PTES_PER_LVL(lvl, cfg) - 1)
++#define ARM_V7S_LVL_IDX(addr, lvl, cfg)	({			\
+ 	int _l = lvl;							\
+-	((u32)(addr) >> ARM_V7S_LVL_SHIFT(_l)) & _ARM_V7S_IDX_MASK(_l); \
++	((addr) >> ARM_V7S_LVL_SHIFT(_l)) & _ARM_V7S_IDX_MASK(_l, cfg); \
+ })
+ 
+ /*
+@@ -112,9 +118,10 @@
+ #define ARM_V7S_TEX_MASK		0x7
+ #define ARM_V7S_ATTR_TEX(val)		(((val) & ARM_V7S_TEX_MASK) << ARM_V7S_TEX_SHIFT)
+ 
+-/* MediaTek extend the two bits for PA 32bit/33bit */
++/* MediaTek extend the bits below for PA 32bit/33bit/34bit */
+ #define ARM_V7S_ATTR_MTK_PA_BIT32	BIT(9)
+ #define ARM_V7S_ATTR_MTK_PA_BIT33	BIT(4)
++#define ARM_V7S_ATTR_MTK_PA_BIT34	BIT(5)
+ 
+ /* *well, except for TEX on level 2 large pages, of course :( */
+ #define ARM_V7S_CONT_PAGE_TEX_SHIFT	6
+@@ -196,6 +203,8 @@
+ 		pte |= ARM_V7S_ATTR_MTK_PA_BIT32;
+ 	if (paddr & BIT_ULL(33))
+ 		pte |= ARM_V7S_ATTR_MTK_PA_BIT33;
++	if (paddr & BIT_ULL(34))
++		pte |= ARM_V7S_ATTR_MTK_PA_BIT34;
+ 	return pte;
+ }
+ 
+@@ -220,6 +229,8 @@
+ 		paddr |= BIT_ULL(32);
+ 	if (pte & ARM_V7S_ATTR_MTK_PA_BIT33)
+ 		paddr |= BIT_ULL(33);
++	if (pte & ARM_V7S_ATTR_MTK_PA_BIT34)
++		paddr |= BIT_ULL(34);
+ 	return paddr;
+ }
+ 
+@@ -236,7 +247,7 @@
+ 	struct device *dev = cfg->iommu_dev;
+ 	phys_addr_t phys;
+ 	dma_addr_t dma;
+-	size_t size = ARM_V7S_TABLE_SIZE(lvl);
++	size_t size = ARM_V7S_TABLE_SIZE(lvl, cfg);
+ 	void *table = NULL;
+ 
+ 	if (lvl == 1)
+@@ -286,7 +297,7 @@
+ {
+ 	struct io_pgtable_cfg *cfg = &data->iop.cfg;
+ 	struct device *dev = cfg->iommu_dev;
+-	size_t size = ARM_V7S_TABLE_SIZE(lvl);
++	size_t size = ARM_V7S_TABLE_SIZE(lvl, cfg);
+ 
+ 	if (!cfg->coherent_walk)
+ 		dma_unmap_single(dev, __arm_v7s_dma_addr(table), size,
+@@ -430,7 +441,7 @@
+ 			arm_v7s_iopte *tblp;
+ 			size_t sz = ARM_V7S_BLOCK_SIZE(lvl);
+ 
+-			tblp = ptep - ARM_V7S_LVL_IDX(iova, lvl);
++			tblp = ptep - ARM_V7S_LVL_IDX(iova, lvl, cfg);
+ 			if (WARN_ON(__arm_v7s_unmap(data, NULL, iova + i * sz,
+ 						    sz, lvl, tblp) != sz))
+ 				return -EINVAL;
+@@ -483,7 +494,7 @@
+ 	int num_entries = size >> ARM_V7S_LVL_SHIFT(lvl);
+ 
+ 	/* Find our entry at the current level */
+-	ptep += ARM_V7S_LVL_IDX(iova, lvl);
++	ptep += ARM_V7S_LVL_IDX(iova, lvl, cfg);
+ 
+ 	/* If we can install a leaf entry at this level, then do so */
+ 	if (num_entries)
+@@ -556,7 +567,7 @@
+ 	struct arm_v7s_io_pgtable *data = io_pgtable_to_data(iop);
+ 	int i;
+ 
+-	for (i = 0; i < ARM_V7S_PTES_PER_LVL(1); i++) {
++	for (i = 0; i < ARM_V7S_PTES_PER_LVL(1, &data->iop.cfg); i++) {
+ 		arm_v7s_iopte pte = data->pgd[i];
+ 
+ 		if (ARM_V7S_PTE_IS_TABLE(pte, 1))
+@@ -608,9 +619,9 @@
+ 	if (!tablep)
+ 		return 0; /* Bytes unmapped */
+ 
+-	num_ptes = ARM_V7S_PTES_PER_LVL(2);
++	num_ptes = ARM_V7S_PTES_PER_LVL(2, cfg);
+ 	num_entries = size >> ARM_V7S_LVL_SHIFT(2);
+-	unmap_idx = ARM_V7S_LVL_IDX(iova, 2);
++	unmap_idx = ARM_V7S_LVL_IDX(iova, 2, cfg);
+ 
+ 	pte = arm_v7s_prot_to_pte(arm_v7s_pte_to_prot(blk_pte, 1), 2, cfg);
+ 	if (num_entries > 1)
+@@ -652,7 +663,7 @@
+ 	if (WARN_ON(lvl > 2))
+ 		return 0;
+ 
+-	idx = ARM_V7S_LVL_IDX(iova, lvl);
++	idx = ARM_V7S_LVL_IDX(iova, lvl, &iop->cfg);
+ 	ptep += idx;
+ 	do {
+ 		pte[i] = READ_ONCE(ptep[i]);
+@@ -723,7 +734,7 @@
+ {
+ 	struct arm_v7s_io_pgtable *data = io_pgtable_ops_to_data(ops);
+ 
+-	if (WARN_ON(upper_32_bits(iova)))
++	if (WARN_ON(iova >= (1ULL << data->iop.cfg.ias)))
+ 		return 0;
+ 
+ 	return __arm_v7s_unmap(data, gather, iova, size, 1, data->pgd);
+@@ -738,7 +749,7 @@
+ 	u32 mask;
+ 
+ 	do {
+-		ptep += ARM_V7S_LVL_IDX(iova, ++lvl);
++		ptep += ARM_V7S_LVL_IDX(iova, ++lvl, &data->iop.cfg);
+ 		pte = READ_ONCE(*ptep);
+ 		ptep = iopte_deref(pte, lvl, data);
+ 	} while (ARM_V7S_PTE_IS_TABLE(pte, lvl));
+@@ -757,10 +768,10 @@
+ {
+ 	struct arm_v7s_io_pgtable *data;
+ 
+-	if (cfg->ias > ARM_V7S_ADDR_BITS)
++	if (cfg->ias > (arm_v7s_is_mtk_enabled(cfg) ? 34 : ARM_V7S_ADDR_BITS))
+ 		return NULL;
+ 
+-	if (cfg->oas > (arm_v7s_is_mtk_enabled(cfg) ? 34 : ARM_V7S_ADDR_BITS))
++	if (cfg->oas > (arm_v7s_is_mtk_enabled(cfg) ? 35 : ARM_V7S_ADDR_BITS))
+ 		return NULL;
+ 
+ 	if (cfg->quirks & ~(IO_PGTABLE_QUIRK_ARM_NS |
+@@ -781,8 +792,8 @@
+ 
+ 	spin_lock_init(&data->split_lock);
+ 	data->l2_tables = kmem_cache_create("io-pgtable_armv7s_l2",
+-					    ARM_V7S_TABLE_SIZE(2),
+-					    ARM_V7S_TABLE_SIZE(2),
++					    ARM_V7S_TABLE_SIZE(2, cfg),
++					    ARM_V7S_TABLE_SIZE(2, cfg),
+ 					    ARM_V7S_TABLE_SLAB_FLAGS, NULL);
+ 	if (!data->l2_tables)
+ 		goto out_free_data;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/iova.c b/drivers/iommu/iova.c
+--- a/drivers/iommu/iova.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/iova.c	2026-02-09 11:25:56.725526306 +0800
+@@ -50,6 +50,7 @@
+ 	iovad->anchor.pfn_lo = iovad->anchor.pfn_hi = IOVA_ANCHOR;
+ 	rb_link_node(&iovad->anchor.node, NULL, &iovad->rbroot.rb_node);
+ 	rb_insert_color(&iovad->anchor.node, &iovad->rbroot);
++	iovad->best_fit = false;
+ 	init_iova_rcaches(iovad);
+ }
+ EXPORT_SYMBOL_GPL(init_iova_domain);
+@@ -176,6 +177,24 @@
+ 	rb_insert_color(&iova->node, root);
+ }
+ 
++#ifdef CONFIG_IOMMU_LIMIT_IOVA_ALIGNMENT
++static unsigned long limit_align_shift(struct iova_domain *iovad,
++				       unsigned long shift)
++{
++	unsigned long max_align_shift;
++
++	max_align_shift = CONFIG_IOMMU_IOVA_ALIGNMENT + PAGE_SHIFT
++		- iova_shift(iovad);
++	return min_t(unsigned long, max_align_shift, shift);
++}
++#else
++static unsigned long limit_align_shift(struct iova_domain *iovad,
++				       unsigned long shift)
++{
++	return shift;
++}
++#endif
++
+ static int __alloc_and_insert_iova_range(struct iova_domain *iovad,
+ 		unsigned long size, unsigned long limit_pfn,
+ 			struct iova *new, bool size_aligned)
+@@ -187,7 +206,7 @@
+ 	unsigned long align_mask = ~0UL;
+ 
+ 	if (size_aligned)
+-		align_mask <<= fls_long(size - 1);
++		align_mask <<= limit_align_shift(iovad, fls_long(size - 1));
+ 
+ 	/* Walk the tree backwards */
+ 	spin_lock_irqsave(&iovad->iova_rbtree_lock, flags);
+@@ -226,6 +245,70 @@
+ 	return -ENOMEM;
+ }
+ 
++static int __alloc_and_insert_iova_best_fit(struct iova_domain *iovad,
++					    unsigned long size,
++					    unsigned long limit_pfn,
++					    struct iova *new, bool size_aligned)
++{
++	struct rb_node *curr, *prev;
++	struct iova *curr_iova, *prev_iova;
++	unsigned long flags;
++	unsigned long align_mask = ~0UL;
++	struct rb_node *candidate_rb_parent;
++	unsigned long new_pfn, candidate_pfn = ~0UL;
++	unsigned long gap, candidate_gap = ~0UL;
++
++	if (size_aligned)
++		align_mask <<= limit_align_shift(iovad, fls_long(size - 1));
++
++	/* Walk the tree backwards */
++	spin_lock_irqsave(&iovad->iova_rbtree_lock, flags);
++	curr = &iovad->anchor.node;
++	prev = rb_prev(curr);
++	for (; prev; curr = prev, prev = rb_prev(curr)) {
++		curr_iova = rb_entry(curr, struct iova, node);
++		prev_iova = rb_entry(prev, struct iova, node);
++
++		limit_pfn = min(limit_pfn, curr_iova->pfn_lo);
++		new_pfn = (limit_pfn - size) & align_mask;
++		gap = curr_iova->pfn_lo - prev_iova->pfn_hi - 1;
++		if ((limit_pfn >= size) && (new_pfn > prev_iova->pfn_hi)
++				&& (gap < candidate_gap)) {
++			candidate_gap = gap;
++			candidate_pfn = new_pfn;
++			candidate_rb_parent = curr;
++			if (gap == size)
++				goto insert;
++		}
++	}
++
++	curr_iova = rb_entry(curr, struct iova, node);
++	limit_pfn = min(limit_pfn, curr_iova->pfn_lo);
++	new_pfn = (limit_pfn - size) & align_mask;
++	gap = curr_iova->pfn_lo - iovad->start_pfn;
++	if (limit_pfn >= size && new_pfn >= iovad->start_pfn &&
++			gap < candidate_gap) {
++		candidate_gap = gap;
++		candidate_pfn = new_pfn;
++		candidate_rb_parent = curr;
++	}
++
++insert:
++	if (candidate_pfn == ~0UL) {
++		spin_unlock_irqrestore(&iovad->iova_rbtree_lock, flags);
++		return -ENOMEM;
++	}
++
++	/* pfn_lo will point to size aligned address if size_aligned is set */
++	new->pfn_lo = candidate_pfn;
++	new->pfn_hi = new->pfn_lo + size - 1;
++
++	/* If we have 'prev', it's a valid place to start the insertion. */
++	iova_insert_rbtree(&iovad->rbroot, new, candidate_rb_parent);
++	spin_unlock_irqrestore(&iovad->iova_rbtree_lock, flags);
++	return 0;
++}
++
+ static struct kmem_cache *iova_cache;
+ static unsigned int iova_cache_users;
+ static DEFINE_MUTEX(iova_cache_mutex);
+@@ -301,8 +384,13 @@
+ 	if (!new_iova)
+ 		return NULL;
+ 
+-	ret = __alloc_and_insert_iova_range(iovad, size, limit_pfn + 1,
+-			new_iova, size_aligned);
++	if (iovad->best_fit) {
++		ret = __alloc_and_insert_iova_best_fit(iovad, size,
++				limit_pfn + 1, new_iova, size_aligned);
++	} else {
++		ret = __alloc_and_insert_iova_range(iovad, size, limit_pfn + 1,
++				new_iova, size_aligned);
++	}
+ 
+ 	if (ret) {
+ 		free_iova_mem(new_iova);
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/ipmmu-vmsa.c b/drivers/iommu/ipmmu-vmsa.c
+--- a/drivers/iommu/ipmmu-vmsa.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/ipmmu-vmsa.c	2026-02-09 11:25:56.725526306 +0800
+@@ -724,7 +724,7 @@
+ }
+ 
+ static int ipmmu_map(struct iommu_domain *io_domain, unsigned long iova,
+-		     phys_addr_t paddr, size_t size, int prot)
++		     phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct ipmmu_vmsa_domain *domain = to_vmsa_domain(io_domain);
+ 
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/Kconfig b/drivers/iommu/Kconfig
+--- a/drivers/iommu/Kconfig	2026-04-10 14:05:35.679704167 +0800
++++ b/drivers/iommu/Kconfig	2026-02-09 11:25:56.721526088 +0800
+@@ -7,6 +7,36 @@
+ config IOMMU_API
+ 	bool
+ 
++if IOMMU_IOVA
++
++config IOMMU_LIMIT_IOVA_ALIGNMENT
++	bool "Limit IOVA alignment"
++	help
++	  When the IOVA framework applies IOVA alignment it aligns all
++	  IOVAs to the smallest PAGE_SIZE order which is greater than or
++	  equal to the requested IOVA size. This works fine for sizes up
++	  to several MiB, but for larger sizes it results in address
++	  space wastage and fragmentation. For example drivers with a 4
++	  GiB IOVA space might run out of IOVA space when allocating
++	  buffers great than 64 MiB.
++
++	  Enable this option to impose a limit on the alignment of IOVAs.
++
++	  If unsure, say N.
++
++config IOMMU_IOVA_ALIGNMENT
++	int "Maximum PAGE_SIZE order of alignment for IOVAs"
++	depends on IOMMU_LIMIT_IOVA_ALIGNMENT
++	range 4 9
++	default 9
++	help
++	  With this parameter you can specify the maximum PAGE_SIZE order for
++	  IOVAs. Larger IOVAs will be aligned only to this specified order.
++	  The order is expressed a power of two multiplied by the PAGE_SIZE.
++
++	  If unsure, leave the default value "9".
++endif
++
+ menuconfig IOMMU_SUPPORT
+ 	bool "IOMMU Hardware Support"
+ 	depends on MMU
+@@ -350,8 +380,9 @@
+ 
+ # ARM IOMMU support
+ config ARM_SMMU
+-	bool "ARM Ltd. System MMU (SMMU) Support"
++	tristate "ARM Ltd. System MMU (SMMU) Support"
+ 	depends on (ARM64 || ARM) && MMU
++	depends on QCOM_SCM || !QCOM_SCM #if QCOM_SCM=m this can't be =y
+ 	select IOMMU_API
+ 	select IOMMU_IO_PGTABLE_LPAE
+ 	select ARM_DMA_USE_IOMMU if ARM
+@@ -362,6 +393,18 @@
+ 	  Say Y here if your SoC includes an IOMMU device implementing
+ 	  the ARM SMMU architecture.
+ 
++config ARM_SMMU_LEGACY_DT_BINDINGS
++	bool "Support the legacy \"mmu-masters\" devicetree bindings"
++	depends on ARM_SMMU=y && OF
++	help
++	  Support for the badly designed and deprecated "mmu-masters"
++	  devicetree bindings. This allows some DMA masters to attach
++	  to the SMMU but does not provide any support via the DMA API.
++	  If you're lucky, you might be able to get VFIO up and running.
++
++	  If you say Y here then you'll make me very sad. Instead, say N
++	  and move your firmware to the utopian future that was 2016.
++
+ config ARM_SMMU_DISABLE_BYPASS_BY_DEFAULT
+ 	bool "Default to disabling bypass on ARM SMMU v1 and v2"
+ 	depends on ARM_SMMU
+@@ -388,7 +431,7 @@
+ 	  config.
+ 
+ config ARM_SMMU_V3
+-	bool "ARM Ltd. System MMU Version 3 (SMMUv3) Support"
++	tristate "ARM Ltd. System MMU Version 3 (SMMUv3) Support"
+ 	depends on ARM64
+ 	select IOMMU_API
+ 	select IOMMU_IO_PGTABLE_LPAE
+@@ -459,6 +502,7 @@
+ 	# Note: iommu drivers cannot (yet?) be built as modules
+ 	bool "Qualcomm IOMMU Support"
+ 	depends on ARCH_QCOM || (COMPILE_TEST && !GENERIC_ATOMIC64)
++	depends on QCOM_SCM=y
+ 	select IOMMU_API
+ 	select IOMMU_IO_PGTABLE_LPAE
+ 	select ARM_DMA_USE_IOMMU
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/Makefile b/drivers/iommu/Makefile
+--- a/drivers/iommu/Makefile	2026-04-10 14:05:35.679704167 +0800
++++ b/drivers/iommu/Makefile	2026-02-09 11:25:56.721526088 +0800
+@@ -13,7 +13,8 @@
+ obj-$(CONFIG_AMD_IOMMU) += amd_iommu.o amd_iommu_init.o amd_iommu_quirks.o
+ obj-$(CONFIG_AMD_IOMMU_DEBUGFS) += amd_iommu_debugfs.o
+ obj-$(CONFIG_AMD_IOMMU_V2) += amd_iommu_v2.o
+-obj-$(CONFIG_ARM_SMMU) += arm-smmu.o arm-smmu-impl.o
++obj-$(CONFIG_ARM_SMMU) += arm_smmu.o
++arm_smmu-objs += arm-smmu.o arm-smmu-impl.o arm-smmu-qcom.o
+ obj-$(CONFIG_ARM_SMMU_V3) += arm-smmu-v3.o
+ obj-$(CONFIG_DMAR_TABLE) += dmar.o
+ obj-$(CONFIG_INTEL_IOMMU) += intel-iommu.o intel-pasid.o
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/msm_iommu.c b/drivers/iommu/msm_iommu.c
+--- a/drivers/iommu/msm_iommu.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/msm_iommu.c	2026-02-09 11:25:56.725526306 +0800
+@@ -504,7 +504,7 @@
+ }
+ 
+ static int msm_iommu_map(struct iommu_domain *domain, unsigned long iova,
+-			 phys_addr_t pa, size_t len, int prot)
++			 phys_addr_t pa, size_t len, int prot, gfp_t gfp)
+ {
+ 	struct msm_priv *priv = to_msm_priv(domain);
+ 	unsigned long flags;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/mtk_iommu.c b/drivers/iommu/mtk_iommu.c
+--- a/drivers/iommu/mtk_iommu.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/mtk_iommu.c	2026-02-09 11:25:56.725526306 +0800
+@@ -101,8 +101,6 @@
+ #define MTK_M4U_TO_PORT(id)		((id) & 0x1f)
+ 
+ struct mtk_iommu_domain {
+-	spinlock_t			pgtlock; /* lock for page table */
+-
+ 	struct io_pgtable_cfg		cfg;
+ 	struct io_pgtable_ops		*iop;
+ 
+@@ -161,10 +159,8 @@
+ 	return container_of(dom, struct mtk_iommu_domain, domain);
+ }
+ 
+-static void mtk_iommu_tlb_flush_all(void *cookie)
++static void mtk_iommu_tlb_flush_all(struct mtk_iommu_data *data)
+ {
+-	struct mtk_iommu_data *data = cookie;
+-
+ 	for_each_m4u(data) {
+ 		writel_relaxed(F_INVLD_EN1 | F_INVLD_EN0,
+ 			       data->base + REG_MMU_INV_SEL);
+@@ -173,13 +169,16 @@
+ 	}
+ }
+ 
+-static void mtk_iommu_tlb_add_flush_nosync(unsigned long iova, size_t size,
+-					   size_t granule, bool leaf,
+-					   void *cookie)
++static void mtk_iommu_tlb_flush_range_sync(unsigned long iova, size_t size,
++					   size_t granule,
++					   struct mtk_iommu_data *data)
+ {
+-	struct mtk_iommu_data *data = cookie;
++	unsigned long flags;
++	int ret;
++	u32 tmp;
+ 
+ 	for_each_m4u(data) {
++		spin_lock_irqsave(&data->tlb_lock, flags);
+ 		writel_relaxed(F_INVLD_EN1 | F_INVLD_EN0,
+ 			       data->base + REG_MMU_INV_SEL);
+ 
+@@ -188,77 +187,21 @@
+ 			       data->base + REG_MMU_INVLD_END_A);
+ 		writel_relaxed(F_MMU_INV_RANGE,
+ 			       data->base + REG_MMU_INVALIDATE);
+-		data->tlb_flush_active = true;
+-	}
+-}
+-
+-static void mtk_iommu_tlb_sync(void *cookie)
+-{
+-	struct mtk_iommu_data *data = cookie;
+-	int ret;
+-	u32 tmp;
+-
+-	for_each_m4u(data) {
+-		/* Avoid timing out if there's nothing to wait for */
+-		if (!data->tlb_flush_active)
+-			return;
+ 
++		/* tlb sync */
+ 		ret = readl_poll_timeout_atomic(data->base + REG_MMU_CPE_DONE,
+-						tmp, tmp != 0, 10, 100000);
++						tmp, tmp != 0, 10, 1000);
+ 		if (ret) {
+ 			dev_warn(data->dev,
+ 				 "Partial TLB flush timed out, falling back to full flush\n");
+-			mtk_iommu_tlb_flush_all(cookie);
++			mtk_iommu_tlb_flush_all(data);
+ 		}
+ 		/* Clear the CPE status */
+ 		writel_relaxed(0, data->base + REG_MMU_CPE_DONE);
+-		data->tlb_flush_active = false;
++		spin_unlock_irqrestore(&data->tlb_lock, flags);
+ 	}
+ }
+ 
+-static void mtk_iommu_tlb_flush_walk(unsigned long iova, size_t size,
+-				     size_t granule, void *cookie)
+-{
+-	struct mtk_iommu_data *data = cookie;
+-	unsigned long flags;
+-
+-	spin_lock_irqsave(&data->tlb_lock, flags);
+-	mtk_iommu_tlb_add_flush_nosync(iova, size, granule, false, cookie);
+-	mtk_iommu_tlb_sync(cookie);
+-	spin_unlock_irqrestore(&data->tlb_lock, flags);
+-}
+-
+-static void mtk_iommu_tlb_flush_leaf(unsigned long iova, size_t size,
+-				     size_t granule, void *cookie)
+-{
+-	struct mtk_iommu_data *data = cookie;
+-	unsigned long flags;
+-
+-	spin_lock_irqsave(&data->tlb_lock, flags);
+-	mtk_iommu_tlb_add_flush_nosync(iova, size, granule, true, cookie);
+-	mtk_iommu_tlb_sync(cookie);
+-	spin_unlock_irqrestore(&data->tlb_lock, flags);
+-}
+-
+-static void mtk_iommu_tlb_flush_page_nosync(struct iommu_iotlb_gather *gather,
+-					    unsigned long iova, size_t granule,
+-					    void *cookie)
+-{
+-	struct mtk_iommu_data *data = cookie;
+-	unsigned long flags;
+-
+-	spin_lock_irqsave(&data->tlb_lock, flags);
+-	mtk_iommu_tlb_add_flush_nosync(iova, granule, granule, true, cookie);
+-	spin_unlock_irqrestore(&data->tlb_lock, flags);
+-}
+-
+-static const struct iommu_flush_ops mtk_iommu_flush_ops = {
+-	.tlb_flush_all = mtk_iommu_tlb_flush_all,
+-	.tlb_flush_walk = mtk_iommu_tlb_flush_walk,
+-	.tlb_flush_leaf = mtk_iommu_tlb_flush_leaf,
+-	.tlb_add_page = mtk_iommu_tlb_flush_page_nosync,
+-};
+-
+ static irqreturn_t mtk_iommu_isr(int irq, void *dev_id)
+ {
+ 	struct mtk_iommu_data *data = dev_id;
+@@ -331,17 +274,13 @@
+ {
+ 	struct mtk_iommu_data *data = mtk_iommu_get_m4u_data();
+ 
+-	spin_lock_init(&dom->pgtlock);
+-
+ 	dom->cfg = (struct io_pgtable_cfg) {
+ 		.quirks = IO_PGTABLE_QUIRK_ARM_NS |
+ 			IO_PGTABLE_QUIRK_NO_PERMS |
+-			IO_PGTABLE_QUIRK_TLBI_ON_MAP |
+ 			IO_PGTABLE_QUIRK_ARM_MTK_EXT,
+ 		.pgsize_bitmap = mtk_iommu_ops.pgsize_bitmap,
+ 		.ias = 32,
+ 		.oas = 34,
+-		.tlb = &mtk_iommu_flush_ops,
+ 		.iommu_dev = data->dev,
+ 	};
+ 
+@@ -427,22 +366,17 @@
+ }
+ 
+ static int mtk_iommu_map(struct iommu_domain *domain, unsigned long iova,
+-			 phys_addr_t paddr, size_t size, int prot)
++			 phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct mtk_iommu_domain *dom = to_mtk_domain(domain);
+ 	struct mtk_iommu_data *data = mtk_iommu_get_m4u_data();
+-	unsigned long flags;
+-	int ret;
+ 
+ 	/* The "4GB mode" M4U physically can not use the lower remap of Dram. */
+ 	if (data->enable_4GB)
+ 		paddr |= BIT_ULL(32);
+ 
+-	spin_lock_irqsave(&dom->pgtlock, flags);
+-	ret = dom->iop->map(dom->iop, iova, paddr, size, prot);
+-	spin_unlock_irqrestore(&dom->pgtlock, flags);
+-
+-	return ret;
++	/* Synchronize with the tlb_lock */
++	return dom->iop->map(dom->iop, iova, paddr, size, prot);
+ }
+ 
+ static size_t mtk_iommu_unmap(struct iommu_domain *domain,
+@@ -450,14 +384,13 @@
+ 			      struct iommu_iotlb_gather *gather)
+ {
+ 	struct mtk_iommu_domain *dom = to_mtk_domain(domain);
+-	unsigned long flags;
+-	size_t unmapsz;
+-
+-	spin_lock_irqsave(&dom->pgtlock, flags);
+-	unmapsz = dom->iop->unmap(dom->iop, iova, size, gather);
+-	spin_unlock_irqrestore(&dom->pgtlock, flags);
++	unsigned long end = iova + size - 1;
+ 
+-	return unmapsz;
++	if (gather->start > iova)
++		gather->start = iova;
++	if (gather->end < end)
++		gather->end = end;
++	return dom->iop->unmap(dom->iop, iova, size, gather);
+ }
+ 
+ static void mtk_iommu_flush_iotlb_all(struct iommu_domain *domain)
+@@ -469,11 +402,18 @@
+ 				 struct iommu_iotlb_gather *gather)
+ {
+ 	struct mtk_iommu_data *data = mtk_iommu_get_m4u_data();
+-	unsigned long flags;
++	size_t length = gather->end - gather->start + 1;
+ 
+-	spin_lock_irqsave(&data->tlb_lock, flags);
+-	mtk_iommu_tlb_sync(data);
+-	spin_unlock_irqrestore(&data->tlb_lock, flags);
++	mtk_iommu_tlb_flush_range_sync(gather->start, length, gather->pgsize,
++				       data);
++}
++
++static void mtk_iommu_sync_map(struct iommu_domain *domain, unsigned long iova,
++			       size_t size)
++{
++	struct mtk_iommu_data *data = mtk_iommu_get_m4u_data();
++
++	mtk_iommu_tlb_flush_range_sync(iova, size, size, data);
+ }
+ 
+ static phys_addr_t mtk_iommu_iova_to_phys(struct iommu_domain *domain,
+@@ -481,13 +421,9 @@
+ {
+ 	struct mtk_iommu_domain *dom = to_mtk_domain(domain);
+ 	struct mtk_iommu_data *data = mtk_iommu_get_m4u_data();
+-	unsigned long flags;
+ 	phys_addr_t pa;
+ 
+-	spin_lock_irqsave(&dom->pgtlock, flags);
+ 	pa = dom->iop->iova_to_phys(dom->iop, iova);
+-	spin_unlock_irqrestore(&dom->pgtlock, flags);
+-
+ 	if (data->enable_4GB && pa >= MTK_IOMMU_4GB_MODE_REMAP_BASE)
+ 		pa &= ~BIT_ULL(32);
+ 
+@@ -579,6 +515,7 @@
+ 	.unmap		= mtk_iommu_unmap,
+ 	.flush_iotlb_all = mtk_iommu_flush_iotlb_all,
+ 	.iotlb_sync	= mtk_iommu_iotlb_sync,
++	.iotlb_sync_map	= mtk_iommu_sync_map,
+ 	.iova_to_phys	= mtk_iommu_iova_to_phys,
+ 	.add_device	= mtk_iommu_add_device,
+ 	.remove_device	= mtk_iommu_remove_device,
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/mtk_iommu.h b/drivers/iommu/mtk_iommu.h
+--- a/drivers/iommu/mtk_iommu.h	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/mtk_iommu.h	2026-02-09 11:25:56.725526306 +0800
+@@ -57,7 +57,6 @@
+ 	struct mtk_iommu_domain		*m4u_dom;
+ 	struct iommu_group		*m4u_group;
+ 	bool                            enable_4GB;
+-	bool				tlb_flush_active;
+ 	spinlock_t			tlb_lock; /* lock for tlb range flush */
+ 
+ 	struct iommu_device		iommu;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/mtk_iommu_v1.c b/drivers/iommu/mtk_iommu_v1.c
+--- a/drivers/iommu/mtk_iommu_v1.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/mtk_iommu_v1.c	2026-02-09 11:25:56.725526306 +0800
+@@ -295,7 +295,7 @@
+ }
+ 
+ static int mtk_iommu_map(struct iommu_domain *domain, unsigned long iova,
+-			 phys_addr_t paddr, size_t size, int prot)
++			 phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct mtk_iommu_domain *dom = to_mtk_domain(domain);
+ 	unsigned int page_num = size >> MT2701_IOMMU_PAGE_SHIFT;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/of_iommu.c b/drivers/iommu/of_iommu.c
+--- a/drivers/iommu/of_iommu.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/of_iommu.c	2026-02-09 11:25:56.725526306 +0800
+@@ -8,6 +8,7 @@
+ #include <linux/export.h>
+ #include <linux/iommu.h>
+ #include <linux/limits.h>
++#include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_iommu.h>
+ #include <linux/of_pci.h>
+@@ -89,16 +90,16 @@
+ {
+ 	const struct iommu_ops *ops;
+ 	struct fwnode_handle *fwnode = &iommu_spec->np->fwnode;
+-	int err;
++	int ret;
+ 
+ 	ops = iommu_ops_from_fwnode(fwnode);
+ 	if ((ops && !ops->of_xlate) ||
+ 	    !of_device_is_available(iommu_spec->np))
+ 		return NO_IOMMU;
+ 
+-	err = iommu_fwspec_init(dev, &iommu_spec->np->fwnode, ops);
+-	if (err)
+-		return err;
++	ret = iommu_fwspec_init(dev, &iommu_spec->np->fwnode, ops);
++	if (ret)
++		return ret;
+ 	/*
+ 	 * The otherwise-empty fwspec handily serves to indicate the specific
+ 	 * IOMMU device we're waiting for, which will be useful if we ever get
+@@ -107,7 +108,12 @@
+ 	if (!ops)
+ 		return driver_deferred_probe_check_state(dev);
+ 
+-	return ops->of_xlate(dev, iommu_spec);
++	if (!try_module_get(ops->owner))
++		return -ENODEV;
++
++	ret = ops->of_xlate(dev, iommu_spec);
++	module_put(ops->owner);
++	return ret;
+ }
+ 
+ struct of_pci_iommu_alias_info {
+@@ -177,6 +183,7 @@
+ 			.np = master_np,
+ 		};
+ 
++		pci_request_acs();
+ 		err = pci_for_each_dma_alias(to_pci_dev(dev),
+ 					     of_pci_iommu_init, &info);
+ 	} else if (dev_is_fsl_mc(dev)) {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/omap-iommu.c b/drivers/iommu/omap-iommu.c
+--- a/drivers/iommu/omap-iommu.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/omap-iommu.c	2026-02-09 11:25:56.725526306 +0800
+@@ -1339,7 +1339,7 @@
+ }
+ 
+ static int omap_iommu_map(struct iommu_domain *domain, unsigned long da,
+-			  phys_addr_t pa, size_t bytes, int prot)
++			  phys_addr_t pa, size_t bytes, int prot, gfp_t gfp)
+ {
+ 	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
+ 	struct device *dev = omap_domain->dev;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/qcom_iommu.c b/drivers/iommu/qcom_iommu.c
+--- a/drivers/iommu/qcom_iommu.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/qcom_iommu.c	2026-02-09 11:25:56.729526524 +0800
+@@ -419,7 +419,7 @@
+ }
+ 
+ static int qcom_iommu_map(struct iommu_domain *domain, unsigned long iova,
+-			  phys_addr_t paddr, size_t size, int prot)
++			  phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	int ret;
+ 	unsigned long flags;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/rockchip-iommu.c b/drivers/iommu/rockchip-iommu.c
+--- a/drivers/iommu/rockchip-iommu.c	2026-04-10 14:05:35.691704101 +0800
++++ b/drivers/iommu/rockchip-iommu.c	2026-02-09 11:25:56.729526524 +0800
+@@ -758,7 +758,7 @@
+ }
+ 
+ static int rk_iommu_map(struct iommu_domain *domain, unsigned long _iova,
+-			phys_addr_t paddr, size_t size, int prot)
++			phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct rk_iommu_domain *rk_domain = to_rk_domain(domain);
+ 	unsigned long flags;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/s390-iommu.c b/drivers/iommu/s390-iommu.c
+--- a/drivers/iommu/s390-iommu.c	2026-04-10 14:05:35.695704079 +0800
++++ b/drivers/iommu/s390-iommu.c	2026-02-09 11:25:56.729526524 +0800
+@@ -265,7 +265,7 @@
+ }
+ 
+ static int s390_iommu_map(struct iommu_domain *domain, unsigned long iova,
+-			  phys_addr_t paddr, size_t size, int prot)
++			  phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct s390_domain *s390_domain = to_s390_domain(domain);
+ 	int flags = ZPCI_PTE_VALID, rc = 0;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/tegra-gart.c b/drivers/iommu/tegra-gart.c
+--- a/drivers/iommu/tegra-gart.c	2026-04-10 14:05:35.695704079 +0800
++++ b/drivers/iommu/tegra-gart.c	2026-02-09 11:25:56.729526524 +0800
+@@ -178,7 +178,7 @@
+ }
+ 
+ static int gart_iommu_map(struct iommu_domain *domain, unsigned long iova,
+-			  phys_addr_t pa, size_t bytes, int prot)
++			  phys_addr_t pa, size_t bytes, int prot, gfp_t gfp)
+ {
+ 	struct gart_device *gart = gart_handle;
+ 	int ret;
+@@ -273,7 +273,8 @@
+ 	return 0;
+ }
+ 
+-static void gart_iommu_sync_map(struct iommu_domain *domain)
++static void gart_iommu_sync_map(struct iommu_domain *domain, unsigned long iova,
++				size_t size)
+ {
+ 	FLUSH_GART_REGS(gart_handle);
+ }
+@@ -281,7 +282,9 @@
+ static void gart_iommu_sync(struct iommu_domain *domain,
+ 			    struct iommu_iotlb_gather *gather)
+ {
+-	gart_iommu_sync_map(domain);
++	size_t length = gather->end - gather->start + 1;
++
++	gart_iommu_sync_map(domain, gather->start, length);
+ }
+ 
+ static const struct iommu_ops gart_iommu_ops = {
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/tegra-smmu.c b/drivers/iommu/tegra-smmu.c
+--- a/drivers/iommu/tegra-smmu.c	2026-04-10 14:05:35.695704079 +0800
++++ b/drivers/iommu/tegra-smmu.c	2026-02-09 11:25:56.729526524 +0800
+@@ -651,7 +651,7 @@
+ }
+ 
+ static int tegra_smmu_map(struct iommu_domain *domain, unsigned long iova,
+-			  phys_addr_t paddr, size_t size, int prot)
++			  phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	struct tegra_smmu_as *as = to_smmu_as(domain);
+ 	dma_addr_t pte_dma;
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=*.o' '--exclude=*.a' '--exclude=*.ko' '--exclude=*.pyc' '--exclude=include-prefixes' a/drivers/iommu/virtio-iommu.c b/drivers/iommu/virtio-iommu.c
+--- a/drivers/iommu/virtio-iommu.c	2026-04-10 14:05:35.695704079 +0800
++++ b/drivers/iommu/virtio-iommu.c	2026-02-09 11:25:56.729526524 +0800
+@@ -715,7 +715,7 @@
+ }
+ 
+ static int viommu_map(struct iommu_domain *domain, unsigned long iova,
+-		      phys_addr_t paddr, size_t size, int prot)
++		      phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+ {
+ 	int ret;
+ 	u32 flags;

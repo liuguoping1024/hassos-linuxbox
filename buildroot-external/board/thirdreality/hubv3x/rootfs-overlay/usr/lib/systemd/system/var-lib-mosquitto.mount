@@ -1,0 +1,14 @@
+[Unit]
+Description=Mosquitto persistent data
+Requires=mnt-overlay.mount hubv3-overlay.service
+After=mnt-overlay.mount hubv3-overlay.service
+Before=mosquitto.service
+
+[Mount]
+What=/mnt/overlay/var/lib/mosquitto
+Where=/var/lib/mosquitto
+Type=None
+Options=bind
+
+[Install]
+WantedBy=os-bind.target

@@ -1,0 +1,1086 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_pxp_defconfig b/board/amlogic/defconfigs/axg_pxp_defconfig
+--- a/board/amlogic/defconfigs/axg_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_pxp_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,8 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s400_v1_defconfig b/board/amlogic/defconfigs/axg_s400_v1_defconfig
+--- a/board/amlogic/defconfigs/axg_s400_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s400_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S400_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s400_v1_gva_defconfig b/board/amlogic/defconfigs/axg_s400_v1_gva_defconfig
+--- a/board/amlogic/defconfigs/axg_s400_v1_gva_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s400_v1_gva_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S400_V1_GVA=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s400_v1_sbr_defconfig b/board/amlogic/defconfigs/axg_s400_v1_sbr_defconfig
+--- a/board/amlogic/defconfigs/axg_s400_v1_sbr_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s400_v1_sbr_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S400_V1_SBR=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s410_v1_defconfig b/board/amlogic/defconfigs/axg_s410_v1_defconfig
+--- a/board/amlogic/defconfigs/axg_s410_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s410_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S410_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s410_v1_gva_defconfig b/board/amlogic/defconfigs/axg_s410_v1_gva_defconfig
+--- a/board/amlogic/defconfigs/axg_s410_v1_gva_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s410_v1_gva_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S410_V1_GVA=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s410_v1_sbr_defconfig b/board/amlogic/defconfigs/axg_s410_v1_sbr_defconfig
+--- a/board/amlogic/defconfigs/axg_s410_v1_sbr_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s410_v1_sbr_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S410_V1_SBR=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s420_v1_defconfig b/board/amlogic/defconfigs/axg_s420_v1_defconfig
+--- a/board/amlogic/defconfigs/axg_s420_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s420_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S420_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_s420_v1_gva_defconfig b/board/amlogic/defconfigs/axg_s420_v1_gva_defconfig
+--- a/board/amlogic/defconfigs/axg_s420_v1_gva_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_s420_v1_gva_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_S420_V1_GVA=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/axg_skt_v1_defconfig b/board/amlogic/defconfigs/axg_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/axg_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/axg_skt_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_AXG=y
++CONFIG_AXG_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_pxp_defconfig b/board/amlogic/defconfigs/g12a_pxp_defconfig
+--- a/board/amlogic/defconfigs/g12a_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_pxp_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_skt_v1_defconfig b/board/amlogic/defconfigs/g12a_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_skt_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_u200_v1_defconfig b/board/amlogic/defconfigs/g12a_u200_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_u200_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_u200_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_U200_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_u202_v1_defconfig b/board/amlogic/defconfigs/g12a_u202_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_u202_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_u202_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_U202_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_u211_v1_defconfig b/board/amlogic/defconfigs/g12a_u211_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_u211_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_u211_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_U211_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_u212_v1_defconfig b/board/amlogic/defconfigs/g12a_u212_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_u212_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_u212_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_U212_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_u215_v1_defconfig b/board/amlogic/defconfigs/g12a_u215_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_u215_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_u215_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_U215_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_u220_v1_defconfig b/board/amlogic/defconfigs/g12a_u220_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_u220_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_u220_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_U220_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12a_u223_v1_defconfig b/board/amlogic/defconfigs/g12a_u223_v1_defconfig
+--- a/board/amlogic/defconfigs/g12a_u223_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12a_u223_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_G12A_U223_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12b_pxp_defconfig b/board/amlogic/defconfigs/g12b_pxp_defconfig
+--- a/board/amlogic/defconfigs/g12b_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12b_pxp_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12B=y
++CONFIG_G12B_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12b_skt_v1_defconfig b/board/amlogic/defconfigs/g12b_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/g12b_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12b_skt_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12B=y
++CONFIG_G12B_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12b_w200_v1_defconfig b/board/amlogic/defconfigs/g12b_w200_v1_defconfig
+--- a/board/amlogic/defconfigs/g12b_w200_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12b_w200_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12B=y
++CONFIG_G12B_W200_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12b_w400_v1_defconfig b/board/amlogic/defconfigs/g12b_w400_v1_defconfig
+--- a/board/amlogic/defconfigs/g12b_w400_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12b_w400_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12B=y
++CONFIG_G12B_W400_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12b_w400_v1_zircon_defconfig b/board/amlogic/defconfigs/g12b_w400_v1_zircon_defconfig
+--- a/board/amlogic/defconfigs/g12b_w400_v1_zircon_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12b_w400_v1_zircon_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,8 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12B=y
++CONFIG_G12B_W400_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_ZIRCON_BOOT_IMAGE=y
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/g12b_w411_v1_defconfig b/board/amlogic/defconfigs/g12b_w411_v1_defconfig
+--- a/board/amlogic/defconfigs/g12b_w411_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/g12b_w411_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12B=y
++CONFIG_G12B_W411_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxb_p200_v1_defconfig b/board/amlogic/defconfigs/gxb_p200_v1_defconfig
+--- a/board/amlogic/defconfigs/gxb_p200_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxb_p200_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXB_P200_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxb_p201_v1_defconfig b/board/amlogic/defconfigs/gxb_p201_v1_defconfig
+--- a/board/amlogic/defconfigs/gxb_p201_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxb_p201_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXB_P201_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxb_pxp_defconfig b/board/amlogic/defconfigs/gxb_pxp_defconfig
+--- a/board/amlogic/defconfigs/gxb_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxb_pxp_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXB_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxb_skt_v1_defconfig b/board/amlogic/defconfigs/gxb_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/gxb_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxb_skt_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXB_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p211_v1_defconfig b/board/amlogic/defconfigs/gxl_p211_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p211_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p211_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P211_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p212_v1_defconfig b/board/amlogic/defconfigs/gxl_p212_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p212_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p212_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P212_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p230_v1_defconfig b/board/amlogic/defconfigs/gxl_p230_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p230_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p230_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P230_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p231_v1_defconfig b/board/amlogic/defconfigs/gxl_p231_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p231_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p231_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P231_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p241_v1_defconfig b/board/amlogic/defconfigs/gxl_p241_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p241_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p241_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P241_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p244_v1_defconfig b/board/amlogic/defconfigs/gxl_p244_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p244_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p244_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P244_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p271_v1_defconfig b/board/amlogic/defconfigs/gxl_p271_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p271_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p271_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P271_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p281_v1_defconfig b/board/amlogic/defconfigs/gxl_p281_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p281_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p281_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P281_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p400_v1_defconfig b/board/amlogic/defconfigs/gxl_p400_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p400_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p400_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P400_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_p401_v1_defconfig b/board/amlogic/defconfigs/gxl_p401_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_p401_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_p401_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_P401_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_pxp_defconfig b/board/amlogic/defconfigs/gxl_pxp_defconfig
+--- a/board/amlogic/defconfigs/gxl_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_pxp_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxl_skt_v1_defconfig b/board/amlogic/defconfigs/gxl_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/gxl_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxl_skt_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXL_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxm_pxp_defconfig b/board/amlogic/defconfigs/gxm_pxp_defconfig
+--- a/board/amlogic/defconfigs/gxm_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxm_pxp_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXM_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxm_q200_v1_defconfig b/board/amlogic/defconfigs/gxm_q200_v1_defconfig
+--- a/board/amlogic/defconfigs/gxm_q200_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxm_q200_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXM_Q200_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxm_q201_v1_defconfig b/board/amlogic/defconfigs/gxm_q201_v1_defconfig
+--- a/board/amlogic/defconfigs/gxm_q201_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxm_q201_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXM_Q201_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxm_skt_v1_defconfig b/board/amlogic/defconfigs/gxm_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/gxm_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxm_skt_v1_defconfig	2026-02-09 11:25:47.417018435 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_GXM_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_9023_skt_v1_defconfig b/board/amlogic/defconfigs/gxtvbb_9023_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_9023_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_9023_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_9023_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_p300_v1_defconfig b/board/amlogic/defconfigs/gxtvbb_p300_v1_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_p300_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_p300_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_P300_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_p301_v1_defconfig b/board/amlogic/defconfigs/gxtvbb_p301_v1_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_p301_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_p301_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_P301_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_p310_v1_defconfig b/board/amlogic/defconfigs/gxtvbb_p310_v1_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_p310_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_p310_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_P310_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_p311_v1_defconfig b/board/amlogic/defconfigs/gxtvbb_p311_v1_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_p311_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_p311_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_P311_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_pxp_defconfig b/board/amlogic/defconfigs/gxtvbb_pxp_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_pxp_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_skt_v1_defconfig b/board/amlogic/defconfigs/gxtvbb_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/gxtvbb_t966_skt_v1_defconfig b/board/amlogic/defconfigs/gxtvbb_t966_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/gxtvbb_t966_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/gxtvbb_t966_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_GXTVBB_T966_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_ac200_v1_defconfig b/board/amlogic/defconfigs/sm1_ac200_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_ac200_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_ac200_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_AC200_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_ac212_v1_defconfig b/board/amlogic/defconfigs/sm1_ac212_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_ac212_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_ac212_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_AC212_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_ac213_v1_defconfig b/board/amlogic/defconfigs/sm1_ac213_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_ac213_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_ac213_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_AC213_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_ac214_v1_defconfig b/board/amlogic/defconfigs/sm1_ac214_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_ac214_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_ac214_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_AC214_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_ac215_v1_defconfig b/board/amlogic/defconfigs/sm1_ac215_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_ac215_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_ac215_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_AC215_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_ac223_v1_defconfig b/board/amlogic/defconfigs/sm1_ac223_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_ac223_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_ac223_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_AC223_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_ac232_v1_defconfig b/board/amlogic/defconfigs/sm1_ac232_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_ac232_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_ac232_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_AC232_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_elektra_v1_defconfig b/board/amlogic/defconfigs/sm1_elektra_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_elektra_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_elektra_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_ELEKTRA_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/sm1_skt_v1_defconfig b/board/amlogic/defconfigs/sm1_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/sm1_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/sm1_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_G12A=y
++CONFIG_SM1_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5_ak301_v1_defconfig b/board/amlogic/defconfigs/t5_ak301_v1_defconfig
+--- a/board/amlogic/defconfigs/t5_ak301_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5_ak301_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5=y
++CONFIG_T5_AK301_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5_ak309_v1_defconfig b/board/amlogic/defconfigs/t5_ak309_v1_defconfig
+--- a/board/amlogic/defconfigs/t5_ak309_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5_ak309_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5=y
++CONFIG_T5_AK309_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5_ak321_v1_defconfig b/board/amlogic/defconfigs/t5_ak321_v1_defconfig
+--- a/board/amlogic/defconfigs/t5_ak321_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5_ak321_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5=y
++CONFIG_T5_AK321_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5_ak329_v1_defconfig b/board/amlogic/defconfigs/t5_ak329_v1_defconfig
+--- a/board/amlogic/defconfigs/t5_ak329_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5_ak329_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5=y
++CONFIG_T5_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5d_am301_v1_defconfig b/board/amlogic/defconfigs/t5d_am301_v1_defconfig
+--- a/board/amlogic/defconfigs/t5d_am301_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5d_am301_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5D=y
++CONFIG_T5D_AM301_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5d_am309_v1_defconfig b/board/amlogic/defconfigs/t5d_am309_v1_defconfig
+--- a/board/amlogic/defconfigs/t5d_am309_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5d_am309_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5D=y
++CONFIG_T5D_AM309_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5d_am311_v1_defconfig b/board/amlogic/defconfigs/t5d_am311_v1_defconfig
+--- a/board/amlogic/defconfigs/t5d_am311_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5d_am311_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5D=y
++CONFIG_T5D_AM311_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5d_am319_v1_defconfig b/board/amlogic/defconfigs/t5d_am319_v1_defconfig
+--- a/board/amlogic/defconfigs/t5d_am319_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5d_am319_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5D=y
++CONFIG_T5D_AM319_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5d_pxp_defconfig b/board/amlogic/defconfigs/t5d_pxp_defconfig
+--- a/board/amlogic/defconfigs/t5d_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5d_pxp_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5D=y
++CONFIG_T5D_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+\ No newline at end of file
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5d_skt_v1_defconfig b/board/amlogic/defconfigs/t5d_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/t5d_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5d_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5D=y
++CONFIG_T5D_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5_pxp_defconfig b/board/amlogic/defconfigs/t5_pxp_defconfig
+--- a/board/amlogic/defconfigs/t5_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5_pxp_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5=y
++CONFIG_T5_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5_skt_v1_defconfig b/board/amlogic/defconfigs/t5_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/t5_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5=y
++CONFIG_T5_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5w_at301_v1_defconfig b/board/amlogic/defconfigs/t5w_at301_v1_defconfig
+--- a/board/amlogic/defconfigs/t5w_at301_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5w_at301_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5W=y
++CONFIG_T5W_AT301_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5w_pxp_defconfig b/board/amlogic/defconfigs/t5w_pxp_defconfig
+--- a/board/amlogic/defconfigs/t5w_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5w_pxp_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5W=y
++CONFIG_T5W_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+\ No newline at end of file
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/t5w_skt_v1_defconfig b/board/amlogic/defconfigs/t5w_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/t5w_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/t5w_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_T5W=y
++CONFIG_T5W_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tl1_pxp_defconfig b/board/amlogic/defconfigs/tl1_pxp_defconfig
+--- a/board/amlogic/defconfigs/tl1_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tl1_pxp_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TL1=y
++CONFIG_TL1_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tl1_skt_v1_defconfig b/board/amlogic/defconfigs/tl1_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/tl1_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tl1_skt_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TL1=y
++CONFIG_TL1_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tl1_t309_v1_defconfig b/board/amlogic/defconfigs/tl1_t309_v1_defconfig
+--- a/board/amlogic/defconfigs/tl1_t309_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tl1_t309_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TL1=y
++CONFIG_TL1_T309_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tl1_x301_v1_defconfig b/board/amlogic/defconfigs/tl1_x301_v1_defconfig
+--- a/board/amlogic/defconfigs/tl1_x301_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tl1_x301_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TL1=y
++CONFIG_TL1_X301_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_MTK_BT_USB=y
+\ No newline at end of file
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tm2_pxp_defconfig b/board/amlogic/defconfigs/tm2_pxp_defconfig
+--- a/board/amlogic/defconfigs/tm2_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tm2_pxp_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TM2=y
++CONFIG_TM2_T962E2_AB319_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tm2_t962e2_ab311_v1_defconfig b/board/amlogic/defconfigs/tm2_t962e2_ab311_v1_defconfig
+--- a/board/amlogic/defconfigs/tm2_t962e2_ab311_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tm2_t962e2_ab311_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TM2=y
++CONFIG_TM2_T962E2_AB311_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_MTK_BT_USB=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tm2_t962e2_ab319_v1_defconfig b/board/amlogic/defconfigs/tm2_t962e2_ab319_v1_defconfig
+--- a/board/amlogic/defconfigs/tm2_t962e2_ab319_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tm2_t962e2_ab319_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TM2=y
++CONFIG_TM2_T962E2_AB319_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tm2_t962x3_ab301_v1_defconfig b/board/amlogic/defconfigs/tm2_t962x3_ab301_v1_defconfig
+--- a/board/amlogic/defconfigs/tm2_t962x3_ab301_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tm2_t962x3_ab301_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TM2=y
++CONFIG_TM2_T962X3_AB301_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_MTK_BT_USB=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tm2_t962x3_ab309_v1_defconfig b/board/amlogic/defconfigs/tm2_t962x3_ab309_v1_defconfig
+--- a/board/amlogic/defconfigs/tm2_t962x3_ab309_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tm2_t962x3_ab309_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TM2=y
++CONFIG_TM2_T962X3_AB309_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tm2_t962x3_t312_v1_defconfig b/board/amlogic/defconfigs/tm2_t962x3_t312_v1_defconfig
+--- a/board/amlogic/defconfigs/tm2_t962x3_t312_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tm2_t962x3_t312_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TM2=y
++CONFIG_TM2_T962X3_T312_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_MTK_BT_USB=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/tm2_v901d_t501_v1_defconfig b/board/amlogic/defconfigs/tm2_v901d_t501_v1_defconfig
+--- a/board/amlogic/defconfigs/tm2_v901d_t501_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/tm2_v901d_t501_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TM2=y
++CONFIG_TM2_V901D_T501_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_MTK_BT_USB=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txhd_pxp_defconfig b/board/amlogic/defconfigs/txhd_pxp_defconfig
+--- a/board/amlogic/defconfigs/txhd_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txhd_pxp_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXHD=y
++CONFIG_TXHD_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txhd_r341_v1_defconfig b/board/amlogic/defconfigs/txhd_r341_v1_defconfig
+--- a/board/amlogic/defconfigs/txhd_r341_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txhd_r341_v1_defconfig	2026-02-09 11:25:47.421018653 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXHD=y
++CONFIG_TXHD_R341_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txhd_skt_v1_defconfig b/board/amlogic/defconfigs/txhd_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/txhd_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txhd_skt_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXHD=y
++CONFIG_TXHD_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_p320_v1_defconfig b/board/amlogic/defconfigs/txl_p320_v1_defconfig
+--- a/board/amlogic/defconfigs/txl_p320_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_p320_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_TXL_P320_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_p321_v1_defconfig b/board/amlogic/defconfigs/txl_p321_v1_defconfig
+--- a/board/amlogic/defconfigs/txl_p321_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_p321_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_TXL_P321_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_p323_v1_defconfig b/board/amlogic/defconfigs/txl_p323_v1_defconfig
+--- a/board/amlogic/defconfigs/txl_p323_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_p323_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_TXL_P323_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_p341_v1_defconfig b/board/amlogic/defconfigs/txl_p341_v1_defconfig
+--- a/board/amlogic/defconfigs/txl_p341_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_p341_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXL=y
++CONFIG_TXL_P341_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_p341_v2_defconfig b/board/amlogic/defconfigs/txl_p341_v2_defconfig
+--- a/board/amlogic/defconfigs/txl_p341_v2_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_p341_v2_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXL=y
++CONFIG_TXL_P341_V2=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_p346_v1_defconfig b/board/amlogic/defconfigs/txl_p346_v1_defconfig
+--- a/board/amlogic/defconfigs/txl_p346_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_p346_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXL=y
++CONFIG_TXL_P346_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_pxp_defconfig b/board/amlogic/defconfigs/txl_pxp_defconfig
+--- a/board/amlogic/defconfigs/txl_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_pxp_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GX=y
++CONFIG_TXL_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_skt_v1_defconfig b/board/amlogic/defconfigs/txl_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/txl_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_skt_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_GXTV=y
++CONFIG_TXL_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txl_t950_skt_v1_defconfig b/board/amlogic/defconfigs/txl_t950_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/txl_t950_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txl_t950_skt_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXL=y
++CONFIG_TXL_T950_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txlx_pxp_defconfig b/board/amlogic/defconfigs/txlx_pxp_defconfig
+--- a/board/amlogic/defconfigs/txlx_pxp_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txlx_pxp_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,7 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXLX=y
++CONFIG_TXLX_T962X_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
++CONFIG_PXP_EMULATOR=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txlx_t962e_r321_v1_defconfig b/board/amlogic/defconfigs/txlx_t962e_r321_v1_defconfig
+--- a/board/amlogic/defconfigs/txlx_t962e_r321_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txlx_t962e_r321_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXLX=y
++CONFIG_TXLX_T962E_R321_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txlx_t962e_skt_v1_defconfig b/board/amlogic/defconfigs/txlx_t962e_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/txlx_t962e_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txlx_t962e_skt_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXLX=y
++CONFIG_TXLX_T962E_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txlx_t962x_r311_v1_defconfig b/board/amlogic/defconfigs/txlx_t962x_r311_v1_defconfig
+--- a/board/amlogic/defconfigs/txlx_t962x_r311_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txlx_t962x_r311_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXLX=y
++CONFIG_TXLX_T962X_R311_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txlx_t962x_r314_v1_defconfig b/board/amlogic/defconfigs/txlx_t962x_r314_v1_defconfig
+--- a/board/amlogic/defconfigs/txlx_t962x_r314_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txlx_t962x_r314_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXLX=y
++CONFIG_TXLX_T962X_R314_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/amlogic/defconfigs/txlx_t962x_skt_v1_defconfig b/board/amlogic/defconfigs/txlx_t962x_skt_v1_defconfig
+--- a/board/amlogic/defconfigs/txlx_t962x_skt_v1_defconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/amlogic/defconfigs/txlx_t962x_skt_v1_defconfig	2026-02-09 11:25:47.425018871 +0800
+@@ -0,0 +1,6 @@
++CONFIG_ARM=y
++CONFIG_TARGET_MESON_TXLX=y
++CONFIG_TXLX_T962X_SKT_V1=y
++CONFIG_DM=y
++CONFIG_DM_GPIO=y
++CONFIG_AML_GPIO=y

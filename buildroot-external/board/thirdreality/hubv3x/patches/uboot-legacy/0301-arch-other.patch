@@ -1,0 +1,16 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/arch/mips/include/asm/asm.h b/arch/mips/include/asm/asm.h
+--- a/arch/mips/include/asm/asm.h	2026-04-02 18:17:40.947484607 +0800
++++ b/arch/mips/include/asm/asm.h	2026-02-09 11:25:47.257009709 +0800
+@@ -45,6 +45,12 @@
+ #define CPLOAD(register)
+ #endif
+ 
++#define ENTRY(symbol)					\
++		.globl	symbol;				\
++		.type	symbol, @function;		\
++		.ent	symbol, 0;			\
++symbol:
++
+ /*
+  * LEAF - declare leaf routine
+  */

@@ -1,0 +1,2207 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/firmware/board_init.c b/board/hardkernel/odroidc2/firmware/board_init.c
+--- a/board/hardkernel/odroidc2/firmware/board_init.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/firmware/board_init.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,28 @@
++
++/*
++ * board/amlogic/gxb_p200_v1/firmware/board_init.c
++ *
++ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++*/
++
++#include "power.c"
++
++/* bl2 customer code */
++void board_init(void)
++{
++	power_init(0);
++}
+\ No newline at end of file
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/firmware/power.c b/board/hardkernel/odroidc2/firmware/power.c
+--- a/board/hardkernel/odroidc2/firmware/power.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/firmware/power.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,183 @@
++
++/*
++ * board/amlogic/gxb_p200_v1/firmware/power.c
++ *
++ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++*/
++
++#include "config.h"
++#include <serial.h>
++//#include <stdio.h>
++
++#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
++
++static int pwm_voltage_table[][2] = {
++	{ 0x1c0000,  860},
++	{ 0x1b0001,  870},
++	{ 0x1a0002,  880},
++	{ 0x190003,  890},
++	{ 0x180004,  900},
++	{ 0x170005,  910},
++	{ 0x160006,  920},
++	{ 0x150007,  930},
++	{ 0x140008,  940},
++	{ 0x130009,  950},
++	{ 0x12000a,  960},
++	{ 0x11000b,  970},
++	{ 0x10000c,  980},
++	{ 0x0f000d,  990},
++	{ 0x0e000e, 1000},
++	{ 0x0d000f, 1010},
++	{ 0x0c0010, 1020},
++	{ 0x0b0011, 1030},
++	{ 0x0a0012, 1040},
++	{ 0x090013, 1050},
++	{ 0x080014, 1060},
++	{ 0x070015, 1070},
++	{ 0x060016, 1080},
++	{ 0x050017, 1090},
++	{ 0x040018, 1100},
++	{ 0x030019, 1110},
++	{ 0x02001a, 1120},
++	{ 0x01001b, 1130},
++	{ 0x00001c, 1140}
++};
++
++#define P_PIN_MUX_REG3		(*((volatile unsigned *)(0xda834400 + (0x2f << 2))))
++#define P_PIN_MUX_REG7		(*((volatile unsigned *)(0xda834400 + (0x33 << 2))))
++
++#define P_PWM_MISC_REG_AB	(*((volatile unsigned *)(0xc1100000 + (0x2156 << 2))))
++#define P_PWM_PWM_B		(*((volatile unsigned *)(0xc1100000 + (0x2155 << 2))))
++#define P_PWM_MISC_REG_CD	(*((volatile unsigned *)(0xc1100000 + (0x2196 << 2))))
++#define P_PWM_PWM_D		(*((volatile unsigned *)(0xc1100000 + (0x2195 << 2))))
++
++#define P_EE_TIMER_E		(*((volatile unsigned *)(0xc1100000 + (0x2662 << 2))))
++
++enum pwm_id {
++    pwm_a = 0,
++    pwm_b,
++    pwm_c,
++    pwm_d,
++    pwm_e,
++    pwm_f,
++};
++
++unsigned int _get_time(void)
++{
++	return P_EE_TIMER_E;
++}
++
++void _udelay_(unsigned int us)
++{
++	unsigned int t0 = _get_time();
++
++	while (_get_time() - t0 <= us)
++		;
++}
++
++void pwm_init(int id)
++{
++	unsigned int reg;
++
++	/*
++	 * TODO: support more pwm controllers, right now only support
++	 * PWM_B, PWM_D
++	 */
++
++	switch (id) {
++	case pwm_b:
++		reg = P_PWM_MISC_REG_AB;
++		reg &= ~(0x7f << 16);
++		reg |=  ((1 << 23) | (1 << 1));
++		P_PWM_MISC_REG_AB = reg;
++		/*
++		 * default set to max voltage
++		 */
++		P_PWM_PWM_B = pwm_voltage_table[ARRAY_SIZE(pwm_voltage_table) - 1][0];
++		reg  = P_PIN_MUX_REG7;
++		reg &= ~(1 << 22);
++		P_PIN_MUX_REG7 = reg;
++
++		reg  = P_PIN_MUX_REG3;
++		reg &= ~(1 << 22);
++		reg |=  (1 << 21);		// enable PWM_B
++		P_PIN_MUX_REG3 = reg;
++		break;
++
++	case pwm_d:
++		reg = P_PWM_MISC_REG_CD;
++		reg &= ~(0x7f << 16);
++		reg |=  ((1 << 23) | (1 << 1));
++		P_PWM_MISC_REG_CD = reg;
++		/*
++		 * default set to max voltage
++		 */
++		P_PWM_PWM_D = pwm_voltage_table[ARRAY_SIZE(pwm_voltage_table) - 1][0];
++		reg  = P_PIN_MUX_REG7;
++		reg &= ~(1 << 23);
++		P_PIN_MUX_REG7 = reg;
++
++		reg  = P_PIN_MUX_REG3;
++		reg |=  (1 << 20);		// enable PWM_D
++		P_PIN_MUX_REG3 = reg;
++		break;
++	default:
++		break;
++	}
++
++	_udelay_(200);
++}
++
++void pwm_set_voltage(unsigned int id, unsigned int voltage)
++{
++	int to;
++
++	for (to = 0; to < ARRAY_SIZE(pwm_voltage_table); to++) {
++		if (pwm_voltage_table[to][1] >= voltage) {
++			break;
++		}
++	}
++	if (to >= ARRAY_SIZE(pwm_voltage_table)) {
++		to = ARRAY_SIZE(pwm_voltage_table) - 1;
++	}
++	switch (id) {
++	case pwm_b:
++		P_PWM_PWM_B = pwm_voltage_table[to][0];
++		break;
++
++	case pwm_d:
++		P_PWM_PWM_D = pwm_voltage_table[to][0];
++		break;
++	default:
++		break;
++	}
++	_udelay_(200);
++}
++
++void power_init(int mode)
++{
++	pwm_init(pwm_b);
++	pwm_init(pwm_d);
++	serial_puts("set vcck to ");
++	serial_put_dec(CONFIG_VCCK_INIT_VOLTAGE);
++	serial_puts(" mv\n");
++	pwm_set_voltage(pwm_b, CONFIG_VCCK_INIT_VOLTAGE);
++	serial_puts("set vddee to ");
++	serial_put_dec(CONFIG_VDDEE_INIT_VOLTAGE);
++	serial_puts(" mv\n");
++	pwm_set_voltage(pwm_d, CONFIG_VDDEE_INIT_VOLTAGE);
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/firmware/scp_task/dvfs_board.c b/board/hardkernel/odroidc2/firmware/scp_task/dvfs_board.c
+--- a/board/hardkernel/odroidc2/firmware/scp_task/dvfs_board.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/firmware/scp_task/dvfs_board.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,177 @@
++/*
++* Copyright (C) 2017 Amlogic, Inc. All rights reserved.
++* *
++This program is free software; you can redistribute it and/or modify
++* it under the terms of the GNU General Public License as published by
++* the Free Software Foundation; either version 2 of the License, or
++* (at your option) any later version.
++* *
++This program is distributed in the hope that it will be useful, but WITHOUT
++* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++* FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
++* more details.
++* *
++You should have received a copy of the GNU General Public License along
++* with this program; if not, write to the Free Software Foundation, Inc.,
++* 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++* *
++Description:
++*/
++
++
++int pwm_voltage_table[31][2] = {
++	{ 0x1c0000,  860},
++	{ 0x1b0001,  870},
++	{ 0x1a0002,  880},
++	{ 0x190003,  890},
++	{ 0x180004,  900},
++	{ 0x170005,  910},
++	{ 0x160006,  920},
++	{ 0x150007,  930},
++	{ 0x140008,  940},
++	{ 0x130009,  950},
++	{ 0x12000a,  960},
++	{ 0x11000b,  970},
++	{ 0x10000c,  980},
++	{ 0x0f000d,  990},
++	{ 0x0e000e, 1000},
++	{ 0x0d000f, 1010},
++	{ 0x0c0010, 1020},
++	{ 0x0b0011, 1030},
++	{ 0x0a0012, 1040},
++	{ 0x090013, 1050},
++	{ 0x080014, 1060},
++	{ 0x070015, 1070},
++	{ 0x060016, 1080},
++	{ 0x050017, 1090},
++	{ 0x040018, 1100},
++	{ 0x030019, 1110},
++	{ 0x02001a, 1120},
++	{ 0x01001b, 1130},
++	{ 0x00001c, 1140}
++};
++
++struct scpi_opp_entry cpu_dvfs_tbl[] = {
++	DVFS( 100000000,  860),
++	DVFS( 250000000,  860),
++	DVFS( 500000000,  860),
++	DVFS( 667000000,  900),
++	DVFS(1000000000,  940),
++	DVFS(1200000000,  980),
++	DVFS(1296000000, 1000),
++	DVFS(1416000000, 1020),
++	DVFS(1536000000, 1050),
++	DVFS(1752000000, 1050),
++	DVFS(2016000000, 1050)
++};
++
++
++
++#define P_PIN_MUX_REG3		(*((volatile unsigned *)(0xda834400 + (0x2f << 2))))
++#define P_PIN_MUX_REG7		(*((volatile unsigned *)(0xda834400 + (0x33 << 2))))
++#define P_PWM_MISC_REG_AB	(*((volatile unsigned *)(0xc1100000 + (0x2156 << 2))))
++#define P_PWM_PWM_B		(*((volatile unsigned *)(0xc1100000 + (0x2155 << 2))))
++
++enum pwm_id {
++	pwm_a = 0,
++	pwm_b,
++	pwm_c,
++	pwm_d,
++	pwm_e,
++	pwm_f,
++};
++
++
++void pwm_init(int id)
++{
++	/*
++	 * TODO: support more pwm controllers, right now only support PWM_B
++	 */
++	unsigned int reg;
++
++	reg = P_PWM_MISC_REG_AB;
++	reg &= ~(0x7f << 16);
++	reg |=  ((1 << 23) | (1 << 1));
++	P_PWM_MISC_REG_AB = reg;
++	/*
++	 * default set to max voltage
++	 */
++	P_PWM_PWM_B = pwm_voltage_table[ARRAY_SIZE(pwm_voltage_table) - 1][0];
++
++	reg  = P_PIN_MUX_REG7;
++	reg &= ~(1 << 22);
++	P_PIN_MUX_REG7 = reg;
++
++	reg  = P_PIN_MUX_REG3;
++	reg &= ~(1 << 22);
++	reg |=  (1 << 21);		// enable PWM_B
++	P_PIN_MUX_REG3 = reg;
++
++	_udelay(200);
++}
++
++int dvfs_get_voltage(void)
++{
++	int i = 0;
++	unsigned int reg_val;
++
++	reg_val = P_PWM_PWM_B;
++	for (i = 0; i < ARRAY_SIZE(pwm_voltage_table); i++) {
++		if (pwm_voltage_table[i][0] == reg_val) {
++			return i;
++		}
++	}
++	if (i >= ARRAY_SIZE(pwm_voltage_table)) {
++	    return -1;
++	}
++	return -1;
++}
++
++void set_dvfs(unsigned int domain, unsigned int index)
++{
++	int cur, to;
++	static int init_flag = 0;
++
++	if (!init_flag) {
++		pwm_init(pwm_b);
++		init_flag = 1;
++	}
++	cur = dvfs_get_voltage();
++	for (to = 0; to < ARRAY_SIZE(pwm_voltage_table); to++) {
++		if (pwm_voltage_table[to][1] >= cpu_dvfs_tbl[index].volt_mv) {
++			break;
++		}
++	}
++	if (to >= ARRAY_SIZE(pwm_voltage_table)) {
++		to = ARRAY_SIZE(pwm_voltage_table) - 1;
++	}
++	if (cur < 0 || cur >=ARRAY_SIZE(pwm_voltage_table)) {
++		P_PWM_PWM_B = pwm_voltage_table[to][0];
++		_udelay(200);
++		return ;
++	}
++	while (cur != to) {
++		/*
++		 * if target step is far away from current step, don't change
++		 * voltage by one-step-done. You should change voltage step by
++		 * step to make sure voltage output is stable
++		 */
++		if (cur < to) {
++			if (cur < to - 3) {
++				cur += 3;
++			} else {
++				cur = to;
++			}
++		} else {
++			if (cur > to + 3) {
++				cur -= 3;
++			} else {
++				cur = to;
++			}
++		}
++		P_PWM_PWM_B = pwm_voltage_table[cur][0];
++		_udelay(100);
++	}
++	_udelay(200);
++}
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/firmware/scp_task/pwr_ctrl.c b/board/hardkernel/odroidc2/firmware/scp_task/pwr_ctrl.c
+--- a/board/hardkernel/odroidc2/firmware/scp_task/pwr_ctrl.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/firmware/scp_task/pwr_ctrl.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,327 @@
++/*
++* Copyright (C) 2017 Amlogic, Inc. All rights reserved.
++* *
++This program is free software; you can redistribute it and/or modify
++* it under the terms of the GNU General Public License as published by
++* the Free Software Foundation; either version 2 of the License, or
++* (at your option) any later version.
++* *
++This program is distributed in the hope that it will be useful, but WITHOUT
++* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++* FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
++* more details.
++* *
++You should have received a copy of the GNU General Public License along
++* with this program; if not, write to the Free Software Foundation, Inc.,
++* 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++* *
++Description:
++*/
++
++/*p200/201	GPIOAO_2  powr on	:0, power_off	:1*/
++
++#define __SUSPEND_FIRMWARE__
++#include <config.h>
++#undef __SUSPEND_FIRMWARE__
++
++#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
++
++#ifdef CONFIG_CEC_WAKEUP
++#include <cec_tx_reg.h>
++#endif
++
++#include <gpio-gxbb.h>
++
++extern int pwm_voltage_table[31][2];
++
++#define P_PIN_MUX_REG3		(*((volatile unsigned *)(0xda834400 + (0x2f << 2))))
++#define P_PIN_MUX_REG7		(*((volatile unsigned *)(0xda834400 + (0x33 << 2))))
++
++#define P_PWM_MISC_REG_AB	(*((volatile unsigned *)(0xc1100000 + (0x2156 << 2))))
++#define P_PWM_PWM_B		(*((volatile unsigned *)(0xc1100000 + (0x2155 << 2))))
++#define P_PWM_MISC_REG_CD	(*((volatile unsigned *)(0xc1100000 + (0x2196 << 2))))
++#define P_PWM_PWM_D		(*((volatile unsigned *)(0xc1100000 + (0x2195 << 2))))
++
++#define P_EE_TIMER_E		(*((volatile unsigned *)(0xc1100000 + (0x2662 << 2))))
++
++enum pwm_id {
++    pwm_a = 0,
++    pwm_b,
++    pwm_c,
++    pwm_d,
++    pwm_e,
++    pwm_f,
++};
++
++void pwm_set_voltage(unsigned int id, unsigned int voltage)
++{
++	int to;
++
++	uart_puts("set vddee to 0x");
++	uart_put_hex(voltage, 16);
++	uart_puts("mv\n");
++	for (to = 0; to < ARRAY_SIZE(pwm_voltage_table); to++) {
++		if (pwm_voltage_table[to][1] >= voltage) {
++			break;
++		}
++	}
++	if (to >= ARRAY_SIZE(pwm_voltage_table)) {
++		to = ARRAY_SIZE(pwm_voltage_table) - 1;
++	}
++	switch (id) {
++	case pwm_b:
++		P_PWM_PWM_B = pwm_voltage_table[to][0];
++		break;
++
++	case pwm_d:
++		P_PWM_PWM_D = pwm_voltage_table[to][0];
++		break;
++	default:
++		break;
++	}
++	_udelay(200);
++}
++
++static void power_off_3v3(void)
++{
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<2, 0);
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<18, 1<<18);
++}
++static void power_on_3v3(void)
++{
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<2, 0);
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<18, 0);
++}
++
++/*p200/201	GPIOAO_4  powr on	:1, power_off	:0*/
++static void power_off_vcck(void)
++{
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<4, 0);
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<20, 0);
++}
++static void power_on_vcck(void)
++{
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<4, 0);
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<20, 1<<20);
++}
++
++static void power_off_at_clk81(void)
++{
++	power_off_3v3();
++	power_off_vcck();
++	pwm_set_voltage(pwm_d, CONFIG_VDDEE_SLEEP_VOLTAGE);	// reduce power
++}
++static void power_on_at_clk81(void)
++{
++	pwm_set_voltage(pwm_d, CONFIG_VDDEE_INIT_VOLTAGE);
++	power_on_vcck();
++	power_on_3v3();
++}
++
++static void power_off_at_24M(void)
++{
++	//LED gpioao_13
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<29, 0);
++}
++
++static void power_on_at_24M(void)
++{
++	aml_update_bits(AO_GPIO_O_EN_N, 1<<29, 1<<29);
++}
++
++static void power_off_at_32k(void)
++{
++}
++
++static void power_on_at_32k(void)
++{
++}
++
++void get_wakeup_source(void *response, unsigned int suspend_from)
++{
++	struct wakeup_info *p = (struct wakeup_info *)response;
++	unsigned val;
++	struct wakeup_gpio_info *gpio;
++	unsigned i = 0;
++
++	p->status = RESPONSE_OK;
++	val = (POWER_KEY_WAKEUP_SRC | AUTO_WAKEUP_SRC | REMOTE_WAKEUP_SRC);
++#ifdef CONFIG_BT_WAKEUP
++	val |= BT_WAKEUP_SRC;
++#endif
++
++#ifdef CONFIG_CEC_WAKEUP
++	if (suspend_from != SYS_POWEROFF)
++		val |= CEC_WAKEUP_SRC;
++#endif
++#ifdef CONFIG_WIFI_WAKEUP
++	if (suspend_from != SYS_POWEROFF)
++		val |= WIFI_WAKEUP_SRC;
++#endif
++
++	p->sources = val;
++
++	/* Power Key: AO_GPIO[3]*/
++	gpio = &(p->gpio_info[i]);
++	gpio->wakeup_id = POWER_KEY_WAKEUP_SRC;
++	gpio->gpio_in_idx = GPIOAO_3;
++	gpio->gpio_in_ao = 1;
++	gpio->gpio_out_idx = -1;
++	gpio->gpio_out_ao = -1;
++	gpio->irq = IRQ_AO_GPIO0_NUM;
++	gpio->trig_type = GPIO_IRQ_FALLING_EDGE;
++	p->gpio_info_count = ++i;
++
++	/* BT Wakeup: IN: GPIOX[21], OUT: GPIOX[20]*/
++	gpio = &(p->gpio_info[i]);
++	gpio->wakeup_id = BT_WAKEUP;
++	gpio->gpio_in_idx = GPIOX_21;
++	gpio->gpio_in_ao = 0;
++	gpio->gpio_out_idx = GPIOX_20;
++	gpio->gpio_out_ao = 0;
++	gpio->irq = IRQ_GPIO0_NUM;
++	gpio->trig_type = GPIO_IRQ_FALLING_EDGE;
++	p->gpio_info_count = ++i;
++
++#ifdef CONFIG_WIFI_WAKEUP
++	if (suspend_from != SYS_POWEROFF) {
++		/*WIFI Wakeup: IN: GPIOX[7], OUT: GPIOX[6]*/
++		gpio = &(p->gpio_info[i]);
++		gpio->wakeup_id = WIFI_WAKEUP;
++		gpio->gpio_in_idx = GPIOX_7;
++		gpio->gpio_in_ao = 0;
++		gpio->gpio_out_idx = GPIOX_6;
++		gpio->gpio_out_ao = 0;
++		gpio->irq = IRQ_GPIO1_NUM;
++		gpio->trig_type = GPIO_IRQ_FALLING_EDGE;
++		p->gpio_info_count = ++i;
++	}
++#endif
++}
++
++void wakeup_timer_setup(void)
++{
++	/* 1ms resolution*/
++	unsigned value;
++	value = readl(P_ISA_TIMER_MUX);
++	value |= ((0x3<<0) | (0x1<<12) | (0x1<<16));
++	writel(value, P_ISA_TIMER_MUX);
++	writel(10, P_ISA_TIMERA);
++}
++void wakeup_timer_clear(void)
++{
++	unsigned value;
++	value = readl(P_ISA_TIMER_MUX);
++	value &= ~((0x1<<12) | (0x1<<16));
++	writel(value, P_ISA_TIMER_MUX);
++}
++
++static unsigned int detect_key(unsigned int suspend_from)
++{
++	int exit_reason = 0;
++	unsigned int time_out = readl(AO_DEBUG_REG2);
++	unsigned time_out_ms = time_out*100;
++	unsigned *irq = (unsigned *)SECURE_TASK_SHARE_IRQ;
++	/* unsigned *wakeup_en = (unsigned *)SECURE_TASK_RESPONSE_WAKEUP_EN; */
++
++	/* setup wakeup resources*/
++	/*auto suspend: timerA 10ms resolution*/
++	if (time_out_ms != 0)
++		wakeup_timer_setup();
++
++	init_remote();
++#ifdef CONFIG_CEC_WAKEUP
++	if (hdmi_cec_func_config & 0x1) {
++		remote_cec_hw_reset();
++		cec_node_init();
++	}
++#endif
++
++	/* *wakeup_en = 1;*/
++	do {
++		switch (*irq) {
++#ifdef CONFIG_CEC_WAKEUP
++		case IRQ_AO_CEC_NUM:
++			if (suspend_from == SYS_POWEROFF)
++				break;
++			if (cec_msg.log_addr) {
++				if (hdmi_cec_func_config & 0x1) {
++					cec_handler();
++					if (cec_msg.cec_power == 0x1) {
++						/*cec power key*/
++						exit_reason = CEC_WAKEUP;
++						break;
++					}
++				}
++			} else if (hdmi_cec_func_config & 0x1)
++				cec_node_init();
++		break;
++#endif
++		case IRQ_TIMERA_NUM:
++			if (time_out_ms != 0)
++				time_out_ms--;
++			if (time_out_ms == 0) {
++				wakeup_timer_clear();
++				exit_reason = AUTO_WAKEUP;
++			}
++			break;
++
++		case IRQ_AO_IR_DEC_NUM:
++			if (remote_detect_key())
++				exit_reason = REMOTE_WAKEUP;
++			break;
++
++		case IRQ_AO_GPIO0_NUM:
++			if ((readl(AO_GPIO_I) & (1<<3)) == 0)
++				exit_reason = POWER_KEY_WAKEUP;
++			break;
++
++#ifdef CONFIG_BT_WAKEUP
++		case IRQ_GPIO0_NUM:
++			if (!(readl(PREG_PAD_GPIO4_EN_N)
++					&(0x01 << 20)) &&
++					(readl(PREG_PAD_GPIO4_O)
++					& (0x01 << 20)) &&
++					!(readl(PREG_PAD_GPIO4_I)
++					& (0x01 << 21)))
++						exit_reason = BT_WAKEUP;
++			break;
++#endif
++#ifdef CONFIG_WIFI_WAKEUP
++		case IRQ_GPIO1_NUM:
++			if (suspend_from) {
++				if (!(readl(PREG_PAD_GPIO4_EN_N)
++						& (0x01 << 6)) &&
++						(readl(PREG_PAD_GPIO4_O)
++						& (0x01 << 6)) &&
++						!(readl(PREG_PAD_GPIO4_I)
++						& (0x01 << 7)))
++						exit_reason = WIFI_WAKEUP;
++			}
++			break;
++#endif
++		default:
++			break;
++		}
++		*irq = 0xffffffff;
++		if (exit_reason)
++			break;
++		else
++			asm volatile("wfi");
++	} while (1);
++
++	return exit_reason;
++}
++
++static void pwr_op_init(struct pwr_op *pwr_op)
++{
++	pwr_op->power_off_at_clk81 = power_off_at_clk81;
++	pwr_op->power_on_at_clk81 = power_on_at_clk81;
++	pwr_op->power_off_at_24M = power_off_at_24M;
++	pwr_op->power_on_at_24M = power_on_at_24M;
++	pwr_op->power_off_at_32k = power_off_at_32k;
++	pwr_op->power_on_at_32k = power_on_at_32k;
++
++	pwr_op->detect_key = detect_key;
++	pwr_op->get_wakeup_source = get_wakeup_source;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/firmware/timing.c b/board/hardkernel/odroidc2/firmware/timing.c
+--- a/board/hardkernel/odroidc2/firmware/timing.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/firmware/timing.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,383 @@
++
++/*
++ *
++ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++*/
++
++#include <asm/arch/timing.h>
++#include <asm/arch/ddr_define.h>
++
++/* DDR freq range */
++#define CONFIG_DDR_CLK_LOW  375
++#define CONFIG_DDR_CLK_HIGH 1500
++/* DON'T OVER THESE RANGE */
++#if (CONFIG_DDR_CLK < CONFIG_DDR_CLK_LOW) || (CONFIG_DDR_CLK > CONFIG_DDR_CLK_HIGH)
++	#error "Over DDR PLL range! Please check CONFIG_DDR_CLK in board header file! \n"
++#endif
++
++/* CPU freq range */
++#define CONFIG_CPU_CLK_LOW  600
++#define CONFIG_CPU_CLK_HIGH 2000
++/* DON'T OVER THESE RANGE */
++#if (CONFIG_CPU_CLK < CONFIG_CPU_CLK_LOW) || (CONFIG_CPU_CLK > CONFIG_CPU_CLK_HIGH)
++	#error "Over CPU PLL range! Please check CONFIG_CPU_CLK in board header file! \n"
++#endif
++
++#define DDR3_DRV_40OHM		0
++#define DDR3_DRV_34OHM		1
++#define DDR3_ODT_0OHM		0
++#define DDR3_ODT_60OHM		1
++#define DDR3_ODT_120OHM		2
++#define DDR3_ODT_40OHM		3
++#define DDR3_ODT_20OHM		4
++#define DDR3_ODT_30OHM		5
++
++#define CFG_DDR3_DRV  DDR3_DRV_40OHM
++#define CFG_DDR3_ODT  DDR3_ODT_120OHM
++
++/*
++ * these parameters are corresponding to the pcb layout,
++ * please don't enable this function unless these signals
++ * has been measured by oscilloscope.
++ */
++#ifdef CONFIG_DDR_CMD_BDL_TUNE
++#define DDR_AC_LCDLR   0
++#define	DDR_CK0_BDL	18
++#define	DDR_RAS_BDL	18
++#define	DDR_CAS_BDL	24
++#define	DDR_WE_BDL	21
++#define	DDR_BA0_BDL	16
++#define	DDR_BA1_BDL	2
++#define	DDR_BA2_BDL	13
++#define	DDR_ACPDD_BDL	27
++#define	DDR_CS0_BDL	27
++#define	DDR_CS1_BDL	27
++#define	DDR_ODT0_BDL	27
++#define	DDR_ODT1_BDL	27
++#define	DDR_CKE0_BDL	27
++#define	DDR_CKE1_BDL	27
++#define	DDR_A0_BDL	14
++#define	DDR_A1_BDL	9
++#define	DDR_A2_BDL	5
++#define	DDR_A3_BDL	18
++#define	DDR_A4_BDL	4
++#define	DDR_A5_BDL	16
++#define	DDR_A6_BDL	1
++#define	DDR_A7_BDL	10
++#define	DDR_A8_BDL	4
++#define	DDR_A9_BDL	7
++#define	DDR_A10_BDL	10
++#define	DDR_A11_BDL	9
++#define	DDR_A12_BDL	6
++#define	DDR_A13_BDL	16
++#define	DDR_A14_BDL	8
++#define	DDR_A15_BDL	27
++#endif
++
++/* CAUTION!! */
++/*
++ * For DDR3:
++ *     7-7-7:    CONFIG_DDR_CLK range  375~ 533
++ *     9-9-9:    CONFIG_DDR_CLK range  533~ 667
++ *     11-11-11: CONFIG_DDR_CLK range  667~ 800
++ *     12-12-12: CONFIG_DDR_CLK range  800~ 933
++ *     13-13-13: CONFIG_DDR_CLK range  933~1066
++ *     14-14-14: CONFIG_DDR_CLK range 1066~1200
++ */
++ddr_timing_t __ddr_timming[] = {
++	//ddr3_7_7_7
++	{
++		.identifier				= CONFIG_DDR_TIMMING_DDR3_7,
++		.cfg_ddr_rtp			= (6),
++		.cfg_ddr_wtr			= (7),
++		.cfg_ddr_rp				= (7),
++		.cfg_ddr_rcd			= (7),
++		.cfg_ddr_ras			= (20),
++		.cfg_ddr_rrd			= (6),
++		.cfg_ddr_rc				= (27),
++		.cfg_ddr_mrd			= (4),
++		.cfg_ddr_mod			= (12),
++		.cfg_ddr_faw			= (27),
++		.cfg_ddr_rfc			= (160),
++		.cfg_ddr_wlmrd			= (40),
++		.cfg_ddr_wlo			= (6),
++		.cfg_ddr_xs				= (512),
++		.cfg_ddr_xp				= (7),
++		.cfg_ddr_cke			= (4),
++		.cfg_ddr_dllk			= (512),
++		.cfg_ddr_rtodt			= (0),
++		.cfg_ddr_rtw			= (4),
++		.cfg_ddr_refi			= (78),
++		.cfg_ddr_refi_mddr3		= (4),
++		.cfg_ddr_cl				= (7),
++		.cfg_ddr_wr				= (12),
++		.cfg_ddr_cwl			= (5),
++		.cfg_ddr_al				= (0),
++		.cfg_ddr_exsr			= (512),
++		.cfg_ddr_dqs			= (4),
++		.cfg_ddr_cksre			= (15),
++		.cfg_ddr_cksrx			= (15),
++		.cfg_ddr_zqcs			= (64),
++		.cfg_ddr_zqcl			= (512),
++		.cfg_ddr_xpdll			= (20),
++		.cfg_ddr_zqcsi			= (1000),
++	},
++	//ddr3_9_9_9
++	{
++		.identifier				= CONFIG_DDR_TIMMING_DDR3_9,
++		.cfg_ddr_rtp			= (6),
++		.cfg_ddr_wtr			= (7),
++		.cfg_ddr_rp				= (9),
++		.cfg_ddr_rcd			= (9),
++		.cfg_ddr_ras			= (27),
++		.cfg_ddr_rrd			= (6),
++		.cfg_ddr_rc				= (33),
++		.cfg_ddr_mrd			= (4),
++		.cfg_ddr_mod			= (12),
++		.cfg_ddr_faw			= (30),
++		.cfg_ddr_rfc			= (196),
++		.cfg_ddr_wlmrd			= (40),
++		.cfg_ddr_wlo			= (6),
++		.cfg_ddr_xs				= (512),
++		.cfg_ddr_xp				= (7),
++		.cfg_ddr_cke			= (4),
++		.cfg_ddr_dllk			= (512),
++		.cfg_ddr_rtodt			= (0),
++		.cfg_ddr_rtw			= (6),
++		.cfg_ddr_refi			= (78),
++		.cfg_ddr_refi_mddr3		= (4),
++		.cfg_ddr_cl				= (9),
++		.cfg_ddr_wr				= (12),
++		.cfg_ddr_cwl			= (7),
++		.cfg_ddr_al				= (0),
++		.cfg_ddr_exsr			= (512),
++		.cfg_ddr_dqs			= (23),
++		.cfg_ddr_cksre			= (15),
++		.cfg_ddr_cksrx			= (15),
++		.cfg_ddr_zqcs			= (64),
++		.cfg_ddr_zqcl			= (136),
++		.cfg_ddr_xpdll			= (20),
++		.cfg_ddr_zqcsi			= (1000),
++	},
++	//ddr3_11_11_11
++	{
++		.identifier				= CONFIG_DDR_TIMMING_DDR3_11,
++		.cfg_ddr_rtp			= (7),
++		.cfg_ddr_wtr			= (7),
++		.cfg_ddr_rp				= (11),
++		.cfg_ddr_rcd			= (11),
++		.cfg_ddr_ras			= (35),
++		.cfg_ddr_rrd			= (7),
++		.cfg_ddr_rc				= (45),
++		.cfg_ddr_mrd			= (6),
++		.cfg_ddr_mod			= (4),
++		.cfg_ddr_faw			= (33),
++		.cfg_ddr_rfc			= (280),
++		.cfg_ddr_wlmrd			= (40),
++		.cfg_ddr_wlo			= (7),
++		.cfg_ddr_xs				= (512),
++		.cfg_ddr_xp				= (5),
++		.cfg_ddr_cke			= (4),
++		.cfg_ddr_dllk			= (512),
++		.cfg_ddr_rtodt			= (0),
++		.cfg_ddr_rtw			= (7),
++		.cfg_ddr_refi			= (78),
++		.cfg_ddr_refi_mddr3		= (4),
++		.cfg_ddr_cl				= (11),
++		.cfg_ddr_wr				= (12),
++		.cfg_ddr_cwl			= (8),
++		.cfg_ddr_al				= (0),
++		.cfg_ddr_exsr			= (512),
++		.cfg_ddr_dqs			= (23),
++		.cfg_ddr_cksre			= (15),
++		.cfg_ddr_cksrx			= (15),
++		.cfg_ddr_zqcs			= (64),
++		.cfg_ddr_zqcl			= (136),
++		.cfg_ddr_xpdll			= (23),
++		.cfg_ddr_zqcsi			= (1000),
++	},
++	//ddr3_13_13_13
++	{
++		.identifier				= CONFIG_DDR_TIMMING_DDR3_13,
++		.cfg_ddr_rtp			= (7),
++		.cfg_ddr_wtr			= (7),
++		.cfg_ddr_rp				= (13),
++		.cfg_ddr_rcd			= (13),
++		.cfg_ddr_ras			= (37),
++		.cfg_ddr_rrd			= (7),
++		.cfg_ddr_rc				= (52),
++		.cfg_ddr_mrd			= (6),
++		.cfg_ddr_mod			= (4),
++		.cfg_ddr_faw			= (33),
++		.cfg_ddr_rfc			= (280),
++		.cfg_ddr_wlmrd			= (40),
++		.cfg_ddr_wlo			= (7),
++		.cfg_ddr_xs				= (512),
++		.cfg_ddr_xp				= (7),
++		.cfg_ddr_cke			= (5),
++		.cfg_ddr_dllk			= (512),
++		.cfg_ddr_rtodt			= (0),
++		.cfg_ddr_rtw			= (7),
++		.cfg_ddr_refi			= (78),
++		.cfg_ddr_refi_mddr3		= (4),
++		.cfg_ddr_cl				= (13),
++		.cfg_ddr_wr				= (16),
++		.cfg_ddr_cwl			= (9),
++		.cfg_ddr_al				= (0),
++		.cfg_ddr_exsr			= (512),
++		.cfg_ddr_dqs			= (23),
++		.cfg_ddr_cksre			= (15),
++		.cfg_ddr_cksrx			= (15),
++		.cfg_ddr_zqcs			= (64),
++		.cfg_ddr_zqcl			= (136),
++		.cfg_ddr_xpdll			= (23),
++		.cfg_ddr_zqcsi			= (1000),
++	},
++	{
++		.identifier				= CONFIG_DDR_TIMMING_DDR3_14,
++		.cfg_ddr_rtp			= (7),
++		.cfg_ddr_wtr			= (7),
++		.cfg_ddr_rp				= (14),
++		.cfg_ddr_rcd			= (14),
++		.cfg_ddr_ras			= (37),
++		.cfg_ddr_rrd			= (7),
++		.cfg_ddr_rc				= (52),
++		.cfg_ddr_mrd			= (6),
++		.cfg_ddr_mod			= (4),
++		.cfg_ddr_faw			= (33),
++		.cfg_ddr_rfc			= (280),
++		.cfg_ddr_wlmrd			= (40),
++		.cfg_ddr_wlo			= (7),
++		.cfg_ddr_xs				= (512),
++		.cfg_ddr_xp				= (7),
++		.cfg_ddr_cke			= (5),
++		.cfg_ddr_dllk			= (512),
++		.cfg_ddr_rtodt			= (0),
++		.cfg_ddr_rtw			= (7),
++		.cfg_ddr_refi			= (78),
++		.cfg_ddr_refi_mddr3		= (4),
++		.cfg_ddr_cl				= (14),
++		.cfg_ddr_wr				= (16),
++		.cfg_ddr_cwl			= (10),
++		.cfg_ddr_al				= (0),
++		.cfg_ddr_exsr			= (512),
++		.cfg_ddr_dqs			= (23),
++		.cfg_ddr_cksre			= (15),
++		.cfg_ddr_cksrx			= (15),
++		.cfg_ddr_zqcs			= (64),
++		.cfg_ddr_zqcl			= (136),
++		.cfg_ddr_xpdll			= (23),
++		.cfg_ddr_zqcsi			= (1000),
++	}
++};
++
++ddr_set_t __ddr_setting = {
++	/* common and function defines */
++	.ddr_channel_set		= CONFIG_DDR_CHANNEL_SET,
++	.ddr_type				= CONFIG_DDR_TYPE,
++	.ddr_clk				= CONFIG_DDR_CLK,
++	.ddr_base_addr			= CFG_DDR_BASE_ADDR,
++	.ddr_start_offset		= CFG_DDR_START_OFFSET,
++	.ddr_timing_ind			= 0,
++	.ddr_size				= CONFIG_DDR_SIZE,
++	.ddr_pll_ctrl			= (0),
++	.ddr_dmc_ctrl			= 0,
++	.ddr0_addrmap			= {0},
++	.ddr1_addrmap			= {0},
++	.ddr_2t_mode			= 1,
++	.ddr_full_test			= CONFIG_DDR_FULL_TEST,
++	.ddr_size_detect		= CONFIG_DDR_SIZE_AUTO_DETECT,
++	.ddr_drv				= CFG_DDR3_DRV,
++	.ddr_odt				= CFG_DDR3_ODT,
++
++	/* pub defines */
++	.t_pub_ptr				= {
++							[0] = ( 6 | (320 << 6) | (80 << 21)),
++							[1] = (120 | (1000 << 16)),
++							[2] = 0,
++							[3] = (20000 | (136 << 20)),
++							[4] = (1000 | (180 << 16)),
++	},  //PUB PTR0-3
++	.t_pub_odtcr			= 0x00210000,
++	.t_pub_mr				= {0},
++	.t_pub_dtpr				= {0},
++	.t_pub_pgcr0			= 0x07d81e3f,   //PUB PGCR0
++	.t_pub_pgcr1			= 0x0380c6a0,   //PUB PGCR1
++	//.t_pub_pgcr2			= 0x00f05f97,   //PUB PGCR2
++	.t_pub_pgcr2			= 0x01f12480,   //PUB PGCR2
++	.t_pub_pgcr3			= 0xc0aafe60,   //PUB PGCR3
++	.t_pub_dxccr			= 0x00181884,   //PUB DXCCR
++	.t_pub_dtcr				= 0x43003087,    //PUB DTCR
++	.t_pub_aciocr			= {0},  //PUB ACIOCRx
++	.t_pub_dx0gcr			= {0},  //PUB DX0GCRx
++	.t_pub_dx1gcr			= {0},  //PUB DX1GCRx
++	.t_pub_dx2gcr			= {0},  //PUB DX2GCRx
++	.t_pub_dx3gcr			= {0},  //PUB DX3GCRx
++	.t_pub_dcr				= 0XB,     //PUB DCR
++	.t_pub_dtar				= (0X0 | (0X0 <<12) | (0 << 28)),
++	.t_pub_dsgcr			= 0x020645a,
++	//.t_pub_zq0pr			= 0x7b,   //PUB ZQ0PR
++	//.t_pub_zq1pr			= 0x7b,   //PUB ZQ1PR
++	//.t_pub_zq2pr			= 0x7b,   //PUB ZQ2PR
++	//.t_pub_zq3pr			= 0x7b,   //PUB ZQ3PR
++	.t_pub_zq0pr			= 0x69,   //PUB ZQ0PR
++	.t_pub_zq1pr			= 0x69,   //PUB ZQ1PR
++	.t_pub_zq2pr			= 0x69,   //PUB ZQ2PR
++	.t_pub_zq3pr			= 0x69,   //PUB ZQ3PR
++
++	/* pctl0 defines */
++	/* pctl1 use same define as pctl0 */
++	.t_pctl0_1us_pck		= CONFIG_DDR_CLK / 2,   //PCTL TOGCNT1U
++	.t_pctl0_100ns_pck		= CONFIG_DDR_CLK / 20, //PCTL TOGCNT100N
++	.t_pctl0_init_us		= 2,   //PCTL TINIT
++	.t_pctl0_rsth_us		= 2,   //PCTL TRSTH
++	.t_pctl0_mcfg			= 0XA2F21,   //PCTL MCFG default 1T
++	//.t_pctl0_mcfg1			= 0X80000000,  //PCTL MCFG1
++	.t_pctl0_mcfg1			=  (1<<31)|(0x20<<16)|(0x0<<0)//[B31]hw_exit_idle_en
++								|( 0<<8), //[B10,B9,B8] tfaw_cfg_offset:
++								//tFAW= (4 + MCFG.tfaw_cfg)*tRRD - tfaw_cfg_offset,  //PCTL MCFG1
++	.t_pctl0_scfg			= 0xF01,   //PCTL SCFG
++	.t_pctl0_sctl			= 0x1,   //PCTL SCTL
++	//.t_pctl0_ppcfg			= (0xF0 << 1),
++	.t_pctl0_dfistcfg0		= 0x4,
++	.t_pctl0_dfistcfg1		= 0x1,
++	.t_pctl0_dfitctrldelay	= 2,
++	.t_pctl0_dfitphywrdata	= 1,
++	.t_pctl0_dfitphywrlta	= 2,
++	.t_pctl0_dfitrddataen	= 3,
++	.t_pctl0_dfitphyrdlat	= 16,
++	.t_pctl0_dfitdramclkdis	= 1,
++	.t_pctl0_dfitdramclken	= 1,
++	.t_pctl0_dfitphyupdtype1 = 0x200,
++	.t_pctl0_dfitctrlupdmin	= 16,
++	.t_pctl0_cmdtstaten		= 1,
++	//.t_pctl0_dfiodtcfg		= 8,
++	//.t_pctl0_dfiodtcfg1		= ( 0x0 | (0x6 << 16) ),
++	.t_pctl0_dfiodtcfg		= (1<<3)|(1<<11),
++	.t_pctl0_dfiodtcfg1		= (0x0 | (0x6 << 16)),
++	.t_pctl0_dfilpcfg0		= ( 1 | (3 << 4) | (1 << 8) | (3 << 12) | (7 <<16) | (1 <<24) | ( 3 << 28)),
++
++	.t_pub_acbdlr0          = 0x10,  //2015.09.21 add for  CK0 delay fine tune
++};
++
++pll_set_t __pll_setting = {
++	.cpu_clk				= CONFIG_CPU_CLK / 24 * 24,
++	.spi_ctrl				= 0,
++	.vddee					= CONFIG_VDDEE_INIT_VOLTAGE,
++	.vcck					= CONFIG_VCCK_INIT_VOLTAGE,
++	.lCustomerID			= CONFIG_AML_CUSTOMER_ID,
++};
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/Kconfig b/board/hardkernel/odroidc2/Kconfig
+--- a/board/hardkernel/odroidc2/Kconfig	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/Kconfig	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,22 @@
++if TARGET_MESON_GX
++
++config SYS_CPU
++	string
++	default "armv8"
++
++config SYS_BOARD
++	string
++	default "odroidc2"
++
++config SYS_VENDOR
++	string
++	default "hardkernel"
++
++config SYS_SOC
++	string
++	default "gxb"
++
++config SYS_CONFIG_NAME
++	default "odroidc2"
++
++endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/Makefile b/board/hardkernel/odroidc2/Makefile
+--- a/board/hardkernel/odroidc2/Makefile	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/Makefile	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,3 @@
++obj-y += $(BOARD).o $(BOARD)-eth.o
++obj-$(CONFIG_USB_GADGET) += $(BOARD)-otg.o
++obj-$(CONFIG_CMD_FASTBOOT) += $(BOARD)-fastboot.o $(BOARD)-recovery.o
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/odroidc2.c b/board/hardkernel/odroidc2/odroidc2.c
+--- a/board/hardkernel/odroidc2/odroidc2.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/odroidc2.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,522 @@
++/*
++ * Copyright (C) 2015 Hardkernel Co,. Ltd
++ * Dongjin Kim <tobetter@gmail.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <malloc.h>
++#include <errno.h>
++#include <environment.h>
++#include <fdt_support.h>
++#include <libfdt.h>
++#include <asm/arch/secure_apb.h>
++#include <asm/arch/eth_setup.h>
++#include <asm/arch-gxb/gpio.h>
++#include <asm-generic/gpio.h>
++//#include <usb/fastboot.h>
++#include <asm/arch/efuse.h>
++
++#ifdef CONFIG_AML_VPU
++#include <vpu.h>
++#endif
++
++#ifdef CONFIG_AML_HDMITX20
++#include <amlogic/hdmi.h>
++#endif
++
++DECLARE_GLOBAL_DATA_PTR;
++
++extern int board_get_recovery_message(void);
++
++#define GPIO_SW_UMS		28	/* GPIOY_5 */
++#define GPIO_BLUELED		132
++#define GPIO_USB_PWREN		123
++#define GPIO_OTG_PWREN		124
++#define GPIO_TF3V3		35	/* GPIOY_12 */
++#define GPIO_TF1V8		122	/* GPIOAO_3 */
++#define GPIO_HUB_RST		123	/* GPIOAO_4 */
++
++int serial_set_pin_port(unsigned long port_base)
++{
++	//UART in "Always On Module"
++	//GPIOAO_0==tx,GPIOAO_1==rx
++	//setbits_le32(P_AO_RTI_PIN_MUX_REG,3<<11);
++	return 0;
++}
++
++int dram_init(void)
++{
++	gd->ram_size = PHYS_SDRAM_1_SIZE;
++	return 0;
++}
++
++void secondary_boot_func(void)
++{
++	/*
++	 * TODO: should be written in ASM if necessary
++	 */
++}
++
++/*
++ * Discover the boot device within MicroSD or eMMC
++ * and return 1 for eMMC, otherwise 0.
++ */
++#define BOOT_DEVICE_RESERVED	0
++#define BOOT_DEVICE_EMMC	1
++#define BOOT_DEVICE_NAND	2
++#define BOOT_DEVICE_SPI		3
++#define BOOT_DEVICE_SD		4
++#define BOOT_DEVICE_USB		5
++
++int get_boot_device(void)
++{
++	return readl(AO_SEC_GP_CFG0) & 0xf;
++}
++
++/*
++ * Discover the boot reason:
++ *   1. check if the board is started with Android Self-Installation.
++ *   2. if rebooted by 'reboot' command in previous kernel boot.
++ *   3. Otherwise returns normal boot response by power cycle.
++ */
++int board_reboot_reason(void)
++{
++	static int __reboot_reason = ODROID_REBOOT_CMD_UNKNOWN;
++
++	if (ODROID_REBOOT_CMD_UNKNOWN == __reboot_reason) {
++		__reboot_reason = board_get_recovery_message();
++		if (ODROID_REBOOT_CMD_UNKNOWN == __reboot_reason)
++			__reboot_reason = (readl(AO_SEC_SD_CFG15) >> 12) & 0xf;
++	}
++
++	return __reboot_reason;
++}
++
++int board_print_info(void)
++{
++	int i;
++	int offset, length;
++	char buf[EFUSE_BYTES];
++
++	printf("-------------------------------------------------\n");
++	printf("* Welcome to Hardkernel's ODROID-C2\n");
++	printf("-------------------------------------------------\n");
++
++	/* CPU */
++	printf("CPU : AMLogic S905\n");
++
++	/* S/N */
++	offset = 20;
++	length = 16;
++	memset(buf, 0, EFUSE_BYTES);
++	efuse_read_usr(buf, length, (loff_t *)&offset);
++	buf[length] = '\0';
++	printf("S/N : ");
++	printf("%s\n", buf);
++
++	/* MAC */
++	offset = 52;
++	length = 6;
++	memset(buf, 0, EFUSE_BYTES);
++	efuse_read_usr(buf, length, (loff_t *)&offset);
++	buf[length] = '\0';
++	printf("MAC : ");
++	for (i=0;i<(length-1);i++)
++		printf("%02x:", buf[i]);
++	printf("%02x\n", buf[i]);
++
++	/* BID */
++	offset = 70;
++	length = 48;
++	memset(buf, 0, EFUSE_BYTES);
++	efuse_read_usr(buf, length, (loff_t *)&offset);
++	buf[0xA] = '\0';
++	printf("BID : ");
++	printf("%s\n", buf);
++
++	printf("-------------------------------------------------\n");
++
++	return 0;
++}
++
++#if CONFIG_AML_SD_EMMC
++#include <mmc.h>
++#include <asm/arch/sd_emmc.h>
++
++static int  sd_emmc_init(unsigned port)
++{
++	switch (port)
++	{
++	case SDIO_PORT_A:
++		break;
++	case SDIO_PORT_B:
++		//todo add card detect
++		//setbits_le32(P_PREG_PAD_GPIO5_EN_N,1<<29);//CARD_6
++		break;
++	case SDIO_PORT_C:
++		//enable pull up
++		//clrbits_le32(P_PAD_PULL_UP_REG3, 0xff<<0);
++		break;
++	default:
++		break;
++	}
++
++	return cpu_sd_emmc_init(port);
++}
++
++extern unsigned sd_debug_board_1bit_flag;
++static int  sd_emmc_detect(unsigned port)
++{
++	int ret;
++	switch (port) {
++
++	case SDIO_PORT_A:
++		break;
++	case SDIO_PORT_B:
++		setbits_le32(P_PREG_PAD_GPIO5_EN_N,1<<29);//CARD_6
++		ret=readl(P_PREG_PAD_GPIO5_I)&(1<<29)?0:1;
++		printf("ret = %d .",ret);
++		if ((readl(P_PERIPHS_PIN_MUX_8)&(3<<9))) { //if uart pinmux set, debug board in
++			if (!(readl(P_PREG_PAD_GPIO2_I)&(1<<24))) {
++				printf("sdio debug board detected, sd card with 1bit mode\n");
++				sd_debug_board_1bit_flag = 1;
++			}
++			else{
++				printf("sdio debug board detected, no sd card in\n");
++				sd_debug_board_1bit_flag = 0;
++				return 1;
++			}
++		}
++		break;
++	default:
++		break;
++	}
++	return 0;
++}
++
++static void sd_emmc_pwr_prepare(unsigned port)
++{
++	cpu_sd_emmc_pwr_prepare(port);
++}
++
++static void sd_emmc_pwr_on(unsigned port)
++{
++	switch (port)
++	{
++	case SDIO_PORT_A:
++		break;
++	case SDIO_PORT_B:
++		//            clrbits_le32(P_PREG_PAD_GPIO5_O,(1<<31)); //CARD_8
++		//            clrbits_le32(P_PREG_PAD_GPIO5_EN_N,(1<<31));
++		/// @todo NOT FINISH
++		break;
++	case SDIO_PORT_C:
++		break;
++	default:
++		break;
++	}
++	return;
++}
++static void sd_emmc_pwr_off(unsigned port)
++{
++	/// @todo NOT FINISH
++	switch (port)
++	{
++	case SDIO_PORT_A:
++		break;
++	case SDIO_PORT_B:
++		//            setbits_le32(P_PREG_PAD_GPIO5_O,(1<<31)); //CARD_8
++		//            clrbits_le32(P_PREG_PAD_GPIO5_EN_N,(1<<31));
++		break;
++	case SDIO_PORT_C:
++		break;
++	default:
++		break;
++	}
++	return;
++}
++
++static void board_mmc_register(unsigned port)
++{
++	struct aml_card_sd_info *aml_priv=cpu_sd_emmc_get(port);
++
++	if (aml_priv == NULL)
++		return;
++
++	aml_priv->sd_emmc_init=sd_emmc_init;
++	aml_priv->sd_emmc_detect=sd_emmc_detect;
++	aml_priv->sd_emmc_pwr_off=sd_emmc_pwr_off;
++	aml_priv->sd_emmc_pwr_on=sd_emmc_pwr_on;
++	aml_priv->sd_emmc_pwr_prepare=sd_emmc_pwr_prepare;
++	aml_priv->desc_buf = malloc(NEWSD_MAX_DESC_MUN*(sizeof(struct sd_emmc_desc_info)));
++
++	if (NULL == aml_priv->desc_buf)
++		printf(" desc_buf Dma alloc Fail!\n");
++	else
++		printf("aml_priv->desc_buf = 0x%p\n",aml_priv->desc_buf);
++
++	sd_emmc_register(aml_priv);
++}
++
++int board_mmc_init(bd_t	*bis)
++{
++#ifdef CONFIG_VLSI_EMULATOR
++	//board_mmc_register(SDIO_PORT_A);
++#else
++	//board_mmc_register(SDIO_PORT_B);
++#endif
++	switch (get_boot_device())
++	{
++	case BOOT_DEVICE_EMMC:
++		board_mmc_register(SDIO_PORT_C);	// "mmc0"
++		board_mmc_register(SDIO_PORT_B);
++		break;
++	case BOOT_DEVICE_SD:
++		board_mmc_register(SDIO_PORT_B);	// "mmc0"
++		board_mmc_register(SDIO_PORT_C);
++		break;
++	default:
++		printf("No available mmc device! Check boot device!\n");
++		do_reset(NULL, 0, 0, NULL);
++		break;
++	}
++	//	board_mmc_register(SDIO_PORT_B1);
++	return 0;
++}
++#endif
++
++#if defined(CONFIG_SYS_I2C_AML)
++#include <aml_i2c.h>
++
++struct aml_i2c_platform g_aml_i2c_plat = {
++	.wait_count         = 1000000,
++	.wait_ack_interval  = 5,
++	.wait_read_interval = 5,
++	.wait_xfer_interval = 5,
++	.master_no          = AML_I2C_MASTER_AO,
++	.use_pio            = 0,
++	.master_i2c_speed   = AML_I2C_SPPED_400K,
++	.master_ao_pinmux = {
++		.scl_reg    = (unsigned long)MESON_I2C_MASTER_AO_GPIOAO_4_REG,
++		.scl_bit    = MESON_I2C_MASTER_AO_GPIOAO_4_BIT,
++		.sda_reg    = (unsigned long)MESON_I2C_MASTER_AO_GPIOAO_5_REG,
++		.sda_bit    = MESON_I2C_MASTER_AO_GPIOAO_5_BIT,
++	}
++};
++
++static void board_i2c_init(void)
++{
++	//disable all other pins which share with I2C_SDA_AO & I2C_SCK_AO
++	clrbits_le32(P_AO_RTI_PIN_MUX_REG,
++			(1 << 2) | (1 << 24) | (1 << 1) | (1 << 23));
++
++	//enable I2C MASTER AO pins
++	setbits_le32(P_AO_RTI_PIN_MUX_REG,
++			(MESON_I2C_MASTER_AO_GPIOAO_4_BIT
++			 | MESON_I2C_MASTER_AO_GPIOAO_5_BIT));
++
++	udelay(10);
++
++	//Amlogic I2C controller initialized
++	//note: it must be call before any I2C operation
++	aml_i2c_init();
++
++	udelay(10);
++}
++#endif
++
++#if defined(CONFIG_BOARD_EARLY_INIT_F)
++int board_early_init_f(void)
++{
++	return 0;
++}
++#endif
++#if 0
++static void board_run_fastboot(void)
++{
++	run_command("fastboot", 0);
++}
++static void board_run_recovery(void)
++{
++	run_command("movi read dtb 0 ${dtb_mem_addr}", 0);
++	run_command("movi read recovery 0 ${loadaddr}", 0);
++	run_command("bootm ${load_addr}", 0);
++}
++#endif
++
++#ifdef CONFIG_BOARD_LATE_INIT
++int board_late_init(void)
++{
++//	int reboot_reason;
++
++	/*
++	 * If UMS SW is 'on', the device will run as USB Mass Storage
++	 */
++	if (1 == gpio_get_value(GPIO_SW_UMS))
++		run_command("ums 0 mmc 0", 0);
++
++//	board_partition_init();
++
++#ifdef CONFIG_DISPLAY_LOGO
++	run_command("showlogo 720p60hz", 0);
++#endif
++
++#if 0
++	reboot_reason = board_reboot_reason();
++	if (ODROID_REBOOT_CMD_FASTBOOT == reboot_reason)
++		board_run_fastboot();
++	else if (ODROID_REBOOT_CMD_RECOVERY == reboot_reason)
++		board_run_recovery();
++#endif
++	return 0;
++}
++#endif
++
++#if defined(CONFIG_USB_DWC_OTG_HCD)
++#include <asm/arch/usb.h>
++
++static void callback_otg_power(char power)
++{
++	gpio_direction_output(GPIO_OTG_PWREN, power);
++}
++
++static void callback_host_power(char power)
++{
++	gpio_direction_output(GPIO_USB_PWREN, power);
++}
++
++static struct amlogic_usb_config usb_config0 = {
++	.clk_selecter	= USB_PHY_CLK_SEL_XTAL,
++	.pll_divider	= 1,
++	.base_addr	= CONFIG_M8_USBPORT_BASE_A,
++	.id_mode	= USB_ID_MODE_SW_HOST,
++	.set_vbus_power	= callback_otg_power,
++};
++
++static struct amlogic_usb_config usb_config1= {
++	.clk_selecter	= USB_PHY_CLK_SEL_XTAL,
++	.pll_divider	= 1,
++	.base_addr	= CONFIG_M8_USBPORT_BASE_B,
++	.id_mode	= USB_ID_MODE_SW_HOST,
++	.set_vbus_power	= callback_host_power,
++};
++
++struct amlogic_usb_config *amlogic_usb_config(int port)
++{
++	if (0 == port)
++		return &usb_config0;
++	else if (1 == port)
++		return &usb_config1;
++
++	return NULL;
++}
++#endif
++
++int board_init(void)
++{
++	board_print_info();
++
++	/* T-Flash Init voltage : T-Flash I/O 3.3V, T-Flash mem 3.3V */
++	gpio_request(GPIO_TF1V8, "TF_1V8");
++	gpio_direction_output(GPIO_TF1V8, 0);
++	gpio_request(GPIO_TF3V3, "TF_3V3");
++	gpio_direction_output(GPIO_TF3V3, 1);
++
++	/* LED: SYSLED (Blue color) */
++	gpio_request(GPIO_BLUELED, "blueled");
++	gpio_direction_output(GPIO_BLUELED, 0);
++
++	/*
++	 * USB Host: RST_N for GL852
++	 * Off by default, On when USB HOST is activated
++	 */
++	gpio_request(GPIO_USB_PWREN, "usb_pwren");
++	gpio_direction_output(GPIO_USB_PWREN, 0);
++
++	/*
++	 * USB OTG: Power
++	 * Off by default, On when USB OTG is activated
++	 */
++	gpio_request(GPIO_OTG_PWREN, "otg_pwren");
++	gpio_direction_output(GPIO_OTG_PWREN, 0);
++
++	/*
++	 * GPIO: USB MassStorage
++	 * Low  - Normal boot
++	 * High - Act as USB Mass Storage Device
++	 */
++	gpio_request(GPIO_SW_UMS, "sw_ums");
++	gpio_direction_input(GPIO_SW_UMS);
++
++	gpio_request(GPIO_HUB_RST, "hub_rst");
++	gpio_direction_output(GPIO_HUB_RST, 0);
++	mdelay(20);
++	gpio_direction_output(GPIO_HUB_RST, 1);
++	mdelay(20);
++
++#if defined(CONFIG_USB_DWC_OTG_HCD)
++	board_usb_init(&usb_config0, BOARD_USB_MODE_SLAVE);
++	board_usb_init(&usb_config1, BOARD_USB_MODE_HOST);
++#endif
++
++#ifdef CONFIG_AML_VPU
++	vpu_probe();
++#endif
++
++#ifdef CONFIG_AML_HDMITX20
++	hdmi_tx_init();
++#endif
++
++	return 0;
++}
++
++phys_size_t get_effective_memsize(void)
++{
++	phys_size_t phys_size = (readl(AO_SEC_GP_CFG0) & 0xFFFF0000) << 4;
++
++#if defined(CONFIG_SYS_MEM_TOP_HIDE)
++	phys_size -= CONFIG_SYS_MEM_TOP_HIDE;
++#endif
++
++	return phys_size;
++}
++
++#ifdef CONFIG_MULTI_DTB
++int checkhw(char * name)
++{
++	unsigned int ddr_size=0;
++	char loc_name[64] = {0};
++	int i;
++
++	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
++		ddr_size += gd->bd->bi_dram[i].size;
++	}
++
++#if defined(CONFIG_SYS_MEM_TOP_HIDE)
++	ddr_size += CONFIG_SYS_MEM_TOP_HIDE;
++#endif
++
++	switch (ddr_size) {
++	case 0x80000000:
++		strcpy(loc_name, "odroidc2_2g\0");
++		break;
++	case 0x40000000:
++		strcpy(loc_name, "odroidc2_1g\0");
++		break;
++	case 0x2000000:
++		strcpy(loc_name, "odroidc2_512m\0");
++		break;
++	default:
++		//printf("DDR size: 0x%x, multi-dt doesn't support\n", ddr_size);
++		strcpy(loc_name, "odroidc2_unsupport");
++		break;
++	}
++
++	strcpy(name, loc_name);
++	setenv("aml_dt", loc_name);
++
++	return 0;
++}
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/odroidc2-eth.c b/board/hardkernel/odroidc2/odroidc2-eth.c
+--- a/board/hardkernel/odroidc2/odroidc2-eth.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/odroidc2-eth.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,96 @@
++/*
++ * Copyright (C) 2015 Hardkernel Co,. Ltd
++ * Dongjin Kim <tobetter@gmail.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <malloc.h>
++#include <asm/arch/eth_setup.h>
++#include <asm/arch/secure_apb.h>
++
++#if defined(CONFIG_AML_ETHERNET)
++extern int aml_eth_init(bd_t *bis);
++
++struct eth_board_socket* eth_board_setup(char *name)
++{
++	struct eth_board_socket* new_board;
++
++	new_board = (struct eth_board_socket*)
++		malloc(sizeof(struct eth_board_socket));
++	if (NULL == new_board)
++		return NULL;
++
++	if (name != NULL) {
++		new_board->name = (char*)malloc(strlen(name));
++		strncpy(new_board->name, name, strlen(name));
++	} else {
++		new_board->name = CONFIG_SYS_BOARD;
++	}
++
++	new_board->eth_pinmux_setup = NULL ;
++	new_board->eth_clock_configure = NULL;
++	new_board->eth_hw_reset = NULL;
++
++	return new_board;
++}
++
++static void setup_net_chip(void)
++{
++	eth_aml_reg0_t reg;
++
++	/*
++	 * Set up ethernet clk need calibrate to configure
++	 */
++	setbits_le32(P_PERIPHS_PIN_MUX_6, 0x3fff);
++
++	reg.d32 = 0;
++	reg.b.phy_intf_sel = 1;
++	reg.b.data_endian = 0;
++	reg.b.desc_endian = 0;
++	reg.b.rx_clk_rmii_invert = 0;
++	reg.b.rgmii_tx_clk_src = 0;
++	reg.b.rgmii_tx_clk_phase = 1;
++	reg.b.rgmii_tx_clk_ratio = 4;
++	reg.b.phy_ref_clk_enable = 1;
++	reg.b.clk_rmii_i_invert = 0;
++	reg.b.clk_en = 1;
++	reg.b.adj_enable = 0;
++	reg.b.adj_setup = 0;
++	reg.b.adj_delay = 0;
++	reg.b.adj_skew = 0;
++	reg.b.cali_start = 0;
++	reg.b.cali_rise = 0;
++	reg.b.cali_sel = 0;
++	reg.b.rgmii_rx_reuse = 0;
++	reg.b.eth_urgent = 0;
++
++	/* RGMII Mode */
++	setbits_le32(P_PREG_ETH_REG0, reg.d32);
++
++	setbits_le32(HHI_GCLK_MPEG1, 1 << 3);
++
++	/*
++	 * Power on memory
++	 */
++	clrbits_le32(HHI_MEM_PD_REG0, (1 << 3) | (1<<2));
++
++	/*
++	 * Hardware reset ethernet phy : GPIOZ_14
++	 */
++	clrbits_le32(PREG_PAD_GPIO3_EN_N, 1 << 14);
++	clrbits_le32(PREG_PAD_GPIO3_O, 1 << 14);
++	udelay(100000);
++	setbits_le32(PREG_PAD_GPIO3_O, 1 << 14);
++}
++
++int board_eth_init(bd_t *bis)
++{
++	setup_net_chip();
++	udelay(1000);
++	aml_eth_init(bis);
++
++	return 0;
++}
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/odroidc2-fastboot.c b/board/hardkernel/odroidc2/odroidc2-fastboot.c
+--- a/board/hardkernel/odroidc2/odroidc2-fastboot.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/odroidc2-fastboot.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,224 @@
++/*
++ * Copyright (C) 2015 Hardkernel Co,. Ltd
++ * Dongjin Kim <tobetter@gmail.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <linux/sizes.h>
++#include <linux/string.h>
++#include <usb/fastboot.h>
++
++/* FIXME: Is block size always 512? */
++#define bytes_to_lba(x)		((x) / 512)
++#define gbytes_to_lba(x)	((x) * 1024 * 1024 * 2)
++
++#define SZ_RESERVED		(48 * SZ_1K + 512)	/* BL1 + MBR */
++#define SZ_BOOTLOADER		(720 * SZ_1K)
++#define SZ_BOOTMESSAGE		(4 * SZ_1K)
++
++static struct fbt_partition {
++	const char *name;
++	lbaint_t lba;
++} partitions[] = {
++	{
++		.name = "-reserved",
++		.lba = bytes_to_lba(SZ_RESERVED)
++	}, {
++		.name = "bootloader",
++		.lba = bytes_to_lba(SZ_BOOTLOADER
++				- (SZ_RESERVED + SZ_BOOTMESSAGE))
++	}, {
++		.name = "bcb",			/* Bootloader control block */
++		.lba = bytes_to_lba(SZ_BOOTMESSAGE)
++	}, {
++		.name = "env",			/* "environment" */
++		.lba = bytes_to_lba(CONFIG_ENV_SIZE)
++	}, {
++		.name = "dtb",			/* Device Tree */
++		.lba = bytes_to_lba(SZ_64K)
++	}, {
++		.name = "boot",			/* Boot image */
++		.lba = bytes_to_lba(16 * SZ_1M)
++	}, {
++		.name = "recovery",		/* Recovery Image */
++		.lba = bytes_to_lba(12 * SZ_1M)
++	}, {
++		.name = "logo",			/* Logo */
++		.lba = bytes_to_lba(2 * SZ_1M)
++	}
++};
++
++static struct dos_partition {
++	const char *name;
++	int part;
++	u8 type;
++	lbaint_t lba;
++} dos_partitions[] = {
++	{
++		.name = "cache",
++		.part = 2,
++		.type = 0x83,
++		.lba = bytes_to_lba(512 * SZ_1M),
++	}, {
++		.name = "system",
++		.part = 3,
++		.type = 0x83,
++		.lba = gbytes_to_lba(1),
++	}, {
++		.name = "userdata",
++		.part = 4,
++		.type = 0x83,
++		.lba = gbytes_to_lba(3),
++	}, {
++		.name = "vfat",
++		.part = 1,
++		.type = 0x0c,
++		.lba = -1,
++	},
++};
++
++static int n = 0;
++
++static int valid_partition_number(int part)
++{
++	return (1 <= part) && (part <= ARRAY_SIZE(dos_partitions));
++}
++
++/*
++ * Initiate dos partition index and return the first sector (lba)
++ */
++lbaint_t board_dos_partition_start(void)
++{
++	int n;
++	lbaint_t next = 0;
++
++	for (n = 0 ; n < ARRAY_SIZE(partitions); n++)
++		next += partitions[n].lba;
++
++	return next;
++}
++
++/*
++ * Get the partition detail, partition number and its type, as well as
++ * return the number of sectors to allocate for the partition.
++ */
++lbaint_t board_dos_partition_next(int *part, u8 *type)
++{
++	if (!valid_partition_number(n + 1))
++		return 0;
++
++	struct dos_partition *p = &dos_partitions[n++];
++
++	*part = p->part;	/* partition number */
++	*type = p->type;	/* partition type */
++
++	/* Use remained sectors for this partition */
++	if (p->lba == -1)
++		return -1;
++
++	return p->lba;
++}
++
++/*
++ * Return the partition name of given partiton number. Since DOS partition
++ * does not support name on its parition table, the partition names are
++ * predefined upon each partition number.
++ */
++char *board_dos_partition_name(int part, char* name)
++{
++	int i;
++
++	if (!valid_partition_number(part))
++		return NULL;
++
++	for (i = 0; i < ARRAY_SIZE(dos_partitions); i++) {
++		/* Partition number is same with given to seek */
++		if (dos_partitions[i].part == part) {
++			strcpy(name, dos_partitions[i].name);
++			return name;
++		}
++	}
++
++	return NULL;
++}
++
++/*
++ * Initiate the fastboot partition entries with internal system partitions and
++ * DOS partition table.
++ */
++int board_partition_init(void)
++{
++	struct mmc *mmc;
++	fastboot_ptentry ptn;
++	lbaint_t next = 0;
++	lbaint_t len;
++	int n = 0;
++
++	fastboot_flash_reset_ptn();
++
++	mmc = find_mmc_device(CONFIG_FASTBOOT_FLASH_MMC_DEV);
++
++	for (n = 0 ; mmc && n < ARRAY_SIZE(partitions); n++) {
++		len = partitions[n].lba;
++
++		/* Skip to add the partition if start with '-', but move forward
++		 * to next position as much as its size
++		 */
++		if (partitions[n].name[0] == '-') {
++			next += len;
++			continue;
++		}
++
++		/* 'env' partition contains U-boot's environment fields, it
++		 * could be damaged by fastboot if its offset is invalid with
++		 * defined by CONFIG_ENV_OFFSET.
++		 */
++		if (!strcmp(partitions[n].name, "env") &&
++				(bytes_to_lba(CONFIG_ENV_OFFSET) != next)) {
++			printf("WARNING!!: Invalid offset of 'env' partition,"
++					" it must be " LBAFU " but " LBAFU "\n",
++					next, (lbaint_t)bytes_to_lba(CONFIG_ENV_OFFSET));
++		}
++
++		if (len == 0)
++			len = mmc->block_dev.lba - next;
++
++		strncpy((char*)&ptn.name, partitions[n].name, sizeof(ptn.name));
++
++		ptn.start = next;
++		ptn.length = len;
++
++		/* Add the partition to fastboot partition entry table */
++		fastboot_flash_add_ptn(&ptn);
++
++		next += len;
++	}
++
++	fastboot_load_dos_partition();
++
++	return 0;
++}
++
++int board_fastboot_pre_flash(block_dev_desc_t *dev_desc, lbaint_t start,
++		void *buffer)
++{
++	if (start == 0) {
++		/* MUST be trying to modify MBR, hence at least DOS partition
++		 * table have to be kept. So buffer to flashing will be
++		 * overwritten with exist partition table.
++		 */
++		u8 mbr[512];
++
++		if (dev_desc->block_read(dev_desc->dev, start, 1, mbr) != 1) {
++			printf("fastboot: can't read MBR from device %d\n",
++					dev_desc->dev);
++			return -EIO;
++		}
++
++		memcpy(buffer + 0x1be, &mbr[0x1be], 512 - 0x1be);
++	}
++
++	return 0;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/odroidc2-otg.c b/board/hardkernel/odroidc2/odroidc2-otg.c
+--- a/board/hardkernel/odroidc2/odroidc2-otg.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/odroidc2-otg.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,113 @@
++/*
++ * Copyright (C) 2015 Hardkernel Co,. Ltd
++ * Dongjin Kim <tobetter@gmail.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <asm/arch/usb.h>
++
++#include <usb.h>
++#include <usb/s3c_udc.h>
++
++#define P_RESET1_REGISTER_USB	0xc1104408
++
++#define PREI_USB_PHY_A_REG_BASE	0xC0000000
++#define PREI_USB_PHY_REG_BASE	PREI_USB_PHY_A_REG_BASE
++
++#define PORT_REG_OFFSET		0x0000	/* Port - A */
++#define DWC_REG_BASE		(0xC9000000 + PORT_REG_OFFSET)
++
++#define DWC_REG_GSNPSID		0x040	/* Synopsys ID Register (Read Only) */
++
++#define OTG_PHY_CONFIG          0x0000
++#define OTG_PHY_CTRL            0x0004
++#define OTG_PHY_CTRL_POR        (1 << 15)
++#define OTG_PHY_CTRL_FSEL(x)    ((x) << 22)
++#define OTG_PHY_CTRL_CLKDET     (1 << 8)
++#define OTG_PHY_ENDP_INTR       0x0008
++#define OTG_PHY_ADP_BC          0x000c
++#define OTG_PHY_DBG_UART        0x0010
++#define OTG_PHY_TEST            0x0014
++#define OTG_PHY_TUNE            0x0018
++
++extern struct amlogic_usb_config *amlogic_usb_config(int port);
++
++static int dwc_otg_start_clk(int on)
++{
++        if (on) {
++                u32 temp;
++                u32 snpsid;
++
++                writel((1 << 2), P_RESET1_REGISTER_USB);
++                udelay(500);
++
++                /* Power On Reset & select 24MHz as reference clock */
++                temp = readl(PREI_USB_PHY_REG_BASE + OTG_PHY_CTRL);
++                temp |= OTG_PHY_CTRL_FSEL(5) | OTG_PHY_CTRL_POR;
++                writel(temp, PREI_USB_PHY_REG_BASE + OTG_PHY_CTRL);
++
++                udelay(500);    // 500us
++
++                temp &= ~OTG_PHY_CTRL_POR;
++                writel(temp, PREI_USB_PHY_REG_BASE + OTG_PHY_CTRL);
++
++                udelay(50000);  // 50ms
++
++                /* USB OTG PHY does work? */
++                temp = readl(PREI_USB_PHY_REG_BASE + OTG_PHY_CTRL);
++                if (0 == (temp & OTG_PHY_CTRL_CLKDET)) {
++                        printf("ERROR, usb phy clock is not detected!\n");
++                }
++
++                /* Check USB OTG ID, if it can work */
++                snpsid = readl(DWC_REG_BASE + DWC_REG_GSNPSID);
++                if (0x4f543000 != (snpsid & 0xfffff000)) {
++                        printf("%s, Bad value for SNPSID: 0x%08x\n",
++                                        __func__, snpsid);
++                        return -1;
++                }
++        } else {
++		/* FIXME: Add to disable USB OTG PHY
++		 */
++	}
++
++        return 0;
++}
++
++struct s3c_plat_otg_data odroid_otg_data = {
++	.phy_control	= dwc_otg_start_clk,
++	.regs_otg	= DWC_REG_BASE,
++};
++
++void otg_phy_init(struct s3c_udc *dev)
++{
++	dev->pdata->phy_control(1);
++
++	/* USB PHY0 Enable */
++	printf("USB PHY0 Enabled\n");
++}
++
++void otg_phy_off(struct s3c_udc *dev)
++{
++	dev->pdata->phy_control(0);
++
++	/* USB PHY0 Disable */
++	printf("USB PHY0 Disabled\n");
++}
++
++int board_usb_init(int index, enum usb_init_type init)
++{
++	amlogic_usb_config_t *usb_config;
++
++	if (init == USB_INIT_DEVICE) {
++		usb_config = amlogic_usb_start(BOARD_USB_MODE_SLAVE, 0);
++		if (usb_config == amlogic_usb_config(0))
++			return s3c_udc_probe(&odroid_otg_data);
++	} else {
++		/* FIXME: do we need to initiate USB host here? */
++	}
++
++	return -ENODEV;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/hardkernel/odroidc2/odroidc2-recovery.c b/board/hardkernel/odroidc2/odroidc2-recovery.c
+--- a/board/hardkernel/odroidc2/odroidc2-recovery.c	1970-01-01 08:00:00.000000000 +0800
++++ b/board/hardkernel/odroidc2/odroidc2-recovery.c	2026-02-09 11:25:47.813040032 +0800
+@@ -0,0 +1,68 @@
++/*
++ * Copyright (C) 2015 Hardkernel Co,. Ltd
++ * Dongjin Kim <tobetter@gmail.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <asm/errno.h>
++#include <usb/fastboot.h>
++
++/* Bootloader Message
++ *
++ * This structure describes the content of a block in flash
++ * that is used for recovery and the bootloader to talk to
++ * each other.
++ *
++ * The command field is updated by linux when it wants to
++ * reboot into recovery or to update radio or bootloader firmware.
++ * It is also updated by the bootloader when firmware update
++ * is complete (to boot into recovery for any final cleanup)
++ *
++ * The status field is written by the bootloader after the
++ * completion of an "update-radio" or "update-hboot" command.
++ *
++ * The recovery field is only written by linux and used
++ * for the system to send a message to recovery or the
++ * other way around.
++ */
++struct bootloader_message {
++        char command[32];
++        char status[32];
++        char recovery[1024];
++};
++
++static const char *bcb_name = "bcb";
++static const char *bcb_magic = "recovery";
++static struct bootloader_message bcb;
++
++int board_get_recovery_message(void)
++{
++	block_dev_desc_t *dev_desc;
++	fastboot_ptentry *ptn;
++	unsigned int offset;
++
++	dev_desc = mmc_get_dev(0);
++	if (NULL == dev_desc)
++		return ODROID_REBOOT_CMD_UNKNOWN;
++
++	ptn = fastboot_flash_find_ptn(bcb_name);
++	if (NULL == ptn)
++		return ODROID_REBOOT_CMD_UNKNOWN;
++
++	offset = ptn->start;
++
++	dev_desc->block_read(dev_desc->dev, offset,
++			(sizeof(struct bootloader_message)
++			 + (dev_desc->blksz - 1)) / dev_desc->blksz, &bcb);
++
++	bcb.recovery[strlen(bcb_magic)] = 0;
++	if (0 == strncmp(bcb.recovery, bcb_magic, strlen(bcb_magic))) {
++		do_format();
++		printf("Default Android partition is created...\n");
++		return ODROID_REBOOT_CMD_RECOVERY;
++	}
++
++	return ODROID_REBOOT_CMD_UNKNOWN;
++}
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/board/mpl/common/common_util.c b/board/mpl/common/common_util.c
+--- a/board/mpl/common/common_util.c	2026-04-02 18:17:41.187480403 +0800
++++ b/board/mpl/common/common_util.c	2026-02-09 11:25:47.857042433 +0800
+@@ -551,7 +551,7 @@
+ 		}
+ 		else {
+ 			copy_old_env(oldsizes[i]);
+-			puts("INFO:  old environment ajusted, use saveenv\n");
++			puts("INFO:  old environment adjusted, use saveenv\n");
+ 		}
+ 	}
+ 	else {

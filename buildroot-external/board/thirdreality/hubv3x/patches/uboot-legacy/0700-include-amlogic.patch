@@ -1,0 +1,5241 @@
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_bl_extern.h b/include/amlogic/aml_bl_extern.h
+--- a/include/amlogic/aml_bl_extern.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_bl_extern.h	2026-02-09 11:25:48.677087159 +0800
+@@ -0,0 +1,76 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_bl_extern.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _INC_AML_BL_EXTERN_H_
++#define _INC_AML_BL_EXTERN_H_
++
++enum bl_extern_type_e {
++	BL_EXTERN_I2C = 0,
++	BL_EXTERN_SPI,
++	BL_EXTERN_MIPI,
++	BL_EXTERN_MAX,
++};
++
++#define BL_EXTERN_I2C_BUS_A          0
++#define BL_EXTERN_I2C_BUS_B          1
++#define BL_EXTERN_I2C_BUS_C          2
++#define BL_EXTERN_I2C_BUS_D          3
++#define BL_EXTERN_I2C_BUS_AO         4
++
++#define BL_EXTERN_I2C_BUS_0          BL_EXTERN_I2C_BUS_A
++#define BL_EXTERN_I2C_BUS_1          BL_EXTERN_I2C_BUS_B
++#define BL_EXTERN_I2C_BUS_2          BL_EXTERN_I2C_BUS_C
++#define BL_EXTERN_I2C_BUS_3          BL_EXTERN_I2C_BUS_D
++#define BL_EXTERN_I2C_BUS_4          BL_EXTERN_I2C_BUS_AO
++#define BL_EXTERN_I2C_BUS_MAX        5
++
++#define BL_EXTERN_INIT_ON_MAX       200
++#define BL_EXTERN_INIT_OFF_MAX      50
++
++#define BL_EXTERN_GPIO_NUM_MAX      6
++#define BL_EXTERN_INDEX_INVALID     0xff
++#define BL_EXTERN_NAME_LEN_MAX      30
++struct bl_extern_config_s {
++	unsigned char index;
++	char name[BL_EXTERN_NAME_LEN_MAX];
++	enum bl_extern_type_e type;
++	unsigned char i2c_addr;
++	unsigned char i2c_bus;
++	unsigned int dim_min;
++	unsigned int dim_max;
++
++	unsigned char init_loaded;
++	unsigned char cmd_size;
++	unsigned char *init_on;
++	unsigned char *init_off;
++	unsigned int init_on_cnt;
++	unsigned int init_off_cnt;
++};
++
++/* global API */
++#define BL_EXT_DRIVER_MAX    10
++struct aml_bl_extern_driver_s {
++	int (*power_on)(void);
++	int (*power_off)(void);
++	int (*set_level)(unsigned int level);
++	void (*config_print)(void);
++	int (*device_power_on)(void);
++	int (*device_power_off)(void);
++	int (*device_bri_update)(unsigned int level);
++	struct bl_extern_config_s *config;
++};
++
++extern struct aml_bl_extern_driver_s *aml_bl_extern_get_driver(void);
++extern int aml_bl_extern_device_load(char *dtaddr, int index);
++extern struct bl_extern_config_s bl_extern_config_dtf;
++#ifdef CONFIG_AML_LCD_TABLET
++extern int dsi_write_cmd(unsigned char *payload);
++#endif
++
++#endif
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_cec.h b/include/amlogic/aml_cec.h
+--- a/include/amlogic/aml_cec.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_cec.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,190 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_cec.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _AML_CEC_H
++#define _AML_CEC_H
++
++
++#ifndef CONFIG_CEC_OSD_NAME
++#define CONFIG_CEC_OSD_NAME "AML_TV"
++#endif
++
++/*CEC UI MASK*/
++#define CEC_FUNC_MASK                        0
++#define ONE_TOUCH_PLAY_MASK                  1
++#define ONE_TOUCH_STANDBY_MASK               2
++#define AUTO_POWER_ON_MASK                   3
++
++#define MAX_MSG 16
++#define CEC_PLAYBACK_DEVICE_TYPE 4
++#define CEC_BROADCAST_ADDR 0xf
++#define CEC_VERSION_14A 5
++
++//=========ao cec a==================================
++//cec a: read only
++#define CEC_RX_MSG_LENGTH          0x90
++#define CEC_RX_MSG_STATUS          0x91
++#define CEC_RX_NUM_MSG             0x92
++#define CEC_TX_MSG_STATUS          0x93
++#define CEC_TX_NUM_MSG             0x94
++
++//cec a: tx_msg_cmd definition
++#define TX_NO_OP                0  // No transaction
++#define TX_REQ_CURRENT          1  // Transmit earliest message in buffer
++#define TX_ABORT                2  // Abort transmitting earliest message
++#define TX_REQ_NEXT             3  // Overwrite earliest message in buffer and transmit next message
++
++//cec a: tx_msg_status definition
++#define TX_IDLE                 0  // No transaction
++#define TX_BUSY                 1  // Transmitter is busy
++#define TX_DONE                 2  // Message has been successfully transmitted
++#define TX_ERROR                3  // Message has been transmitted with error
++
++//cec a: rx_msg_cmd
++#define RX_NO_OP                0  // No transaction
++#define RX_ACK_CURRENT          1  // Read earliest message in buffer
++#define RX_DISABLE              2  // Disable receiving latest message
++#define RX_ACK_NEXT             3  // Clear earliest message from buffer and read next message
++
++//cec a: rx_msg_status
++#define RX_IDLE                 0  // No transaction
++#define RX_BUSY                 1  // Receiver is busy
++#define RX_DONE                 2  // Message has been received successfully
++#define RX_ERROR                3  // Message has been received with error
++
++
++/*
++ * CEC OPCODES
++ */
++#define	CEC_OC_ABORT_MESSAGE 					0xFF
++#define	CEC_OC_ACTIVE_SOURCE 					0x82
++#define	CEC_OC_CEC_VERSION 					0x9E
++#define	CEC_OC_CLEAR_ANALOGUE_TIMER 				0x33
++#define	CEC_OC_CLEAR_DIGITAL_TIMER 				0x99
++#define	CEC_OC_CLEAR_EXTERNAL_TIMER 				0xA1
++#define	CEC_OC_DECK_CONTROL 					0x42
++#define	CEC_OC_DECK_STATUS 					0x1B
++#define	CEC_OC_DEVICE_VENDOR_ID 				0x87
++#define	CEC_OC_FEATURE_ABORT 					0x00
++#define	CEC_OC_GET_CEC_VERSION 					0x9F
++#define	CEC_OC_GET_MENU_LANGUAGE 				0x91
++#define	CEC_OC_GIVE_AUDIO_STATUS 				0x71
++#define	CEC_OC_GIVE_DECK_STATUS 				0x1A
++#define	CEC_OC_GIVE_DEVICE_POWER_STATUS 			0x8F
++#define	CEC_OC_GIVE_DEVICE_VENDOR_ID 				0x8C
++#define	CEC_OC_GIVE_OSD_NAME 					0x46
++#define	CEC_OC_GIVE_PHYSICAL_ADDRESS 				0x83
++#define	CEC_OC_GIVE_SYSTEM_AUDIO_MODE_STATUS 			0x7D
++#define	CEC_OC_GIVE_TUNER_DEVICE_STATUS 			0x08
++#define	CEC_OC_IMAGE_VIEW_ON 					0x04
++#define	CEC_OC_INACTIVE_SOURCE 					0x9D
++#define	CEC_OC_MENU_REQUEST 					0x8D
++#define	CEC_OC_MENU_STATUS 					0x8E
++#define	CEC_OC_PLAY 						0x41
++#define	CEC_OC_POLLING_MESSAGE 					0xFC	/* Fake Code - <Poll Message> has no OP Code and requires only the header byte */
++#define	CEC_OC_RECORD_OFF 					0x0B
++#define	CEC_OC_RECORD_ON 					0x09
++#define	CEC_OC_RECORD_STATUS 					0x0A
++#define	CEC_OC_RECORD_TV_SCREEN 				0x0F
++#define	CEC_OC_REPORT_AUDIO_STATUS 				0x7A
++#define	CEC_OC_REPORT_PHYSICAL_ADDRESS 				0x84
++#define	CEC_OC_REPORT_POWER_STATUS 				0x90
++#define	CEC_OC_REQUEST_ACTIVE_SOURCE 				0x85
++#define	CEC_OC_ROUTING_CHANGE 					0x80
++#define	CEC_OC_ROUTING_INFORMATION 				0x81
++#define	CEC_OC_SELECT_ANALOGUE_SERVICE 				0x92
++#define	CEC_OC_SELECT_DIGITAL_SERVICE 				0x93
++#define	CEC_OC_SET_ANALOGUE_TIMER 				0x34
++#define	CEC_OC_SET_AUDIO_RATE 					0x9A
++#define	CEC_OC_SET_DIGITAL_TIMER 				0x97
++#define	CEC_OC_SET_EXTERNAL_TIMER 				0xA2
++#define	CEC_OC_SET_MENU_LANGUAGE 				0x32
++#define	CEC_OC_SET_OSD_NAME 					0x47
++#define	CEC_OC_SET_OSD_STRING 					0x64
++#define	CEC_OC_SET_STREAM_PATH 					0x86
++#define	CEC_OC_SET_SYSTEM_AUDIO_MODE 				0x72
++#define	CEC_OC_SET_TIMER_PROGRAM_TITLE 				0x67
++#define	CEC_OC_STANDBY 						0x36
++#define	CEC_OC_SYSTEM_AUDIO_MODE_REQUEST 			0x70
++#define	CEC_OC_SYSTEM_AUDIO_MODE_STATUS 			0x7E
++#define	CEC_OC_TEXT_VIEW_ON 					0x0D
++#define	CEC_OC_TIMER_CLEARED_STATUS 				0x43
++#define	CEC_OC_TIMER_STATUS 					0x35
++#define	CEC_OC_TUNER_DEVICE_STATUS 				0x07
++#define	CEC_OC_TUNER_STEP_DECREMENT 				0x06
++#define	CEC_OC_TUNER_STEP_INCREMENT 				0x05
++#define	CEC_OC_USER_CONTROL_PRESSED 				0x44
++#define	CEC_OC_USER_CONTROL_RELEASED 				0x45
++#define	CEC_OC_VENDOR_COMMAND 					0x89
++#define	CEC_OC_VENDOR_COMMAND_WITH_ID 				0xA0
++#define	CEC_OC_VENDOR_REMOTE_BUTTON_DOWN 			0x8A
++#define	CEC_OC_VENDOR_REMOTE_BUTTON_UP 				0x8B
++
++enum _cec_log_dev_addr_e {
++	CEC_TV_ADDR = 0x00,
++	CEC_RECORDING_DEVICE_1_ADDR,
++	CEC_RECORDING_DEVICE_2_ADDR,
++	CEC_TUNER_1_ADDR,
++	CEC_PLAYBACK_DEVICE_1_ADDR,
++	CEC_AUDIO_SYSTEM_ADDR,
++	CEC_TUNER_2_ADDR,
++	CEC_TUNER_3_ADDR,
++	CEC_PLAYBACK_DEVICE_2_ADDR,
++	CEC_RECORDING_DEVICE_3_ADDR,
++	CEC_TUNER_4_ADDR,
++	CEC_PLAYBACK_DEVICE_3_ADDR,
++	CEC_RESERVED_1_ADDR,
++	CEC_RESERVED_2_ADDR,
++	CEC_FREE_USE_ADDR,
++	CEC_UNREGISTERED_ADDR
++};
++
++typedef enum  {
++	CEC_UNRECONIZED_OPCODE = 0x0,
++	CEC_NOT_CORRECT_MODE_TO_RESPOND,
++	CEC_CANNOT_PROVIDE_SOURCE,
++	CEC_INVALID_OPERAND,
++	CEC_REFUSED,
++	CEC_UNABLE_TO_DETERMINE,
++} cec_feature_abort_e;
++
++typedef enum {
++	DEVICE_MENU_ACTIVE = 0,
++	DEVICE_MENU_INACTIVE,
++} cec_device_menu_state_e;
++
++/* cec message structure */
++typedef struct {
++	unsigned char msg[16];
++	unsigned char msg_len;
++} cec_msg_buf_t;
++
++typedef struct {
++	cec_msg_buf_t buf[2];          /* message memory */
++	unsigned char power_status;
++	unsigned char log_addr;
++	unsigned char cec_power;
++	unsigned char active_source;
++	unsigned char rx_write_pos;
++	unsigned char rx_read_pos;
++	unsigned char rx_buf_size;
++	unsigned int addr_enable;
++} cec_msg_t;
++
++typedef struct {
++	unsigned int wk_logic_addr:8;
++	unsigned int wk_phy_addr:16;
++	unsigned int wk_port_id:8;
++}cec_wakeup_t;
++
++extern cec_msg_t cec_msg;
++
++extern int cec_hw_init(int logic_addr, unsigned char fun_cfg);
++
++#endif/*_AML_CEC_H*/
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_efuse.h b/include/amlogic/aml_efuse.h
+--- a/include/amlogic/aml_efuse.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_efuse.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,78 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_efuse.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++
++#ifndef __BL2_EFUSE_H__
++#define __BL2_EFUSE_H__
++
++#if 0
++//just keep following CFG10/9 for new API implement
++#define IS_FEAT_USB_PD_CHK_ENABLE()   (readl(AO_SEC_SD_CFG10) & (1 << 1))
++#define IS_FEAT_THERMAL_CALIBRATED()  (readl(AO_SEC_SD_CFG10) & (1 << 2))
++#define IS_FEAT_BOOT_VERIFY()         (readl(AO_SEC_SD_CFG10) & (1 << 4))
++#define IS_FEAT_ROOT_KEY_BURNED()     (readl(AO_SEC_SD_CFG10) & (1 << 5))
++#define IS_FEAT_PLL_SET_BURNED()      (readl(AO_SEC_SD_CFG10) & (1 << 6))
++#define IS_FEAT_M3_PLL_ENABLE()       (readl(AO_SEC_SD_CFG10) & (1 << 7))
++#define IS_FEAT_M4_PLL_ENABLE()       (readl(AO_SEC_SD_CFG10) & (1 << 7))
++#define IS_FEAT_A53_PLL_ENABLE()      (readl(AO_SEC_SD_CFG10) & (1 << 8))
++#define IS_FEAT_NAMD_EXT_CMD_BURNED() (readl(AO_SEC_SD_CFG10) & (1 << 9))
++#define IS_FEAT_JTG_PD_CHK_ENABLE()   (readl(AO_SEC_SD_CFG10) & (1 << 11))
++#define IS_FEAT_JTG_ENABLE()          (readl(AO_SEC_SD_CFG10) & (1 << 12))
++#define IS_FEAT_CHIP_ID_BURNED        (readl(AO_SEC_SD_CFG10) & (1 << 13))
++#define IS_FEAT_DTS_ENABLE            (readl(AO_SEC_SD_CFG10) & (1 << 14))
++#define IS_FEAT_DISK_ENC_ENABLE       (readl(AO_SEC_SD_CFG10) & (1 << 15))
++#define IS_FEAT_DOLBY_AUDIO_ENABLE    (readl(AO_SEC_SD_CFG10) & (1 << 16))
++#define IS_FEAT_SCN_PD_CHK_ENABLE     (readl(AO_SEC_SD_CFG10) & (1 << 17))
++#define IS_FEAT_USB_BOOT_ENABLE       (readl(AO_SEC_SD_CFG10) & (1 << 19))
++#define IS_FEAT_SPI_BOOT_ENABLE       (readl(AO_SEC_SD_CFG10) & (1 << 20))
++#define IS_FEAT_RECOVERY_BOOT_ENABLE  (readl(AO_SEC_SD_CFG10) & (1 << 21))
++#define IS_FEAT_SD_BOOT_ENABLE        (readl(AO_SEC_SD_CFG10) & (1 << 22))
++#define IS_FEAT_NAND_EMMC_BOOT_ENABLE (readl(AO_SEC_SD_CFG10) & (1 << 23))
++#define IS_FEAT_ANTIROLLBACK_ENABLE   (readl(AO_SEC_SD_CFG10) & (1 << 25))
++#define IS_FEAT_BOOT_ENCRYPT()        (readl(AO_SEC_SD_CFG10) & (1 << 28))
++#define IS_FEAT_A53_L1_ENABLE()       (readl(AO_SEC_SD_CFG10) & (1 << 29))
++#define IS_FEAT_KEY_LDR_INIT()        (readl(AO_SEC_SD_CFG10) & (1 << 30))
++#define IS_FEAT_AP_COLD_BOOT_LOCK()   (readl(AO_SEC_SD_CFG10) & (1 << 31))
++#define IS_FEAT_BOOT_M3_ENCRYPT()     (readl(AO_SEC_SD_CFG9) & (1 << 5))
++#define IS_FEAT_BOOT_M4_ENCRYPT()     (readl(AO_SEC_SD_CFG9) & (1 << 6))
++#define IS_FEAT_NAND_BL2_BKP_RETRY()  (readl(AO_SEC_SD_CFG9) & (1 << 10))
++#define IS_FEAT_EMMC_BL2_BKP_RETRY()  (readl(AO_SEC_SD_CFG9) & (1 << 11))
++#define IS_FEAT_SCAN_DISABLE()        (readl(AO_SEC_SD_CFG9) & (1 << 12))
++#define IS_FEAT_NAND_128P_DISABLE()   (readl(AO_SEC_SD_CFG9) & (1 << 13))
++#define IS_FEAT_EMMC_LAST_ENABLE()    (readl(AO_SEC_SD_CFG9) & (1 << 14))
++#define IS_FEAT_HIGH_USB_ENABLE()     (readl(AO_SEC_SD_CFG9) & (1 << 15))
++#define IS_FEAT_BOOT_M3_VERIFY()      (readl(AO_SEC_SD_CFG9) & (1 << 16))
++#define IS_FEAT_BOOT_M4_VERIFY()      (readl(AO_SEC_SD_CFG9) & (1 << 17))
++#define IS_FEAT_CORNOR_INFO_BURNED()  (readl(AO_SEC_SD_CFG9) & (1 << 19))
++#define IS_FEAT_SCK_BURNED()          (readl(AO_SEC_SD_CFG9) & (1 << 20))
++#define IS_FEAT_BLK0_WR_LOCKED()      (readl(AO_SEC_SD_CFG9) & (1 << 21))
++#define IS_FEAT_M4_DISABLE()          (readl(AO_SEC_SD_CFG9) & (1 << 22))
++#define IS_FEAT_M4_SP_MODE_ENABLE()   (readl(AO_SEC_SD_CFG9) & (1 << 23))
++#define IS_FEAT_A53_CLK_12G()         (readl(AO_SEC_SD_CFG9) & (1 << 24))
++#define IS_FEAT_A53_CLK_15G()         (readl(AO_SEC_SD_CFG9) & (1 << 25))
++#define IS_FEAT_A53_CLK_20G()         (readl(AO_SEC_SD_CFG9) & (1 << 26))
++#define IS_FEAT_USB_PLL_ENABLE()      (readl(AO_SEC_SD_CFG9) & (1 << 27))
++#define IS_FEAT_RMA_ENABLE()          (readl(AO_SEC_SD_CFG9) & (1 << 28))
++#define IS_FEAT_OPS_CLI_BURNED()      (readl(AO_SEC_SD_CFG9) & (1 << 29))
++#define IS_FEAT_M4_UNLOCK_ENABLE()    (readl(AO_SEC_SD_CFG9) & (1 << 31))
++#define IS_FEAT_DISABLE_PRINT()       (readl(EFUSE_LIC0) & (1 << 22)))
++#endif
++
++//weak function for each SoC implement
++//Unify EFUSE license query API
++//all following functions are defined with "weak" for customization of each SoC
++//EFUSE_LICX	--> AO_SEC_SD_CFG10/9 --> EFUSE mirror
++int IS_FEAT_BOOT_VERIFY(void);
++int IS_FEAT_BOOT_ENCRYPT(void);
++
++int efuse_read_cali(char *buf, size_t count, uint32_t offset);
++int efuse_get_cali_cvbs(void);
++int efuse_get_cali_item(char *str);
++int efuse_check_pattern_item(char *str);
++
++#endif /* __BL2_EFUSE_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_hdmirx.h b/include/amlogic/aml_hdmirx.h
+--- a/include/amlogic/aml_hdmirx.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_hdmirx.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_hdmirx.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _AML_HDMIRX_H
++#define _AML_HDMIRX_H
++
++void hdmirx_hw_init(unsigned int port_map,
++		unsigned char *pedid_data,
++		int edid_size);
++void rx_set_phy_rterm(void);
++
++#endif /* _AML_HDMIRX_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_irblaster.h b/include/amlogic/aml_irblaster.h
+--- a/include/amlogic/aml_irblaster.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_irblaster.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,37 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_irblaster.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AML_IRBLATER_H
++#define __AML_IRBLATER_H
++
++#define MAX_WINDOWS_LEN 512
++struct aml_irblaster_drv_s {
++	unsigned int protocol;
++	unsigned int frequency;
++	unsigned int sendvalue;
++	unsigned int windows[MAX_WINDOWS_LEN];
++	unsigned int windows_num;
++	unsigned int dutycycle;
++	unsigned int openflag;
++	int (*open)(void);
++	int (*close)(void);
++	int (*test)(unsigned int);
++	int (*send)(unsigned int);
++	int (*setprotocol)(char *);
++	const char *(*getprocotol)(void);
++	int (*setfrequency)(unsigned int);
++	unsigned int (*getfrequency)(void);
++	void (*print_windows)(void);
++	int (*read_reg)(volatile unsigned int *, unsigned int);
++	int (*write_reg)(volatile unsigned int *, unsigned int);
++};
++
++struct aml_irblaster_drv_s *aml_irblaster_get_driver(void);
++#endif
++
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_is31fl32xx.h b/include/amlogic/aml_is31fl32xx.h
+--- a/include/amlogic/aml_is31fl32xx.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_is31fl32xx.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_is31fl32xx.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AML_IS31F132XX
++#define __AML_IS31F132XX
++
++#define IS31F132XX_DEVICE_ADDR 0x3c
++
++void board_is31fl32xx_init(void);
++void board_is31fl32xx_light_on(void);
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/amlkey_if.h b/include/amlogic/amlkey_if.h
+--- a/include/amlogic/amlkey_if.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/amlkey_if.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/amlkey_if.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AMLKEY_IF_H__
++#define __AMLKEY_IF_H__
++
++#define AMLKEY_NAME_LEN_MAX     (80)
++//1.init
++int32_t amlkey_init(uint8_t *seed, uint32_t len, int encrypt_type);
++
++//2. query if the key already programmed, exsit 1, non 0
++int32_t amlkey_isexsit(const uint8_t * name);
++
++//3. query attr, key must exsit before those functions were called.
++	//3.1 whether the programmed key is secure, secure 1, non 0
++int32_t amlkey_issecure(const uint8_t * name);
++	//3.2 whether the programmed key is encrypt, encrypt 1, non 0
++int32_t amlkey_isencrypt(const uint8_t * name);
++
++//4. actual bytes of key value
++ssize_t amlkey_size(const uint8_t *name);
++
++//5. read non-secure key in bytes, return byets readback actually.
++ssize_t amlkey_read(const uint8_t *name, uint8_t *buffer, uint32_t len)	;
++
++//6.write key with attribute in bytes , return byets readback actually
++	//attr: bit0: secure/non-secure;
++	//		bit8: encrypt/non-encrypt
++#define UNIFYKEY_ATTR_SECURE_MASK	(1<<0)
++#define UNIFYKEY_ATTR_ENCRYPT_MASK	(1<<8)
++ssize_t amlkey_write(const uint8_t *name, uint8_t *buffer, uint32_t len, uint32_t attr);
++
++//7. get the hash value of programmed secure key | 32bytes length, sha256
++int32_t amlkey_hash_4_secure(const uint8_t * name, uint8_t * hash);
++
++#endif// #ifndef __AMLKEY_IF_H__
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_lcd_extern.h b/include/amlogic/aml_lcd_extern.h
+--- a/include/amlogic/aml_lcd_extern.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_lcd_extern.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,118 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_lcd_extern.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _INC_AML_LCD_EXTERN_H_
++#define _INC_AML_LCD_EXTERN_H_
++
++#include <amlogic/aml_lcd_vout.h>
++
++enum lcd_extern_type_e {
++	LCD_EXTERN_I2C = 0,
++	LCD_EXTERN_SPI,
++	LCD_EXTERN_MIPI,
++	LCD_EXTERN_MAX,
++};
++
++#define LCD_EXTERN_I2C_BUS_A          0
++#define LCD_EXTERN_I2C_BUS_B          1
++#define LCD_EXTERN_I2C_BUS_C          2
++#define LCD_EXTERN_I2C_BUS_D          3
++#define LCD_EXTERN_I2C_BUS_AO         4
++
++#define LCD_EXTERN_I2C_BUS_0          LCD_EXTERN_I2C_BUS_A
++#define LCD_EXTERN_I2C_BUS_1          LCD_EXTERN_I2C_BUS_B
++#define LCD_EXTERN_I2C_BUS_2          LCD_EXTERN_I2C_BUS_C
++#define LCD_EXTERN_I2C_BUS_3          LCD_EXTERN_I2C_BUS_D
++#define LCD_EXTERN_I2C_BUS_4          LCD_EXTERN_I2C_BUS_AO
++#define LCD_EXTERN_I2C_BUS_MAX        5
++
++
++#define LCD_EXTERN_INIT_ON_MAX        3000
++#define LCD_EXTERN_INIT_OFF_MAX       100
++
++#define LCD_EXTERN_GPIO_NUM_MAX       6
++#define LCD_EXTERN_GPIO_LEN_MAX       10
++#define LCD_EXTERN_INDEX_INVALID      0xff
++#define LCD_EXTERN_NAME_LEN_MAX       30
++
++#define LCD_EXTERN_NUM_MAX            20
++#define EXTERN_MUL_MAX	      10
++struct lcd_extern_config_s {
++	unsigned char index;
++	char name[LCD_EXTERN_NAME_LEN_MAX];
++	enum lcd_extern_type_e type;
++	unsigned char status;
++	unsigned char pinmux_valid;
++	unsigned char pinmux_gpio_off;
++
++	unsigned char i2c_addr;
++	unsigned char i2c_addr2;
++	unsigned char i2c_addr3;
++	unsigned char i2c_addr4;
++	unsigned char i2c_bus;
++	unsigned char i2c_sck_gpio;
++	unsigned char i2c_sda_gpio;
++
++	unsigned char spi_gpio_cs;
++	unsigned char spi_gpio_clk;
++	unsigned char spi_gpio_data;
++	unsigned char spi_clk_pol;
++	unsigned short spi_clk_freq; /*KHz */
++	unsigned short spi_delay_us;
++
++	unsigned char cmd_size;
++	unsigned char table_init_loaded; /* internal use */
++	unsigned int table_init_on_cnt;
++	unsigned int table_init_off_cnt;
++	unsigned char *table_init_on;
++	unsigned char *table_init_off;
++};
++
++struct lcd_extern_common_s {
++	unsigned char lcd_ext_key_valid;
++	char gpio_name[LCD_EXTERN_GPIO_NUM_MAX][LCD_EXTERN_GPIO_LEN_MAX];
++	unsigned int lcd_ext_num;
++
++	unsigned char i2c_bus;
++	unsigned char i2c_sck_gpio;
++	unsigned char i2c_sck_gpio_off;
++	unsigned char i2c_sda_gpio;
++	unsigned char i2c_sda_gpio_off;
++	unsigned int pinmux_set[LCD_PINMUX_NUM][2];
++	unsigned int pinmux_clr[LCD_PINMUX_NUM][2];
++};
++
++struct lcd_extern_multi_list_s {
++	unsigned int index;
++	unsigned int type;
++	unsigned char data_len;
++	unsigned char *data_buf;
++	struct lcd_extern_multi_list_s *next;
++};
++
++//global API
++struct aml_lcd_extern_driver_s {
++	struct lcd_extern_config_s *config;
++	struct lcd_extern_multi_list_s *multi_list_header;
++	int (*reg_read)  (unsigned char reg, unsigned char *buf);
++	int (*reg_write) (unsigned char *buf, unsigned int len);
++	int (*power_on)(void);
++	int (*power_off)(void);
++	void (*info_print)(struct aml_lcd_extern_driver_s *edrv);
++};
++
++struct aml_lcd_extern_driver_s *aml_lcd_extern_get_driver(int index);
++extern int aml_lcd_extern_probe(char *dtaddr, int index);
++extern int aml_lcd_extern_remove(void);
++int aml_lcd_extern_init(void);
++
++extern struct lcd_extern_config_s ext_config_dtf[LCD_EXTERN_NUM_MAX];
++extern struct lcd_extern_common_s ext_common_dft;
++
++#endif
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_lcd.h b/include/amlogic/aml_lcd.h
+--- a/include/amlogic/aml_lcd.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_lcd.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,173 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_lcd.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef INC_AML_LCD_H
++#define INC_AML_LCD_H
++
++#include <common.h>
++#include <linux/list.h>
++#include <amlogic/aml_lcd_vout.h>
++#ifdef CONFIG_AML_LCD_EXTERN
++#include <amlogic/aml_lcd_extern.h>
++#endif
++#ifdef CONFIG_AML_BL_EXTERN
++#include <amlogic/aml_bl_extern.h>
++#endif
++
++#ifdef CONFIG_SYS_I2C_AML
++#define LCD_EXT_I2C_BUS_0     1  //A
++#define LCD_EXT_I2C_BUS_1     2  //B
++#define LCD_EXT_I2C_BUS_2     3  //C
++#define LCD_EXT_I2C_BUS_3     4  //D
++#define LCD_EXT_I2C_BUS_4     0  //AO
++#define LCD_EXT_I2C_BUS_MAX   0xff
++
++#else
++#define LCD_EXT_I2C_BUS_0     0  //A
++#define LCD_EXT_I2C_BUS_1     1  //B
++#define LCD_EXT_I2C_BUS_2     2  //C
++#define LCD_EXT_I2C_BUS_3     3  //D
++#define LCD_EXT_I2C_BUS_4     4  //AO
++#define LCD_EXT_I2C_BUS_MAX   0xff
++
++#endif
++
++#define LCD_EXT_I2C_BUS_INVALID        0xff
++#define LCD_EXT_I2C_ADDR_INVALID       0xff
++#define LCD_EXT_GPIO_INVALID           0xff
++
++#define LCD_EXT_SPI_CLK_FREQ_DFT       10 /* unit: KHz */
++
++
++#define LCD_EXT_CMD_TYPE_CMD_DELAY     0x00
++#define LCD_EXT_CMD_TYPE_CMD2_DELAY    0x01  /* for i2c device 2nd addr */
++#define LCD_EXT_CMD_TYPE_CMD3_DELAY    0x02  /* for i2c device 3rd addr */
++#define LCD_EXT_CMD_TYPE_CMD4_DELAY    0x03  /* for i2c device 4th addr */
++#define LCD_EXT_CMD_TYPE_NONE          0x10
++#define LCD_EXT_CMD_TYPE_MULTI_FR      0x21
++#define LCD_EXT_CMD_TYPE_CMD_BIN2      0xa0  /* with data offset and data_len */
++#define LCD_EXT_CMD_TYPE_CMD2_BIN2     0xa1  /* for i2c device 2nd addr */
++#define LCD_EXT_CMD_TYPE_CMD3_BIN2     0xa2  /* for i2c device 3rd addr */
++#define LCD_EXT_CMD_TYPE_CMD4_BIN2     0xa3  /* for i2c device 4th addr */
++#define LCD_EXT_CMD_TYPE_CMD_BIN       0xb0
++#define LCD_EXT_CMD_TYPE_CMD2_BIN      0xb1  /* for i2c device 2nd addr */
++#define LCD_EXT_CMD_TYPE_CMD3_BIN      0xb2  /* for i2c device 3rd addr */
++#define LCD_EXT_CMD_TYPE_CMD4_BIN      0xb3  /* for i2c device 4th addr */
++#define LCD_EXT_CMD_TYPE_CMD           0xc0
++#define LCD_EXT_CMD_TYPE_CMD2          0xc1  /* for i2c device 2nd addr */
++#define LCD_EXT_CMD_TYPE_CMD3          0xc2  /* for i2c device 3rd addr */
++#define LCD_EXT_CMD_TYPE_CMD4          0xc3  /* for i2c device 4th addr */
++#define LCD_EXT_CMD_TYPE_CMD_BIN_DATA  0xd0 /* without auto fill reg addr 0x0 */
++#define LCD_EXT_CMD_TYPE_CMD2_BIN_DATA 0xd1 /* for i2c device 2nd addr */
++#define LCD_EXT_CMD_TYPE_CMD3_BIN_DATA 0xd2 /* for i2c device 3rd addr */
++#define LCD_EXT_CMD_TYPE_CMD4_BIN_DATA 0xd3 /* for i2c device 4th addr */
++#define LCD_EXT_CMD_TYPE_CMD_MULTI     0xe0
++#define LCD_EXT_CMD_TYPE_CMD2_MULTI    0xe1
++#define LCD_EXT_CMD_TYPE_CMD3_MULTI    0xe2
++#define LCD_EXT_CMD_TYPE_CMD4_MULTI    0xe3
++#define LCD_EXT_CMD_TYPE_GPIO          0xf0
++#define LCD_EXT_CMD_TYPE_CHECK         0xfc
++#define LCD_EXT_CMD_TYPE_DELAY         0xfd
++#define LCD_EXT_CMD_TYPE_END           0xff
++
++#define LCD_EXT_CMD_SIZE_DYNAMIC       0xff
++#define LCD_EXT_DYNAMIC_SIZE_INDEX     1
++
++
++#define Rsv_val 0xffffffff
++struct ext_lcd_config_s {
++	const char panel_type[15];
++	unsigned int lcd_type; // LCD_TTL /LCD_LVDS/LCD_VBYONE
++	unsigned char lcd_bits;
++
++	unsigned short h_active;
++	unsigned short v_active;
++	unsigned short h_period;
++	unsigned short v_period;
++	unsigned short hsync_width;
++	unsigned short hsync_bp;
++	unsigned short hsync_pol;
++	unsigned short vsync_width;
++	unsigned short vsync_bp;
++	unsigned short vsync_pol;
++
++	unsigned int customer_val_0; //fr_adjust_type
++	unsigned int customer_val_1; //ss_level
++	unsigned int customer_val_2; //clk_auto_generate
++	unsigned int customer_val_3; //pixel clock(unit in Hz)
++	unsigned int customer_val_4;
++	unsigned int customer_val_5;
++	unsigned int customer_val_6;
++	unsigned int customer_val_7;
++	unsigned int customer_val_8;
++	unsigned int customer_val_9;
++
++	unsigned int lcd_spc_val0;
++	unsigned int lcd_spc_val1;
++	unsigned int lcd_spc_val2;
++	unsigned int lcd_spc_val3;
++	unsigned int lcd_spc_val4;
++	unsigned int lcd_spc_val5;
++	unsigned int lcd_spc_val6;
++	unsigned int lcd_spc_val7;
++	unsigned int lcd_spc_val8;
++	unsigned int lcd_spc_val9;
++
++	struct lcd_power_step_s *power_on_step;
++	struct lcd_power_step_s *power_off_step;
++
++	/* backlight */
++	unsigned int level_default;
++	unsigned int level_max;
++	unsigned int level_min;
++	unsigned int level_mid;
++	unsigned int level_mid_mapping;
++
++	unsigned int bl_method;
++	unsigned int bl_en_gpio;
++	unsigned short bl_en_gpio_on;
++	unsigned short bl_en_gpio_off;
++	unsigned short bl_power_on_delay;
++	unsigned short bl_power_off_delay;
++
++	unsigned int pwm_method;
++	unsigned int pwm_port;
++	unsigned int pwm_freq;
++	unsigned int pwm_duty_max;
++	unsigned int pwm_duty_min;
++	unsigned int pwm_gpio;
++	unsigned int pwm_gpio_off;
++
++	unsigned int pwm2_method;
++	unsigned int pwm2_port;
++	unsigned int pwm2_freq;
++	unsigned int pwm2_duty_max;
++	unsigned int pwm2_duty_min;
++	unsigned int pwm2_gpio;
++	unsigned int pwm2_gpio_off;
++
++	unsigned int pwm_level_max;
++	unsigned int pwm_level_min;
++	unsigned int pwm2_level_max;
++	unsigned int pwm2_level_min;
++
++	unsigned int pwm_on_delay;
++	unsigned int pwm_off_delay;
++
++	/* backlight extern */
++	unsigned int bl_ext_index;
++};
++
++#define LCD_NUM_MAX         20
++#define LCD_PRBS_MODE_LVDS    (1 << 0)
++#define LCD_PRBS_MODE_VX1     (1 << 1)
++#define LCD_PRBS_MODE_MAX     2
++
++extern struct ext_lcd_config_s ext_lcd_config[LCD_NUM_MAX];
++
++#endif /* INC_AML_LCD_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_lcd_i2c_dev.h b/include/amlogic/aml_lcd_i2c_dev.h
+--- a/include/amlogic/aml_lcd_i2c_dev.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_lcd_i2c_dev.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_lcd_i2c_dev.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _INC_AML_LCD_I2C_DEV_H_
++#define _INC_AML_LCD_I2C_DEV_H_
++
++void aml_lcd_extern_i2c_bus_print(unsigned char i2c_bus);
++unsigned char aml_lcd_extern_i2c_bus_get_sys(unsigned char i2c_bus);
++int aml_lcd_extern_i2c_bus_change(unsigned int i2c_bus);
++int aml_lcd_extern_i2c_bus_recovery(void);
++int aml_lcd_extern_i2c_write(unsigned char i2c_bus, unsigned i2c_addr,
++			     unsigned char *buff, unsigned len);
++int aml_lcd_extern_i2c_read(unsigned char i2c_bus, unsigned i2c_addr,
++			    unsigned char *buff, unsigned int len);
++
++#endif
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_lcd_tcon_data.h b/include/amlogic/aml_lcd_tcon_data.h
+--- a/include/amlogic/aml_lcd_tcon_data.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_lcd_tcon_data.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,251 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_lcd_tcon_data.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef INC_AML_LCD_TCON_DATA_H
++#define INC_AML_LCD_TCON_DATA_H
++
++/* for data block header flag */
++#define LCD_TCON_DATA_VALID_VAC       (1 << 0)
++#define LCD_TCON_DATA_VALID_DEMURA    (1 << 1)
++#define LCD_TCON_DATA_VALID_ACC       (1 << 2)
++#define LCD_TCON_DATA_VALID_DITHER    (1 << 3)
++#define LCD_TCON_DATA_VALID_OD        (1 << 4)
++#define LCD_TCON_DATA_VALID_LOD       (1 << 5)
++
++/* for tconless data format */
++/* for tconless data block type */
++#define LCD_TCON_DATA_BLOCK_TYPE_BASIC_INIT     0x00
++#define LCD_TCON_DATA_BLOCK_TYPE_DEMURA_SET     0x01
++#define LCD_TCON_DATA_BLOCK_TYPE_DEMURA_LUT     0x02
++#define LCD_TCON_DATA_BLOCK_TYPE_ACC_LUT        0x03
++#define LCD_TCON_DATA_BLOCK_TYPE_DITHER_LUT     0x04
++#define LCD_TCON_DATA_BLOCK_TYPE_OD_LUT         0x05
++#define LCD_TCON_DATA_BLOCK_TYPE_LOD_LUT        0x06
++#define LCD_TCON_DATA_BLOCK_TYPE_VAC            0x11
++#define LCD_TCON_DATA_BLOCK_TYPE_EXT            0xe0 /* pmu */
++#define LCD_TCON_DATA_BLOCK_TYPE_MAX            0xff
++
++/* for tconless data block part type */
++#define LCD_TCON_DATA_PART_TYPE_WR_N            0xd0
++#define LCD_TCON_DATA_PART_TYPE_WR_DDR          0xdd
++#define LCD_TCON_DATA_PART_TYPE_WR_MASK         0xb0
++#define LCD_TCON_DATA_PART_TYPE_RD_MASK         0xab
++#define LCD_TCON_DATA_PART_TYPE_CHK_WR_MASK     0xcb
++#define LCD_TCON_DATA_PART_TYPE_CHK_EXIT        0xce
++#define LCD_TCON_DATA_PART_TYPE_PARAM           0xf0 /* only for tool */
++#define LCD_TCON_DATA_PART_TYPE_CONTROL         0xfc
++#define LCD_TCON_DATA_PART_TYPE_DELAY           0xfd
++
++#define LCD_TCON_DATA_PART_FLAG_TUNINTG_LUT     0x00
++#define LCD_TCON_DATA_PART_FLAG_FIXED_LUT       0x10
++#define LCD_TCON_DATA_PART_FLAG_TUNINTG_REG     0x01
++#define LCD_TCON_DATA_PART_FLAG_FIXED_REG       0x11
++#define LCD_TCON_DATA_PART_FLAG_TUNINTG_PARAM   0x0f
++#define LCD_TCON_DATA_PART_FLAG_FIXED_PARAM     0x1f
++
++#define LCD_TCON_DATA_BLOCK_HEADER_SIZE         64
++#define LCD_TCON_DATA_BLOCK_NAME_SIZE           36
++#define LCD_TCON_DATA_PART_NAME_SIZE            48
++#define LCD_TCON_INIT_BIN_NAME_SIZE             28
++#define LCD_TCON_INIT_BIN_VERSION_SIZE          8
++
++/* tcon data control define */
++/* block_ctrl */
++#define LCD_TCON_DATA_CTRL_FLAG_MULTI           0x01
++#define LCD_TCON_DATA_CTRL_FLAG_DLG             0xd0
++/* ctrl_method */
++#define LCD_TCON_DATA_CTRL_DEFAULT              0x00
++#define LCD_TCON_DATA_CTRL_MULTI_VFREQ          0x01
++#define LCD_TCON_DATA_CTRL_MULTI_BL_LEVEL       0x11
++#define LCD_TCON_DATA_CTRL_MULTI_BL_PWM_DUTY    0x12
++
++struct lcd_tcon_init_block_header_s {
++	unsigned int crc32;
++	unsigned short h_active;
++	unsigned short v_active;
++	unsigned int block_size;
++	unsigned short header_size;
++	unsigned short reserved1;
++	unsigned short block_type;
++	unsigned short block_ctrl;
++	unsigned char reserved2[5];
++	unsigned char data_byte_width;
++	unsigned short chipid;
++	unsigned char name[LCD_TCON_INIT_BIN_NAME_SIZE];
++	char version[LCD_TCON_INIT_BIN_VERSION_SIZE];
++};
++
++struct lcd_tcon_data_block_header_s {
++	unsigned int crc32;
++	unsigned int raw_data_check;/* crc */
++	unsigned int block_size;
++	unsigned short header_size;
++	unsigned short ext_header_size;
++	unsigned short block_type;
++	unsigned short block_ctrl;
++	unsigned int block_flag;
++	unsigned short init_priority; /*invalid*/
++	unsigned short chipid;
++	unsigned char name[LCD_TCON_DATA_BLOCK_NAME_SIZE];
++};
++
++struct lcd_tcon_data_block_ext_header_s {
++	unsigned short part_cnt;
++	unsigned char part_mapping_byte;
++	unsigned char reserved[13];
++};
++
++#define LCD_TCON_DATA_PART_CTRL_SIZE_PRE    (LCD_TCON_DATA_PART_NAME_SIZE + 12)
++struct lcd_tcon_data_part_ctrl_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned short ctrl_data_flag;
++	unsigned short ctrl_method;
++	unsigned short data_byte_width;
++	unsigned short data_cnt;
++};
++
++#define LCD_TCON_DATA_PART_WR_N_SIZE_PRE    (LCD_TCON_DATA_PART_NAME_SIZE + 12)
++struct lcd_tcon_data_part_wr_n_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned char reg_addr_byte;
++	unsigned char reg_data_byte;
++	unsigned char reg_inc;
++	unsigned char reg_cnt;
++	unsigned int data_cnt;
++};
++
++#define LCD_TCON_DATA_PART_WR_DDR_SIZE_PRE  (LCD_TCON_DATA_PART_NAME_SIZE + 12)
++struct lcd_tcon_data_part_wr_ddr_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned short axi_buf_id;
++	unsigned short data_byte;
++	unsigned int data_cnt;
++};
++
++#define LCD_TCON_DATA_PART_WR_MASK_SIZE_PRE    (LCD_TCON_DATA_PART_NAME_SIZE + 6)
++struct lcd_tcon_data_part_wr_mask_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned char reg_addr_byte;
++	unsigned char reg_data_byte;
++};
++
++#define LCD_TCON_DATA_PART_RD_MASK_SIZE_PRE    (LCD_TCON_DATA_PART_NAME_SIZE + 6)
++struct lcd_tcon_data_part_rd_mask_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned char reg_addr_byte;
++	unsigned char reg_data_byte;
++};
++
++#define LCD_TCON_DATA_PART_CHK_WR_MASK_SIZE_PRE    (LCD_TCON_DATA_PART_NAME_SIZE + 9)
++struct lcd_tcon_data_part_chk_wr_mask_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned char reg_chk_addr_byte;
++	unsigned char reg_chk_data_byte;
++	unsigned char reg_wr_addr_byte;
++	unsigned char reg_wr_data_byte;
++	unsigned char data_chk_cnt;
++};
++
++#define LCD_TCON_DATA_PART_CHK_EXIT_SIZE_PRE    (LCD_TCON_DATA_PART_NAME_SIZE + 6)
++struct lcd_tcon_data_part_chk_exit_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned char reg_addr_byte;
++	unsigned char reg_data_byte;
++};
++
++#define LCD_TCON_DATA_PART_DELAY_SIZE    (LCD_TCON_DATA_PART_NAME_SIZE + 8)
++struct lcd_tcon_data_part_delay_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned int delay_us;
++};
++
++#define LCD_TCON_DATA_PART_PARAM_SIZE_PRE    (LCD_TCON_DATA_PART_NAME_SIZE + 8)
++struct lcd_tcon_data_part_param_s {
++	char name[LCD_TCON_DATA_PART_NAME_SIZE];
++	unsigned short part_id;
++	unsigned char tuning_flag;
++	unsigned char part_type;
++	unsigned int param_size;
++};
++
++union lcd_tcon_data_part_u {
++	struct lcd_tcon_data_part_ctrl_s *ctrl;
++	struct lcd_tcon_data_part_wr_n_s *wr_n;
++	struct lcd_tcon_data_part_wr_ddr_s *wr_ddr;
++	struct lcd_tcon_data_part_wr_mask_s *wr_mask;
++	struct lcd_tcon_data_part_rd_mask_s *rd_mask;
++	struct lcd_tcon_data_part_chk_wr_mask_s *chk_wr_mask;
++	struct lcd_tcon_data_part_chk_exit_s *chk_exit;
++	struct lcd_tcon_data_part_delay_s *delay;
++	struct lcd_tcon_data_part_param_s *param;
++};
++
++#define LCD_UKEY_TCON_SPI_BLOCK_SIZE_PRE          20
++struct lcd_tcon_spi_block_s {
++	unsigned short data_type;
++	unsigned short data_index; /* tcon_data_index, equal to init priority */
++	unsigned int data_flag;
++	unsigned int spi_offset;
++	unsigned int spi_size;
++	unsigned int param_cnt;
++
++	unsigned int data_raw_check; //crc...
++	unsigned int data_temp_size;
++	unsigned int data_new_size;
++
++	unsigned int *param;
++	unsigned char *raw_buf;
++	unsigned char *temp_buf;
++	unsigned char *new_buf;
++};
++
++struct lcd_tcon_spi_s {
++	unsigned short version;
++	unsigned int block_cnt;
++	unsigned int init_flag;
++	struct lcd_tcon_spi_block_s **spi_block;
++
++	unsigned char *ext_buf;
++	unsigned int ext_init_on_cnt;
++	unsigned int ext_init_off_cnt;
++
++	int (*data_read)(struct lcd_tcon_spi_block_s *spi_block);
++	int (*data_conv)(struct lcd_tcon_spi_block_s *spi_block);
++};
++
++struct lcd_tcon_spi_s *lcd_tcon_spi_get(void);
++
++unsigned int lcd_tcon_data_size_align(unsigned int size);
++unsigned char lcd_tcon_checksum(unsigned char *buf, unsigned int len);
++unsigned char lcd_tcon_lrc(unsigned char *buf, unsigned int len);
++
++#endif /* INC_AML_LCD_VOUT_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_lcd_vout.h b/include/amlogic/aml_lcd_vout.h
+--- a/include/amlogic/aml_lcd_vout.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_lcd_vout.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,669 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_lcd_vout.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef INC_AML_LCD_VOUT_H
++#define INC_AML_LCD_VOUT_H
++
++#include <common.h>
++#include <linux/list.h>
++#ifdef CONFIG_AML_LCD_TCON
++#include <amlogic/aml_lcd_tcon_data.h>
++#endif
++
++/* **********************************
++ * debug print define
++ * ********************************** */
++//#define LCD_DEBUG_INFO
++extern unsigned int lcd_debug_print_flag;
++
++#define LCDPR(fmt, args...)     printf("lcd: "fmt"", ## args)
++#define LCDERR(fmt, args...)    printf("lcd: error: "fmt"", ## args)
++
++/* **********************************
++ * clk parameter bit define
++ * pll_ctrl, div_ctrl, clk_ctrl
++ * ********************************** */
++/* ******** pll_ctrl ******** */
++#define PLL_CTRL_OD3                20 /* [21:20] */
++#define PLL_CTRL_OD2                18 /* [19:18] */
++#define PLL_CTRL_OD1                16 /* [17:16] */
++#define PLL_CTRL_N                  9  /* [13:9] */
++#define PLL_CTRL_M                  0  /* [8:0] */
++
++/* ******** div_ctrl ******** */
++#define DIV_CTRL_EDP_DIV1           24 /* [26:24] */
++#define DIV_CTRL_EDP_DIV0           20 /* [23:20] */
++#define DIV_CTRL_DIV_SEL            8 /* [15:8] */
++#define DIV_CTRL_XD                 0 /* [7:0] */
++
++/* ******** clk_ctrl ******** */
++#define CLK_CTRL_LEVEL              28 /* [30:28] */
++#define CLK_CTRL_FRAC_SHIFT         24 /* [24] */
++#define CLK_CTRL_FRAC               0  /* [18:0] */
++
++
++/* **********************************
++ * VENC to TCON sync delay
++ * ********************************** */
++#define TTL_DELAY                   13
++#define PRE_DE_DELAY                8
++
++
++#define LCD_PINMUX_END          0xff
++#define LCD_PINMUX_NUM          15
++
++/* **********************************
++ * global control define
++ * ********************************** */
++enum lcd_mode_e {
++	LCD_MODE_TV = 0,
++	LCD_MODE_TABLET,
++	LCD_MODE_MAX,
++};
++
++enum lcd_chip_e {
++	LCD_CHIP_GXTVBB = 0,
++	LCD_CHIP_GXL,     	/* 1 */
++	LCD_CHIP_GXM,     	/* 2 */
++	LCD_CHIP_TXL,     	/* 3 */
++	LCD_CHIP_TXLX,    	/* 4 */
++	LCD_CHIP_AXG, 		/* 5 */
++	LCD_CHIP_TXHD, 		/* 6 */
++	LCD_CHIP_G12A, 		/* 7 */
++	LCD_CHIP_G12B, 		/* 8 */
++	LCD_CHIP_TL1, 		/* 9 */
++	LCD_CHIP_SM1,		/* 10 */
++	LCD_CHIP_TM2,		/* 11 */
++	LCD_CHIP_T5,		/* 12 */
++	LCD_CHIP_T5D,		/* 13 */
++	LCD_CHIP_T5W,		/* 14 */
++	LCD_CHIP_MAX,
++};
++
++enum lcd_type_e {
++	LCD_TTL = 0,
++	LCD_LVDS,
++	LCD_VBYONE,
++	LCD_MIPI,
++	LCD_MLVDS,
++	LCD_P2P,
++	LCD_TYPE_MAX,
++};
++
++#define MOD_LEN_MAX        30
++struct lcd_basic_s {
++	char model_name[MOD_LEN_MAX];
++	enum lcd_type_e lcd_type;
++	unsigned char lcd_bits;
++
++	unsigned short h_active; /* Horizontal display area */
++	unsigned short v_active; /* Vertical display area */
++	unsigned short h_period; /* Horizontal total period time */
++	unsigned short v_period; /* Vertical total period time */
++	unsigned short h_period_min;
++	unsigned short h_period_max;
++	unsigned short v_period_min;
++	unsigned short v_period_max;
++	unsigned char frame_rate_min;
++	unsigned char frame_rate_max;
++	unsigned int lcd_clk_min;
++	unsigned int lcd_clk_max;
++
++	unsigned short screen_width;  /* screen physical width in "mm" unit */
++	unsigned short screen_height; /* screen physical height in "mm" unit */
++};
++
++#define LCD_CLK_FRAC_UPDATE     (1 << 0)
++#define LCD_CLK_PLL_CHANGE      (1 << 1)
++struct lcd_timing_s {
++	unsigned char clk_auto; /* clk parameters auto generation */
++	unsigned char fr_adjust_type; /* 0=clock, 1=htotal, 2=vtotal */
++	unsigned char clk_change; /* internal used */
++	unsigned int lcd_clk;   /* pixel clock(unit: Hz) */
++	unsigned int lcd_clk_dft; /* internal used */
++	unsigned int h_period_dft; /* internal used */
++	unsigned int v_period_dft; /* internal used */
++	unsigned int pll_ctrl;  /* pll settings */
++	unsigned int div_ctrl;  /* divider settings */
++	unsigned int clk_ctrl;  /* clock settings */
++	unsigned int bit_rate; /* Hz */
++
++	unsigned int ss_level; /* [15:12]: ss_freq, [11:8]: ss_mode,
++				* [7:0]: ss_level
++				*/
++
++	unsigned short sync_duration_num;
++	unsigned short sync_duration_den;
++
++	unsigned short video_on_pixel;
++	unsigned short video_on_line;
++
++	unsigned short hsync_width;
++	unsigned short hsync_bp;
++	unsigned short hsync_pol;
++	unsigned short vsync_width;
++	unsigned short vsync_bp;
++	unsigned short vsync_pol;
++	/* unsigned int vsync_h_phase; // [31]sign, [15:0]value */
++	unsigned int h_offset;
++	unsigned int v_offset;
++
++	unsigned short de_hs_addr;
++	unsigned short de_he_addr;
++	unsigned short de_vs_addr;
++	unsigned short de_ve_addr;
++
++	unsigned short hs_hs_addr;
++	unsigned short hs_he_addr;
++	unsigned short hs_vs_addr;
++	unsigned short hs_ve_addr;
++
++	unsigned short vs_hs_addr;
++	unsigned short vs_he_addr;
++	unsigned short vs_vs_addr;
++	unsigned short vs_ve_addr;
++};
++
++struct ttl_config_s {
++	unsigned int clk_pol;
++	unsigned int sync_valid; /* [1]DE, [0]hvsync */
++	unsigned int swap_ctrl; /* [1]rb swap, [0]bit swap */
++};
++
++#define LVDS_PHY_VSWING_DFT        3
++#define LVDS_PHY_PREEM_DFT         0
++#define LVDS_PHY_CLK_VSWING_DFT    0
++#define LVDS_PHY_CLK_PREEM_DFT     0
++struct lvds_config_s {
++	unsigned int lvds_repack;
++	unsigned int dual_port;
++	unsigned int pn_swap;
++	unsigned int port_swap;
++	unsigned int lane_reverse;
++	unsigned int port_sel;
++	unsigned int phy_vswing;
++	unsigned int phy_preem;
++	unsigned int phy_clk_vswing;
++	unsigned int phy_clk_preem;
++};
++
++#define VX1_PHY_VSWING_DFT           3
++#define VX1_PHY_PREEM_DFT            0
++
++#define VX1_PWR_ON_RESET_DLY_DFT     500 /* 500ms */
++#define VX1_HPD_DATA_DELAY_DFT       10 /* 10ms */
++#define VX1_CDR_TRAINING_HOLD_DFT    200 /* 200ms */
++
++#define VX1_SW_FILTER_TIME_DFT       10 /* 10*100us=1ms */
++#define VX1_SW_FILTER_CNT_DFT        6
++#define VX1_SW_FILTER_RETRY_CNT_DFT  2
++#define VX1_SW_FILTER_RETRY_DLY_DFT  100 /* 100ms */
++#define VX1_SW_CDR_DET_TIME_DFT      20 /* 20us*100=2ms */
++#define VX1_SW_CDR_DET_CNT_DFT       100
++#define VX1_SW_CDR_TIMEOUT_CNT_DFT   100
++
++struct vbyone_config_s {
++	unsigned int lane_count;
++	unsigned int region_num;
++	unsigned int byte_mode;
++	unsigned int color_fmt;
++	unsigned int phy_div;
++	unsigned int phy_vswing; /*[5:4]:ext_pullup, [3:0]vswing*/
++	unsigned int phy_preem;
++	unsigned int ctrl_flag;
++		/* bit[0]:power_on_reset_en
++		   bit[1]:hpd_data_delay_en
++		   bit[2]:cdr_training_hold_en
++		   bit[3]:hw_filter_en
++		   bit[5:4]:sw_filter */
++
++	/* ctrl timing */
++	unsigned int power_on_reset_delay; /* ms */
++	unsigned int hpd_data_delay; /* ms */
++	unsigned int cdr_training_hold; /* ms */
++	/* hw filter */
++	unsigned int hpd_hw_filter_time; /* ms */
++	unsigned int hpd_hw_filter_cnt;
++	unsigned int lockn_hw_filter_time; /* ms */
++	unsigned int lockn_hw_filter_cnt;
++	/* sw filter */
++	unsigned int vx1_sw_filter_en; /* 0=disable, 1=sw_filter, 2=sw_filter with sw_reset */
++	unsigned int vx1_sw_filter_time; /* 100us base */
++	unsigned int vx1_sw_filter_cnt;
++	unsigned int vx1_sw_filter_retry_cnt;
++	unsigned int vx1_sw_filter_retry_delay; /* ms base */
++	unsigned int vx1_sw_cdr_detect_time; /* us base * 100 times, must cover tcon lockn pulse */
++	unsigned int vx1_sw_cdr_detect_cnt;
++	unsigned int vx1_sw_cdr_timeout_cnt;
++	/* hw filter */
++	unsigned int hw_filter_time;
++	unsigned int hw_filter_cnt;
++};
++
++/* mipi-dsi config */
++/* Operation mode parameters */
++#define OPERATION_VIDEO_MODE     0
++#define OPERATION_COMMAND_MODE   1
++
++#define SYNC_PULSE               0x0
++#define SYNC_EVENT               0x1
++#define BURST_MODE               0x2
++
++/* command config */
++#define DSI_CMD_SIZE_INDEX       1  /* byte[1] */
++#define DSI_GPIO_INDEX           2  /* byte[2] */
++
++#define DSI_INIT_ON_MAX          100
++#define DSI_INIT_OFF_MAX         30
++
++struct dsi_config_s {
++	unsigned char lane_num;
++	unsigned int bit_rate_max; /* MHz */
++	unsigned int bit_rate_min; /* MHz*/
++	unsigned int clk_factor; /* bit_rate/pclk */
++	unsigned int factor_numerator;
++	unsigned int factor_denominator; /* 100 */
++	unsigned char operation_mode_init; /* 0=video mode, 1=command mode */
++	unsigned char operation_mode_display; /* 0=video mode, 1=command mode */
++	unsigned char video_mode_type; /* 0=sync_pulse, 1=sync_event, 2=burst */
++	unsigned char clk_always_hs; /* 0=disable, 1=enable */
++	unsigned char phy_switch; /* 0=auto, 1=standard, 2=slow */
++
++	unsigned int venc_data_width;
++	unsigned int dpi_data_format;
++
++	unsigned char *dsi_init_on;
++	unsigned char *dsi_init_off;
++	unsigned char extern_init;
++
++	unsigned char check_en;
++	unsigned char check_reg;
++	unsigned char check_cnt;
++	unsigned char check_state;
++};
++
++struct mlvds_config_s {
++	unsigned int channel_num;
++	unsigned int channel_sel0;
++	unsigned int channel_sel1;
++	unsigned int clk_phase; /* [13:12]=clk01_sel, [11:8]=pi2, [7:4]=pi1, [3:0]=pi0 */
++	unsigned int pn_swap;
++	unsigned int bit_swap; /* MSB/LSB reverse */
++	unsigned int phy_vswing;
++	unsigned int phy_preem;
++
++	/* internal used */
++	unsigned int pi_clk_sel; /* bit[9:0] */
++};
++
++enum p2p_type_e {
++	P2P_CEDS = 0,
++	P2P_CMPI,
++	P2P_ISP,
++	P2P_EPI,
++	P2P_CHPI = 0x10, /* low common mode */
++	P2P_CSPI,
++	P2P_USIT,
++	P2P_MAX,
++};
++
++struct p2p_config_s {
++	unsigned int p2p_type; /* bit[4:0] for type, bit[5] for vcm flag */
++	unsigned int lane_num;
++	unsigned int channel_sel0;
++	unsigned int channel_sel1;
++	unsigned int pn_swap;
++	unsigned int bit_swap; /* MSB/LSB reverse */
++	unsigned int phy_vswing;
++	unsigned int phy_preem;
++};
++
++struct phy_lane_s {
++	unsigned int preem;
++	unsigned int amp;
++};
++
++#define CH_LANE_MAX 32
++struct phy_config_s {
++	unsigned int flag;
++	unsigned int vswing;
++	unsigned int vcm;
++	unsigned int ext_pullup;
++	unsigned int odt;
++	unsigned int ref_bias;
++	unsigned int mode;
++	unsigned int weakly_pull_down;
++	struct phy_lane_s lane[CH_LANE_MAX];
++	unsigned int lane_num;
++	unsigned int vswing_level;
++	unsigned int preem_level;
++};
++
++struct lcd_ctrl_config_s {
++	struct ttl_config_s *ttl_config;
++	struct lvds_config_s *lvds_config;
++	struct vbyone_config_s *vbyone_config;
++	struct dsi_config_s *mipi_config;
++	struct mlvds_config_s *mlvds_config;
++	struct p2p_config_s *p2p_config;
++	struct phy_config_s *phy_cfg;
++};
++
++/* **********************************
++ * power control define
++ * ********************************** */
++enum lcd_power_type_e {
++	LCD_POWER_TYPE_CPU = 0,
++	LCD_POWER_TYPE_PMU,                 /* 1 */
++	LCD_POWER_TYPE_SIGNAL,              /* 2 */
++	LCD_POWER_TYPE_EXTERN,              /* 3 */
++	LCD_POWER_TYPE_WAIT_GPIO,           /* 4 */
++	LCD_POWER_TYPE_CLK_SS,              /* 5 */
++	LCD_POWER_TYPE_TCON_SPI_DATA_LOAD,  /* 6 */
++	LCD_POWER_TYPE_MAX,
++};
++
++enum lcd_pmu_gpio_e {
++	LCD_PMU_GPIO0 = 0,
++	LCD_PMU_GPIO1,
++	LCD_PMU_GPIO2,
++	LCD_PMU_GPIO3,
++	LCD_PMU_GPIO4,
++	LCD_PMU_GPIO_MAX,
++};
++
++#define LCD_CLK_SS_BIT_FREQ             0
++#define LCD_CLK_SS_BIT_MODE             4
++
++#define LCD_GPIO_MAX                    0xff
++#define LCD_GPIO_OUTPUT_LOW             0
++#define LCD_GPIO_OUTPUT_HIGH            1
++#define LCD_GPIO_INPUT                  2
++
++/* Power Control */
++#define LCD_CPU_GPIO_NUM_MAX         10
++#define LCD_CPU_GPIO_NAME_MAX        10
++#define LCD_PMU_GPIO_NUM_MAX         3
++
++#define LCD_PWR_STEP_MAX             15
++struct lcd_power_step_s {
++	unsigned char type;
++	int index; /* point to lcd_cpu_gpio_s or lcd_pmu_gpio_s or lcd_extern */
++	unsigned short value;
++	unsigned short delay;
++};
++
++struct lcd_power_ctrl_s {
++	char cpu_gpio[LCD_CPU_GPIO_NUM_MAX][LCD_CPU_GPIO_NAME_MAX];
++	int *pmu_gpio;
++	struct lcd_power_step_s power_on_step[LCD_PWR_STEP_MAX];
++	struct lcd_power_step_s power_off_step[LCD_PWR_STEP_MAX];
++};
++
++#define LCD_PINMX_MAX              10
++#define BL_PINMUX_MAX              20
++#define LCD_PINMUX_NAME_LEN_MAX    30
++struct lcd_pinmux_ctrl_s {
++	char *name;
++	unsigned int pinmux_set[LCD_PINMUX_NUM][2];
++	unsigned int pinmux_clr[LCD_PINMUX_NUM][2];
++};
++
++struct lcd_duration_s {
++	unsigned int frame_rate;
++	unsigned int duration_num;
++	unsigned int duration_den;
++	unsigned int frac;
++};
++
++struct cus_ctrl_config_s {
++	unsigned int flag;
++	unsigned char dlg_flag;
++
++};
++
++#define LCD_ENABLE_RETRY_MAX    3
++struct lcd_config_s {
++	unsigned char lcd_mode;
++	unsigned char lcd_key_valid;
++	unsigned char lcd_clk_path; /* 0=hpll, 1=gp0_pll */
++	unsigned char retry_enable_flag;
++	unsigned char retry_enable_cnt;
++	unsigned int output_vmode;
++	unsigned int backlight_index;
++	struct lcd_basic_s lcd_basic;
++	struct lcd_timing_s lcd_timing;
++	struct lcd_ctrl_config_s lcd_control;
++	struct lcd_power_ctrl_s *lcd_power;
++	struct lcd_duration_s *std_duration;
++	unsigned char pinctrl_ver;
++	unsigned char customer_pinmux;
++	unsigned char fr_auto_dis;
++	struct cus_ctrl_config_s cus_ctrl;
++	struct lcd_pinmux_ctrl_s *lcd_pinmux;
++	unsigned int pinmux_set[LCD_PINMUX_NUM][2];
++	unsigned int pinmux_clr[LCD_PINMUX_NUM][2];
++};
++
++extern struct lcd_config_s lcd_config_dft;
++
++/* ==============backlight control config================== */
++enum bl_ctrl_method_e {
++	BL_CTRL_GPIO = 0,
++	BL_CTRL_PWM,
++	BL_CTRL_PWM_COMBO,
++	BL_CTRL_LOCAL_DIMMING,
++	BL_CTRL_EXTERN,
++	BL_CTRL_MAX,
++};
++
++enum bl_pwm_method_e {
++	BL_PWM_NEGATIVE = 0,
++	BL_PWM_POSITIVE,
++	BL_PWM_METHOD_MAX,
++};
++
++enum bl_pwm_port_e {
++	BL_PWM_A = 0,
++	BL_PWM_B,
++	BL_PWM_C,
++	BL_PWM_D,
++	BL_PWM_E,
++	BL_PWM_F,
++	BL_PWM_G,
++	BL_PWM_H,
++	BL_PWM_I,
++	BL_PWM_J,
++	BL_PWM_AO_A = 0x50,
++	BL_PWM_AO_B,
++	BL_PWM_AO_C,
++	BL_PWM_AO_D,
++	BL_PWM_AO_E,
++	BL_PWM_AO_F,
++	BL_PWM_AO_G,
++	BL_PWM_AO_H,
++	BL_PWM_VS = 0xa0,
++	BL_PWM_MAX = 0xff,
++};
++
++enum bl_off_policy_e {
++	BL_OFF_POLICY_NONE = 0,
++	BL_OFF_POLICY_ALWAYS,
++	BL_OFF_POLICY_ONCE,
++	BL_OFF_POLICY_MAX,
++};
++
++#define XTAL_FREQ_HZ		(24*1000*1000) /* 24M in HZ */
++#define XTAL_HALF_FREQ_HZ	(24*1000*500)  /* 24M/2 in HZ */
++
++#define BL_FREQ_DEFAULT			1000 /* unit: HZ */
++#define BL_FREQ_VS_DEFAULT		2    /* multiple 2 of vfreq */
++
++#define BL_LEVEL_MAX		255
++#define BL_LEVEL_MIN		10
++#define BL_LEVEL_OFF		1
++
++#define BL_LEVEL_MID		128
++#define BL_LEVEL_MID_MAPPED	BL_LEVEL_MID //102
++#define BL_LEVEL_DEFAULT	BL_LEVEL_MID
++
++#define BL_GPIO_NUM_MAX		5
++
++struct bl_pwm_config_s {
++	unsigned int index;
++	enum bl_pwm_method_e pwm_method;
++	enum bl_pwm_port_e pwm_port;
++	unsigned int level_max;
++	unsigned int level_min;
++	unsigned int pwm_freq; /* pwm_vs: 1~4(vfreq), pwm: freq(unit: Hz) */
++	unsigned int pwm_duty; /* unit: % */
++	unsigned int pwm_duty_max; /* unit: % */
++	unsigned int pwm_duty_min; /* unit: % */
++	unsigned int pwm_cnt; /* internal used for pwm control */
++	unsigned int pwm_pre_div; /* internal used for pwm control */
++	unsigned int pwm_max; /* internal used for pwm control */
++	unsigned int pwm_min; /* internal used for pwm control */
++	unsigned int pwm_level; /* internal used for pwm control */
++	unsigned int pwm_gpio;
++	unsigned int pwm_gpio_off;
++	unsigned int pinmux_flag;
++	unsigned int pinmux_set[LCD_PINMUX_NUM][2];
++	unsigned int pinmux_clr[LCD_PINMUX_NUM][2];
++};
++
++struct bl_config_s {
++	unsigned char bl_key_valid;
++	char name[20];
++	int level_default;
++	int level_min;
++	int level_max;
++	int level_mid;
++	int level_mid_mapping;
++	int level;
++
++	enum bl_ctrl_method_e method;
++	unsigned int en_gpio;
++	unsigned int en_gpio_on;
++	unsigned int en_gpio_off;
++	unsigned short power_on_delay;
++	unsigned short power_off_delay;
++	unsigned int dim_max;
++	unsigned int dim_min;
++	unsigned int en_sequence_reverse;
++
++	struct bl_pwm_config_s *bl_pwm;
++	struct bl_pwm_config_s *bl_pwm_combo0;
++	struct bl_pwm_config_s *bl_pwm_combo1;
++	unsigned int pwm_on_delay;
++	unsigned int pwm_off_delay;
++
++	char gpio_name[BL_GPIO_NUM_MAX][LCD_CPU_GPIO_NAME_MAX];
++	unsigned char pinctrl_ver;
++	struct lcd_pinmux_ctrl_s *bl_pinmux;
++	unsigned int pinmux_set[10][2];
++	unsigned int pinmux_clr[10][2];
++	int bl_extern_index;
++};
++
++extern struct bl_config_s bl_config_dft;
++
++#define LCD_INIT_LEVEL_NORMAL         0
++#define LCD_INIT_LEVEL_PWR_OFF        1
++#define LCD_INIT_LEVEL_KERNEL_ON      2
++/*
++ *     high 12bit for debug flag
++ *bit[31:30]: lcd mode(0=normal, 1=tv; 2=tablet, 3=TBD)
++ *bit[29:28]: lcd debug para source(0=normal, 1=dts, 2=unifykey,
++ *3=bsp for uboot)
++ *bit[27:24]: lcd test pattern
++ *bit[23:20]:  lcd debug print flag
++ *
++ *     low 20bit for debug flag
++ *bit[19:18]: lcd_init_level
++ *bit[17]: reserved
++ *bit[16]: custom pinmux flag
++ *bit[15:8]: advanced flag(p2p_type when lcd_type=p2p)
++ *bit[7:4]: lcd bits
++ **bit[3:0]: lcd_type
++ */
++struct lcd_boot_ctrl_s {
++	unsigned char lcd_type;
++	unsigned char lcd_bits;
++	unsigned char lcd_init_level;
++	unsigned char lcd_advanced_flag;
++	unsigned char lcd_debug_print;
++	unsigned char lcd_debug_test;
++	unsigned char lcd_debug_para;
++	unsigned char lcd_debug_mode;
++	unsigned char lcd_custom_pinmux;
++};
++
++/* ==============lcd driver================== */
++struct aml_lcd_drv_s {
++	char version[15];
++	enum lcd_chip_e chip_type;
++	char rev_type;
++	unsigned char lcd_status;
++
++	struct lcd_config_s *lcd_config;
++	struct bl_config_s *bl_config;
++
++	int  (*outputmode_check)(char *mode, unsigned int frac);
++	int  (*config_check)(char *mode, unsigned int frac);
++	void (*driver_init_pre)(void);
++	int  (*driver_init)(void);
++	void (*driver_disable)(void);
++	void (*list_support_mode)(void);
++	int  (*lcd_probe)(void);
++	int  (*lcd_outputmode_check)(char *mode, unsigned int frac);
++	void (*lcd_prepare)(char *mode, unsigned int frac);
++	void (*lcd_enable)(char *mode, unsigned int frac);
++	void (*lcd_disable)(void);
++	void (*lcd_set_ss)(unsigned int level, unsigned int freq, unsigned int mode);
++	void (*lcd_get_ss)(void);
++	void (*lcd_test)(int num);
++	int (*lcd_prbs)(unsigned int s, unsigned int mode_flag);
++	void (*lcd_clk)(void);
++	void (*lcd_info)(void);
++	void (*lcd_reg)(void);
++	void (*lcd_tcon_reg_print)(void);
++	void (*lcd_tcon_table_print)(void);
++	void (*lcd_tcon_vac_print)(void);
++	void (*lcd_tcon_demura_print)(void);
++	void (*lcd_tcon_acc_print)(void);
++	void (*lcd_tcon_data_print)(unsigned char index);
++	void (*lcd_tcon_spi_print)(void);
++	int (*lcd_tcon_spi_data_load)(void);
++	unsigned int (*lcd_tcon_reg_read)(unsigned int addr, unsigned int flag);
++	void (*lcd_tcon_reg_write)(unsigned int addr, unsigned int val, unsigned int flag);
++	unsigned int (*lcd_tcon_table_read)(unsigned int addr);
++	unsigned int (*lcd_tcon_table_write)(unsigned int addr, unsigned int val);
++	void (*lcd_vbyone_rst)(void);
++	void (*lcd_vbyone_cdr)(void);
++	void (*bl_on)(void);
++	void (*bl_off)(void);
++	void (*set_bl_level)(int level);
++	int  (*get_bl_level)(void);
++	void (*bl_config_print)(void);
++	int unifykey_test_flag;
++	void (*unifykey_test)(void);
++	void (*unifykey_dump)(unsigned int);
++	void (*debug_print_set)(unsigned int flag);
++
++	/* for factory test */
++	struct lcd_power_step_s *factory_lcd_power_on_step;
++	int factory_bl_power_on_delay;
++};
++
++extern void lcd_config_bsp_init(void);
++
++extern struct aml_lcd_drv_s *aml_lcd_get_driver(void);
++
++extern int lcd_probe(void);
++
++#endif /* INC_AML_LCD_VOUT_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_ldim.h b/include/amlogic/aml_ldim.h
+--- a/include/amlogic/aml_ldim.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_ldim.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,104 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_ldim.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef INC_AML_BL_LDIM_H
++#define INC_AML_BL_LDIM_H
++
++#include <common.h>
++#include <linux/list.h>
++#include <amlogic/aml_lcd.h>
++#include <spi.h>
++
++enum ldim_dev_type_e {
++	LDIM_DEV_TYPE_NORMAL = 0,
++	LDIM_DEV_TYPE_SPI,
++	LDIM_DEV_TYPE_I2C,
++	LDIM_DEV_TYPE_MAX,
++};
++
++#define LDIM_INIT_ON_MAX     500
++#define LDIM_INIT_OFF_MAX    20
++
++struct ldim_config_s {
++	unsigned char row;
++	unsigned char col;
++};
++
++struct ldim_dev_config_s {
++	char name[20];
++	char pinmux_name[20];
++	unsigned char type;
++	int cs_hold_delay;
++	int cs_clk_delay;
++	int en_gpio;
++	int en_gpio_on;
++	int en_gpio_off;
++	int lamp_err_gpio;
++	unsigned char fault_check;
++	unsigned char write_check;
++
++	unsigned int dim_min;
++	unsigned int dim_max;
++
++	unsigned char init_loaded;
++	unsigned char cmd_size;
++	unsigned char *init_on;
++	unsigned char *init_off;
++	unsigned int init_on_cnt;
++	unsigned int init_off_cnt;
++
++	unsigned char pinctrl_ver;
++	struct lcd_pinmux_ctrl_s *ldim_pinmux;
++	struct bl_pwm_config_s ldim_pwm_config;
++	struct bl_pwm_config_s analog_pwm_config;
++	void (*dim_range_update)(void);
++
++	char gpio_name[BL_GPIO_NUM_MAX][LCD_CPU_GPIO_NAME_MAX];
++
++	unsigned short bl_regnum;
++	unsigned int device_count;
++};
++
++#define LDIM_SPI_NAME_MAX    30
++struct ldim_spi_dev_info_s {
++	char modalias[20];
++	char spi_name[LDIM_SPI_NAME_MAX];
++	int mode;
++	int max_speed_hz;
++	int bus_num;
++	int chip_select;
++	int wordlen;
++
++	struct spi_slave *spi;
++};
++
++/*******global API******/
++struct aml_ldim_driver_s {
++	int valid_flag;
++	int dev_index;
++	struct ldim_config_s *ldim_conf;
++	struct ldim_dev_config_s *ldev_conf;
++	unsigned short *ldim_matrix_buf;
++	int (*power_on)(void);
++	int (*power_off)(void);
++	int (*set_level)(unsigned int level);
++	void (*config_print)(void);
++	int (*pinmux_ctrl)(int status);
++	void (*device_config_print)(void);
++	int (*device_power_on)(void);
++	int (*device_power_off)(void);
++	int (*device_bri_update)(unsigned short *buf, unsigned char len);
++	struct ldim_spi_dev_info_s *spi_info;
++};
++
++extern struct ldim_dev_config_s ldim_config_dft;
++
++extern struct aml_ldim_driver_s *aml_ldim_get_driver(void);
++extern int aml_ldim_probe(char *dt_addr, int flag); /* flag: 0=dts, 1=bsp, 2=unifykey */
++
++#endif /* INC_AML_BL_LDIM_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_led.h b/include/amlogic/aml_led.h
+--- a/include/amlogic/aml_led.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_led.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,76 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_led.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AML_LED_H__
++#define __AML_LED_H__
++
++#define LED_TIMER_INTERVAL 10 //ms
++
++#define LED_EVENT_NULL 0
++#define LED_EVENT_OFF 1
++#define LED_EVENT_ON 2
++#define LED_EVENT_FLASH 3
++#define LED_EVENT_BREATH 4
++
++#define SHUTDOWN_MODE 0
++#define SUSPEND_RESUME_MODE 1
++#define RECOVERY_MODE 2
++
++
++enum led_workmode {
++	LWM_OFF,
++	LWM_ON,
++	LWM_FLASH,
++	LWM_BREATH,
++	LWM_NULL,
++};
++
++/* s,b,w type is enum led_workmode */
++#define lwm_set_standby(mode, s) do {mode |= (s) << 0;} while(0)
++#define lwm_set_booting(mode, b) do {mode |= (b) << 4;} while(0)
++#define lwm_set_working(mode, w) do {mode |= (w) << 8;} while(0)
++#define lwm_set_suspend(mode, s) do {mode |= (s) << 12;} while(0)
++
++#define lwm_get_standby(mode) (((mode) >> 0) & 0xF)
++#define lwm_get_booting(mode) (((mode) >> 4) & 0xF)
++#define lwm_get_working(mode) (((mode) >> 8) & 0xF)
++#define lwm_get_suspend(mode) (((mode) >> 12) & 0xF)
++
++struct coord {
++	int x;
++	int y;
++};
++
++struct aml_led_config {
++	int off_brightness;
++	int on_brightness;
++	int flash_off_brightness;
++	int flash_off_time;
++	int flash_on_brightness;
++	int flash_on_time;
++	struct coord *breath_inflections;
++	int breath_inflections_num;
++	void (*set_brightness)(int brightness);
++};
++
++#define LED_EVENT_BUF_SIZE 3
++struct aml_led {
++	int event[LED_EVENT_BUF_SIZE];
++	int event_data[LED_EVENT_BUF_SIZE];
++	int state;
++	int brightness;
++	int time;
++	int count;
++	struct aml_led_config *config;
++};
++
++void aml_led_init(struct aml_led *led, struct aml_led_config *config);
++void aml_led_timer_proc(struct aml_led *led);
++void aml_led_event(struct aml_led *led, int event, int event_data);
++
++#endif
+\ No newline at end of file
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_mmc.h b/include/amlogic/aml_mmc.h
+--- a/include/amlogic/aml_mmc.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_mmc.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,75 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_mmc.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AML_MMC_H__
++#define __AML_MMC_H__
++
++#include <common.h>
++
++/* bootloader operation */
++#define AML_BL_USER		(0x1 << 0)
++#define AML_BL_BOOT0	(0x1 << 1)
++#define AML_BL_BOOT1	(0x1 << 2)
++#define AML_BL_BOOT     (0x6)
++#define AML_BL_ALL		(0x7)
++
++#define VPART_PROPERTY_SIZE sizeof(struct vpart_property)
++struct vpart_property {
++	u32 addr;
++	u32 size;
++};
++
++/*
++ * sizeof(struct storage_emmc_boot_info) is strictly
++ * smaller than or equal to one sector. we will bind
++ * it in one sector with u-boot.bin together and
++ * write into boot loader area.
++ * @rsv_base_addr : the sector address of reserved area
++ * @dtb  : the sector address and size of dtb property
++ * @ddr  : the sector address and size of ddr property
++ */
++#define EMMC_BOOT_INFO_SIZE	512
++struct storage_emmc_boot_info {
++	u32 version;
++	u32 rsv_base_addr;
++	struct vpart_property dtb;
++	struct vpart_property ddr;
++	u8 reserved[512 - 2 * VPART_PROPERTY_SIZE - 12];
++	u32 checksum;
++};
++
++int amlmmc_write_bootloader(int dev, int map,
++		unsigned int size, const void *src);
++int amlmmc_erase_bootloader(int dev, int map);
++
++
++/* interface on reserved area. */
++void mmc_write_cali_mattern(void *addr);
++
++/* dtb operation */
++int dtb_write(void *addr);
++
++/* emmc key operation */
++int mmc_key_read(unsigned char *buf,
++		unsigned int size, uint32_t *actual_lenth);
++int mmc_key_write(unsigned char *buf,
++		unsigned int size, uint32_t *actual_lenth);
++int mmc_key_erase(void);
++
++/* partition operation */
++int renew_partition_tbl(unsigned char *buffer);
++int find_dev_num_by_partition_name (char *name);
++
++#ifdef CONFIG_AML_PARTITION
++int emmc_update_mbr(unsigned char *buffer);
++#endif
++
++/*mmc ext_csd register operation*/
++int mmc_get_ext_csd(struct mmc *mmc, u8 *ext_csd);
++int mmc_set_ext_csd(struct mmc *mmc, u8 index, u8 value);
++#endif /* __AML_MMC_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_nand.h b/include/amlogic/aml_nand.h
+--- a/include/amlogic/aml_nand.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_nand.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_nand.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AML_NAND_H__
++#define __AML_NAND_H__
++
++int amlnf_dtb_save(u8 *buf, unsigned int len);
++int amlnf_dtb_erase(void);
++int get_boot_num(struct mtd_info *mtd, size_t rwsize);
++
++#define RESERVED_BLOCK_NUM 48
++
++#endif/* __AML_NAND_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_tlv.h b/include/amlogic/aml_tlv.h
+--- a/include/amlogic/aml_tlv.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_tlv.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,133 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_tlv.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AMLOGIC_TLV_H_
++#define __AMLOGIC_TLV_H_
++
++typedef struct __s_bl2_tlv_item_t{
++	unsigned    int    nType;   //type: user defined, should sync between BL2 and BL3X
++	unsigned    int    nLength; //length: length of szContent, no alignment
++	unsigned    int    nStoreLength; //length: length of szContent, alignment to 16
++	unsigned    char   szRserved1[4];//reserved for future
++	struct __s_bl2_tlv_item_t * pNextItem;//next item, list for fetch all quickly
++	unsigned    char   szContent[4]; //data transfered from BL2
++}s_bl2_tlv_item_t;
++
++typedef struct __s_bl2_to_bl3x_hdr_t{
++	unsigned    int    nMagic;         //magic for identify itself, AML_BL2_TMASTER_MAGIC (@BL2)
++	unsigned    int    nVersion;       //version for control
++	unsigned    int    nHeadSize;      //sizeof(this)
++	unsigned    char   szRserved1[4];  //reserved for furture
++
++	unsigned    char   szBL2Info[96];  //BL2 build information
++
++	s_bl2_tlv_item_t * pNextBlob;      //next active valid blob item
++	unsigned    int    nTLVCount;      //current valid TLV item number
++	unsigned    int    nTotalSize;     //total size of all TLV items
++	unsigned    char   szSHA2TLV[32];  //SHA2 of all TLV items, size is nTotalSize
++
++} s_bl2_to_bl3x_hdr_t;
++
++typedef struct __s_bl2_to_bl3x_send_t{
++
++	s_bl2_to_bl3x_hdr_t hdr;
++
++	unsigned     char   szSHA2Head[32];
++
++	s_bl2_tlv_item_t	blob[1];
++
++} s_bl2_to_bl3x_send_t;
++
++typedef enum{
++	e_ok_ret      = 0,
++
++	e_err_not_support = 0x01,
++
++	e_err_no_item = 0x10,
++	e_err_sha_hdr = 0x11,
++	e_err_sha_tlv = 0x12,
++
++	e_err_in_data = 0x20,
++	e_err_in_size = 0x21,
++	e_err_over_size=0x22,
++	e_err_item_exit=0x23,
++
++}e_ret_type;
++
++typedef enum{
++	e_t_ap_ver    = 0x10,
++	e_t_scp_ver   = 0x11,
++	e_t_sp_ver    = 0x12,
++	e_t_bl2z_ver  = 0x13,
++	e_t_bl30_ver  = 0x14,
++	e_t_bl301_ver = 0x15,
++	e_t_bl31_ver  = 0x16,
++	e_t_bl32_ver  = 0x17,
++	e_t_bl33_ver  = 0x18,
++
++	e_t_root_aes          = 0x20,
++	e_t_root_rsa_sha_all  = 0x21,
++	e_t_root_rsa_sha  	  = 0x22,
++	e_t_root_rsa_puk      = 0x23,
++
++	e_t_user_aes          = 0x30,
++	e_t_user_rsa_sha_all  = 0x31,
++	e_t_user_rsa_sha  	  = 0x32,
++	e_t_user_rsa_puk  	  = 0x33,
++
++	e_t_bl30_rsa_puk      = 0x50,
++	e_t_bl30_aes          = 0x51,
++
++	e_t_bl31_rsa_puk	  = 0x60,
++	e_t_bl31_aes          = 0x61,
++
++	e_t_bl32_rsa_puk      = 0x70,
++	e_t_bl32_aes          = 0x71,
++
++	e_t_bl33_rsa_puk      = 0x80,
++	e_t_bl33_aes          = 0x81,
++
++
++	//....
++
++}e_item_type;
++
++
++//magic ID
++#define	 AML_BL2_TMASTER_MAGIC     (0x324c4240) 	//@BL2
++
++//major & minor version
++#define  AML_BL2_TMASTER_MAJ_VER   (0x00)         //major version
++#define	 AML_BL2_TMASTER_MIN_VER   (0x01)			    //minor version
++#define	 AML_BL2_TMASTER_VERSION   ((AML_BL2_TMASTER_MAJ_VER << 16) |\
++									AML_BL2_TMASTER_MIN_VER)        //major << 16 | minor version
++
++//item data length alignment
++#define  AML_BL2_TMASTER_ITEM_UNIT_LEN            (16)
++#define  AML_BL2_TMASTER_ITEM_ALIGN_LEN(len)      ((len) + (AML_BL2_TMASTER_ITEM_UNIT_LEN-1)) & (~(AML_BL2_TMASTER_ITEM_UNIT_LEN-1))
++
++//CFG reg to store DDR address
++#define  AML_BL2_TMASTER_CFG_REG  (AO_SEC_GP_CFG6)
++
++//DDR buffer size
++#ifndef AML_BL2_TMASTER_DDR_MLEN
++#define  AML_BL2_TMASTER_DDR_MLEN  ((1<<20) - sizeof(s_bl2_to_bl3x_send_t))  //1MB for transfer data from BL2 to BL3X
++#endif
++
++//flag to pass BL2 build info to BL3X
++//#define CONFIG_AML_TLV_BL2_VER_INFO
++
++//IMPORTANT: BECAUSE THOSE FUNCTIONS WILL USE DDR AS STORAGE(DEFAULT) THEN
++//                    ALL THE APIS MSUT BE USED AFTER DDR INIT DONE
++//global APIs to pad & fetch item
++//pad item with data, type and length
++e_ret_type aml_append_item(unsigned int nType, unsigned int nLength, unsigned char *pData);
++//fetch item with type
++e_ret_type aml_fetch_item(unsigned int nType, s_bl2_tlv_item_t **ppItem);
++
++#endif /* __AMLOGIC_TLV_H_ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_v2_burning.h b/include/amlogic/aml_v2_burning.h
+--- a/include/amlogic/aml_v2_burning.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_v2_burning.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,27 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_v2_burning.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++//is the uboot loaded from usb otg
++int is_tpl_loaded_from_usb(void);
++
++//is the uboot loaded from sdcard mmc 0
++//note only sdmmc supported by romcode when external device boot
++int is_tpl_loaded_from_ext_sdmmc(void);
++
++//Check if uboot loaded from external sdmmc or usb otg
++int aml_burn_check_uboot_loaded_for_burn(int flag);
++
++int aml_burn_factory_producing(int flag, bd_t* bis);
++
++//usb producing mode, if tpl loaded from usb pc tool and auto enter producing mode
++int aml_try_factory_usb_burning(int flag, bd_t* bis);
++
++//Auto enter sdcard burning if booted from sdcard and aml_sdc_burn.ini existed
++int aml_try_factory_sdcard_burning(int flag, bd_t* bis);
++
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/aml_v3_burning.h b/include/amlogic/aml_v3_burning.h
+--- a/include/amlogic/aml_v3_burning.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/aml_v3_burning.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/aml_v3_burning.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++int aml_v3_factory_usb_burning(int flag, bd_t* bis);
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/auge_sound.h b/include/amlogic/auge_sound.h
+--- a/include/amlogic/auge_sound.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/auge_sound.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/auge_sound.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __AUGE_SOUND_H__
++#define __AUGE_SOUND_H__
++
++/* auge audio register is defined in asm/arch/secure_apb.h */
++
++int aml_audio_init(void);
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/canvas.h b/include/amlogic/canvas.h
+--- a/include/amlogic/canvas.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/canvas.h	2026-02-09 11:25:48.681087378 +0800
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/canvas.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef CANVAS_H
++#define CANVAS_H
++
++#define CANVAS_ADDR_LMASK       0x1fffffff
++#define CANVAS_WIDTH_LMASK      0x7
++#define CANVAS_WIDTH_LWID       3
++#define CANVAS_WIDTH_LBIT       29
++
++#define CANVAS_WIDTH_HMASK      0x1ff
++#define CANVAS_WIDTH_HBIT       0
++#define CANVAS_HEIGHT_MASK      0x1fff
++#define CANVAS_HEIGHT_BIT       9
++#define CANVAS_YWRAP            (1<<23)
++#define CANVAS_XWRAP            (1<<22)
++#define CANVAS_ADDR_NOWRAP      0x00
++#define CANVAS_ADDR_WRAPX       0x01
++#define CANVAS_ADDR_WRAPY       0x02
++#define CANVAS_BLKMODE_MASK     3
++#define CANVAS_BLKMODE_BIT      24
++#define CANVAS_BLKMODE_LINEAR   0x00
++#define CANVAS_BLKMODE_32X32    0x01
++#define CANVAS_BLKMODE_64X32    0x02
++
++#define CANVAS_LUT_INDEX_BIT    0
++#define CANVAS_LUT_INDEX_MASK   0x7
++#define CANVAS_LUT_WR_EN        (0x2 << 8)
++#define CANVAS_LUT_RD_EN        (0x1 << 8)
++
++typedef struct {
++	ulong addr;
++	u32 width;
++	u32 height;
++	u32 wrap;
++	u32 blkmode;
++} canvas_t;
++
++#define OSD1_CANVAS_INDEX 0x40
++#define OSD2_CANVAS_INDEX 0x43
++
++extern void canvas_init(void);
++
++extern void canvas_config(u32 index, ulong addr, u32 width,
++			  u32 height, u32 wrap, u32 blkmode);
++
++extern void canvas_read(u32 index, canvas_t *p);
++
++extern void canvas_copy(unsigned src, unsigned dst);
++
++extern void canvas_update_addr(u32 index, u32 addr);
++
++extern unsigned int canvas_get_addr(u32 index);
++
++#endif /* CANVAS_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/color.h b/include/amlogic/color.h
+--- a/include/amlogic/color.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/color.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,41 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/color.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _COLOR_H_
++#define _COLOR_H_
++
++enum color_index_e {
++	COLOR_INDEX_NULL = 0,
++	COLOR_INDEX_02_PAL4 = 2,
++	COLOR_INDEX_04_PAL16 = 4,
++	COLOR_INDEX_08_PAL256 = 8,
++	COLOR_INDEX_16_655 = 9,
++	COLOR_INDEX_16_844 = 10,
++	COLOR_INDEX_16_6442 = 11 ,
++	COLOR_INDEX_16_4444_R = 12,
++	COLOR_INDEX_16_4642_R = 13,
++	COLOR_INDEX_16_1555_A = 14,
++	COLOR_INDEX_16_4444_A = 15,
++	COLOR_INDEX_16_565 = 16,
++
++	COLOR_INDEX_24_6666_A = 19,
++	COLOR_INDEX_24_6666_R = 20,
++	COLOR_INDEX_24_8565 = 21,
++	COLOR_INDEX_24_5658 = 22,
++	COLOR_INDEX_24_888_B = 23,
++	COLOR_INDEX_24_RGB = 24,
++
++	COLOR_INDEX_32_BGRA = 29,
++	COLOR_INDEX_32_ABGR = 30,
++	COLOR_INDEX_32_RGBA = 31,
++	COLOR_INDEX_32_ARGB = 32,
++
++	COLOR_INDEX_YUV_422 = 33,
++};
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/cvbs.h b/include/amlogic/cvbs.h
+--- a/include/amlogic/cvbs.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/cvbs.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,21 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/cvbs.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _INC_CVBS_H__
++#define _INC_CVBS_H__
++
++void cvbs_init(void);
++void cvbs_show_valid_vmode(void);
++int cvbs_outputmode_check(char *vmode_name, unsigned int frac);
++int cvbs_set_vmode(char* vmode_name);
++int cvbs_set_bist(char* bist_mode);
++int cvbs_set_vdac(int status);
++int cvbs_reg_debug(int argc, char* const argv[]);
++
++#endif
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/dolby_vision_func.h b/include/amlogic/dolby_vision_func.h
+--- a/include/amlogic/dolby_vision_func.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/dolby_vision_func.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,342 @@
++#ifndef _DV_H_
++#define _DV_H_
++
++#include <linux/types.h>
++
++#define BIT(x) (1 << (x))
++
++#define EXT_MD_LEVEL_1    BIT(0)
++#define EXT_MD_LEVEL_2    BIT(1)
++#define EXT_MD_LEVEL_4    BIT(2)
++#define EXT_MD_LEVEL_5    BIT(3)
++#define EXT_MD_LEVEL_6    BIT(4)
++#define EXT_MD_LEVEL_255  BIT(31)
++
++enum signal_format_enum {
++	FORMAT_INVALID = -1,
++	FORMAT_DOVI = 0,
++	FORMAT_HDR10 = 1,
++	FORMAT_SDR = 2,
++	FORMAT_DOVI_LL = 3
++};
++
++enum priority_mode_enum {
++	V_PRIORITY = 0,
++	G_PRIORITY = 1
++};
++
++enum cp_signal_range_enum  {
++	SIGNAL_RANGE_SMPTE = 0,
++	SIGNAL_RANGE_FULL  = 1,
++	SIGNAL_RANGE_SDI   = 2
++};
++
++enum graphics_format_enum  {
++	G_SDR_YUV = 0,
++	G_SDR_RGB = 1,
++	G_HDR_YUV = 2,
++	G_HDR_RGB = 3
++};
++
++struct composer_reg_ipcore {
++	/* offset 0xc8 */
++	u32 composer_mode;
++	u32 vdr_resolution;
++	u32 bit_depth;
++	u32 coefficient_log2_denominator;
++	u32 bl_num_pivots_y;
++	u32 bl_pivot[5];
++	u32 bl_order;
++	u32 bl_coefficient_y[8][3];
++	u32 el_nlq_offset_y;
++	u32 el_coefficient_y[3];
++	u32 mapping_idc_u;
++	u32 bl_num_pivots_u;
++	u32 bl_pivot_u[3];
++	u32 bl_order_u;
++	u32 bl_coefficient_u[4][3];
++	u32 mmr_coefficient_u[22][2];
++	u32 mmr_order_u;
++	u32 el_nlq_offset_u;
++	u32 el_coefficient_u[3];
++	u32 mapping_idc_v;
++	u32 bl_num_pivots_v;
++	u32 bl_pivot_v[3];
++	u32 bl_order_v;
++	u32 bl_coefficient_v[4][3];
++	u32 mmr_coefficient_v[22][2];
++	u32 mmr_order_v;
++	u32 el_nlq_off_v;
++	u32 el_coefficient_v[3];
++};
++
++struct dm_reg_ipcore1 {
++	u32 s_range;
++	u32 s_range_inverse;
++	u32 frame_fmt1;
++	u32 frame_fmt2;
++	u32 frame_pixel_def;
++	u32 y2rgb_coeff1;
++	u32 y2rgb_coeff2;
++	u32 y2rgb_coeff3;
++	u32 y2rgb_coeff4;
++	u32 y2rgb_coeff5;
++	u32 y2rgb_off1;
++	u32 y2rgb_off2;
++	u32 y2rgb_off3;
++	u32 eotf;
++	u32 a2b_coeff1;
++	u32 a2b_coeff2;
++	u32 a2b_coeff3;
++	u32 a2b_coeff4;
++	u32 a2b_coeff5;
++	u32 c2d_coeff1;
++	u32 c2d_coeff2;
++	u32 c2d_coeff3;
++	u32 c2d_coeff4;
++	u32 c2d_coeff5;
++	u32 c2d_off;
++	u32 active_left_top;
++	u32 active_bottom_right;
++};
++
++struct dm_reg_ipcore2 {
++	u32 s_range;
++	u32 s_range_inverse;
++	u32 y2rgb_coeff1;
++	u32 y2rgb_coeff2;
++	u32 y2rgb_coeff3;
++	u32 y2rgb_coeff4;
++	u32 y2rgb_coeff5;
++	u32 y2rgb_off1;
++	u32 y2rgb_off2;
++	u32 y2rgb_off3;
++	u32 frame_fmt;
++	u32 eotf;
++	u32 a2b_coeff1;
++	u32 a2b_coeff2;
++	u32 a2b_coeff3;
++	u32 a2b_coeff4;
++	u32 a2b_coeff5;
++	u32 c2d_coeff1;
++	u32 c2d_coeff2;
++	u32 c2d_coeff3;
++	u32 c2d_coeff4;
++	u32 c2d_coeff5;
++	u32 c2d_off;
++	u32 vdr_res;
++};
++
++struct dm_reg_ipcore3 {
++	u32 d2c_coeff1;
++	u32 d2c_coeff2;
++	u32 d2c_coeff3;
++	u32 d2c_coeff4;
++	u32 d2c_coeff5;
++	u32 b2a_coeff1;
++	u32 b2a_coeff2;
++	u32 b2a_coeff3;
++	u32 b2a_coeff4;
++	u32 b2a_coeff5;
++	u32 eotf_param1;
++	u32 eotf_param2;
++	u32 ipt_scale;
++	u32 ipt_off1;
++	u32 ipt_off2;
++	u32 ipt_off3;
++	u32 output_range1;
++	u32 output_range2;
++	u32 rgb2yuv_coeff_reg1;
++	u32 rgb2yuv_coeff_reg2;
++	u32 rgb2yuv_coeff_reg3;
++	u32 rgb2yuv_coeff_reg4;
++	u32 rgb2yuv_coeff_reg5;
++	u32 rgb2yuv_off0;
++	u32 rgb2yuv_off1;
++	u32 rgb2yuv_off2;
++};
++
++/*dm luts for core1 and core2 */
++struct dm_lut_ipcore {
++	u32 tm_lut_i[64 * 4];
++	u32 tm_lut_s[64 * 4];
++	u32 sm_lut_i[64 * 4];
++	u32 sm_lut_s[64 * 4];
++	u32 g_2_l[256];
++};
++
++/*hdmi metadata for core3 */
++struct md_reg_ipcore3 {
++	u32 raw_metadata[512];
++	u32 size;
++};
++
++struct hdr10_infoframe {
++	u8 type_code;
++	u8 version_number;
++	u8 len_of_info_frame;
++	u8 data_byte1;
++	u8 data_byte2;
++	u8 primaries_x_0_lsb;
++	u8 primaries_x_0_msb;
++	u8 primaries_y_0_lsb;
++	u8 primaries_y_0_msb;
++	u8 primaries_x_1_lsb;
++	u8 primaries_x_1_msb;
++	u8 primaries_y_1_lsb;
++	u8 primaries_y_1_msb;
++	u8 primaries_x_2_lsb;
++	u8 primaries_x_2_msb;
++	u8 primaries_y_2_lsb;
++	u8 primaries_y_2_msb;
++	u8 white_point_x_lsb;
++	u8 white_point_x_msb;
++	u8 white_point_y_lsb;
++	u8 white_point_y_msb;
++	u8 max_display_mastering_lum_lsb;
++	u8 max_display_mastering_lum_msb;
++	u8 min_display_mastering_lum_lsb;
++	u8 min_display_mastering_lum_msb;
++	u8 max_content_light_level_lsb;
++	u8 max_content_light_level_msb;
++	u8 max_frame_avg_light_level_lsb;
++	u8 max_frame_avg_light_level_msb;
++};
++
++struct hdr10_parameter {
++	u32 min_display_mastering_lum;
++	u32 max_display_mastering_lum;
++	u16 r_x;
++	u16 r_y;
++	u16 g_x;
++	u16 g_y;
++	u16 b_x;
++	u16 b_y;
++	u16 w_x;
++	u16 w_y;
++	u16 max_content_light_level;
++	u16 max_frame_avg_light_level;
++};
++
++struct ext_level_1 {
++	u8 min_pq_h;
++	u8 min_pq_l;
++	u8 max_pq_h;
++	u8 max_pq_l;
++	u8 avg_pq_h;
++	u8 avg_pq_l;
++};
++
++struct ext_level_2 {
++	u8 target_max_pq_h;
++	u8 target_max_pq_l;
++	u8 trim_slope_h;
++	u8 trim_slope_l;
++	u8 trim_off_h;
++	u8 trim_off_l;
++	u8 trim_power_h;
++	u8 trim_power_l;
++	u8 trim_chroma_weight_h;
++	u8 trim_chroma_weight_l;
++	u8 trim_sat_gain_h;
++	u8 trim_sat_gain_l;
++	u8 ms_weight_h;
++	u8 ms_weight_l;
++};
++
++struct ext_level_4 {
++	u8 anchor_pq_h;
++	u8 anchor_pq_l;
++	u8 anchor_power_h;
++	u8 anchor_power_l;
++};
++
++struct ext_level_5 {
++	u8 active_area_left_off_h;
++	u8 active_area_left_off_l;
++	u8 active_area_right_off_h;
++	u8 active_area_right_off_l;
++	u8 active_area_top_off_h;
++	u8 active_area_top_off_l;
++	u8 active_area_bot_off_h;
++	u8 active_area_bot_off_l;
++};
++
++struct ext_level_6 {
++	u8 max_display_mastering_lum_h;
++	u8 max_display_mastering_lum_l;
++	u8 min_display_mastering_lum_h;
++	u8 min_display_mastering_lum_l;
++	u8 max_content_light_level_h;
++	u8 max_content_light_level_l;
++	u8 max_frame_avg_light_level_h;
++	u8 max_frame_avg_light_level_l;
++};
++
++struct ext_level_255 {
++	u8 run_mode;
++	u8 run_version;
++	u8 dm_debug_0;
++	u8 dm_debug_1;
++	u8 dm_debug_2;
++	u8 dm_debug_3;
++};
++
++struct ext_md_s {
++	u32 avail_level_mask;
++	struct ext_level_1 level_1;
++	struct ext_level_2 level_2;
++	struct ext_level_4 level_4;
++	struct ext_level_5 level_5;
++	struct ext_level_6 level_6;
++	struct ext_level_255 level_255;
++};
++
++struct dovi_setting_s {
++	struct composer_reg_ipcore comp_reg;
++	struct dm_reg_ipcore1 dm_reg1;
++	struct dm_reg_ipcore2 dm_reg2;
++	struct dm_reg_ipcore3 dm_reg3;
++	struct dm_lut_ipcore dm_lut1;
++	struct dm_lut_ipcore dm_lut2;
++	/* for dovi output */
++	struct md_reg_ipcore3 md_reg3;
++	/* for hdr10 output */
++	struct hdr10_infoframe hdr_info;
++	/* current process */
++	enum signal_format_enum src_format;
++	enum signal_format_enum dst_format;
++	/* enhanced layer */
++	bool el_flag;
++	bool el_halfsize_flag;
++	/* frame width & height */
++	u32 video_width;
++	u32 video_height;
++	/* use for stb 2.4 */
++	enum graphics_format_enum g_format;
++	u32 g_bitdepth;
++	u32 dovi2hdr10_nomapping;
++	u32 use_ll_flag;
++	u32 ll_rgb_desired;
++	u32 diagnostic_enable;
++	u32 diagnostic_mux_select;
++	u32 dovi_ll_enable;
++	u32 vout_width;
++	u32 vout_height;
++	u8 vsvdb_tbl[32];
++	struct ext_md_s ext_md;
++};
++
++int control_path
++	(enum signal_format_enum in_format,
++	 enum signal_format_enum out_format,
++	 char *in_comp, int in_comp_size,
++	 char *in_md, int in_md_size,
++	 enum priority_mode_enum set_priority,
++	 int set_bit_depth, int set_chroma_format, int set_yuv_range,
++	 int set_graphic_min_lum, int set_graphic_max_lum,
++	 int set_target_min_lum, int set_target_max_lum,
++	 int set_no_el,
++	 struct hdr10_parameter *hdr10_param,
++	 struct dovi_setting_s *output);
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/dolby_vision.h b/include/amlogic/dolby_vision.h
+--- a/include/amlogic/dolby_vision.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/dolby_vision.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,163 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/dolby_vision.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _DOBLY_VISION_H_
++#define _DOBLY_VISION_H_
++
++#define DOLBY_VISION_OUTPUT_MODE_IPT			0
++#define DOLBY_VISION_OUTPUT_MODE_IPT_TUNNEL		1
++#define DOLBY_VISION_OUTPUT_MODE_HDR10			2
++#define DOLBY_VISION_OUTPUT_MODE_SDR10			3
++#define DOLBY_VISION_OUTPUT_MODE_SDR8			4
++#define DOLBY_VISION_OUTPUT_MODE_BYPASS			5
++
++#define DOLBY_VISION_LL_DISABLE				0
++#define DOLBY_VISION_LL_YUV422				1
++#define DOLBY_VISION_LL_RGB444				2
++
++#define DOLBY_VISION_SET_DISABLE    "0"
++#define DOLBY_VISION_SET_STD        "1"
++#define DOLBY_VISION_SET_LL_YUV     "2"
++#define DOLBY_VISION_SET_LL_RGB     "3"
++
++enum vpp_matrix_sel_e {
++	VPP_MATRIX_0 = 0,	/* OSD convert matrix - new from GXL */
++	VPP_MATRIX_1,		/* vd1 matrix before post-blend */
++	VPP_MATRIX_2,		/* post matrix */
++	VPP_MATRIX_3,		/* xvycc matrix */
++	VPP_MATRIX_4,		/* in video eotf - new from GXL */
++	VPP_MATRIX_5,		/* in osd eotf - new from GXL */
++	VPP_MATRIX_6		/* vd2 matrix before pre-blend */
++};
++#define NUM_MATRIX 6
++
++/* matrix names */
++#define VPP_MATRIX_OSD		VPP_MATRIX_0
++#define VPP_MATRIX_VD1		VPP_MATRIX_1
++#define VPP_MATRIX_POST		VPP_MATRIX_2
++#define VPP_MATRIX_XVYCC	VPP_MATRIX_3
++#define VPP_MATRIX_EOTF		VPP_MATRIX_4
++#define VPP_MATRIX_OSD_EOTF	VPP_MATRIX_5
++#define VPP_MATRIX_VD2		VPP_MATRIX_6
++
++#define CSC_ON              1
++#define CSC_OFF             0
++
++enum mtx_en_e {
++	POST_MTX_EN = 0,
++	VD2_MTX_EN = 4,
++	VD1_MTX_EN,
++	XVY_MTX_EN,
++	OSD1_MTX_EN
++};
++
++struct dovi_mode_s {
++	u8 dv_rgb_444_8bit;
++	u8 ll_ycbcr_422_12bit;
++	u8 ll_rgb_444_10bit;
++	u8 ll_rgb_444_12bit;
++	u8 sup_2160p60hz;
++};
++
++#define POST_MTX_EN_MASK (1 << POST_MTX_EN)
++#define VD2_MTX_EN_MASK  (1 << VD2_MTX_EN)
++#define VD1_MTX_EN_MASK  (1 << VD1_MTX_EN)
++#define XVY_MTX_EN_MASK  (1 << XVY_MTX_EN)
++#define OSD1_MTX_EN_MASK (1 << OSD1_MTX_EN)
++
++#define DEF_G2L_LUT_SIZE_2P        8
++#define DEF_G2L_LUT_SIZE           (1 << DEF_G2L_LUT_SIZE_2P)
++
++/*
++#define DOLBY_CORE2A_REG_START			0x3400
++*/
++#ifndef DOLBY_CORE2A_CTRL
++#define DOLBY_CORE2A_CTRL			0x3401
++#endif
++/*
++
++#define DOLBY_CORE2A_CLKGATE_CTRL		0x3432
++#define DOLBY_CORE2A_SWAP_CTRL0			0x3433
++#define DOLBY_CORE2A_SWAP_CTRL1			0x3434
++#define DOLBY_CORE2A_SWAP_CTRL2			0x3435
++#define DOLBY_CORE2A_SWAP_CTRL3			0x3436
++#define DOLBY_CORE2A_SWAP_CTRL4			0x3437
++#define DOLBY_CORE2A_SWAP_CTRL5			0x3438
++#define DOLBY_CORE2A_DMA_CTRL			0x3439
++#define DOLBY_CORE2A_DMA_STATUS			0x343a
++#define DOLBY_CORE2A_STATUS0			0x343b
++#define DOLBY_CORE2A_STATUS1			0x343c
++#define DOLBY_CORE2A_STATUS2			0x343d
++#define DOLBY_CORE2A_STATUS3			0x343e
++#define DOLBY_CORE2A_DMA_PORT			0x343f
++
++#define DOLBY_CORE3_REG_START			0x3600
++#define DOLBY_CORE3_CLKGATE_CTRL		0x36f0
++#define DOLBY_CORE3_SWAP_CTRL0			0x36f1
++#define DOLBY_CORE3_SWAP_CTRL1			0x36f2
++#define DOLBY_CORE3_SWAP_CTRL2			0x36f3
++#define DOLBY_CORE3_SWAP_CTRL3			0x36f4
++#define DOLBY_CORE3_SWAP_CTRL4			0x36f5
++#define DOLBY_CORE3_SWAP_CTRL5			0x36f6
++#define DOLBY_CORE3_SWAP_CTRL6			0x36f7
++*/
++
++#ifndef DOLBY_CORE3_DIAG_CTRL
++#define DOLBY_CORE3_DIAG_CTRL			0x36f8
++#endif
++/*
++#define DOLBY_CORE3_CRC_CTRL			0x36fb
++#define DOLBY_CORE3_INPUT_CSC_CRC		0x36fc
++#define DOLBY_CORE3_OUTPUT_CSC_CRC		0x36fd
++*/
++
++#ifndef VPP_WRAP_OSD1_MATRIX_EN_CTRL
++#define VPP_WRAP_OSD1_MATRIX_EN_CTRL            0x3d6d
++#endif
++
++#ifndef VPP_WRAP_OSD2_MATRIX_EN_CTRL
++#define VPP_WRAP_OSD2_MATRIX_EN_CTRL            0x3d7d
++#endif
++
++#ifndef VPP_WRAP_OSD3_MATRIX_EN_CTRL
++#define VPP_WRAP_OSD3_MATRIX_EN_CTRL            0x3dbd
++#endif
++
++#ifndef DOLBY_PATH_CTRL
++#define DOLBY_PATH_CTRL                         0x1a0c
++#endif
++
++void dolby_vision_process(void);
++void send_hdmi_pkt(void);
++int apply_stb_core_settings(void);
++unsigned int  dv_read_reg(unsigned int addr);
++void dv_write_reg(unsigned int addr, unsigned int value);
++void dolbyvision_dump_setting(void);
++void dolbyvision_debug(int enable_debug);
++
++#ifdef CONFIG_AML_DOLBY
++extern int is_dolby_enable(void);
++extern bool request_ll_mode(void);
++extern bool check_dolby_vision_on(void);
++#else
++int __attribute__((weak))is_dolby_enable(void)
++{
++	return 0;
++}
++bool __attribute__((weak))request_ll_mode(void)
++{
++	return false;
++}
++bool __attribute__((weak))check_dolby_vision_on(void)
++{
++	return false;
++}
++#endif
++
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/enc_clk_config.h b/include/amlogic/enc_clk_config.h
+--- a/include/amlogic/enc_clk_config.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/enc_clk_config.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,8 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/enc_clk_config.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/fb.h b/include/amlogic/fb.h
+--- a/include/amlogic/fb.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/fb.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,405 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/fb.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _LINUX_FB_H
++#define _LINUX_FB_H
++
++/* Definitions of frame buffers						*/
++
++#define FB_MAX			32	/* sufficient for now */
++
++/* ioctls
++   0x46 is 'F'								*/
++#define FBIOGET_VSCREENINFO	0x4600
++#define FBIOPUT_VSCREENINFO	0x4601
++#define FBIOGET_FSCREENINFO	0x4602
++#define FBIOGETCMAP		0x4604
++#define FBIOPUTCMAP		0x4605
++#define FBIOPAN_DISPLAY		0x4606
++#ifdef __KERNEL__
++#define FBIO_CURSOR            _IOWR('F', 0x08, struct fb_cursor_user)
++#else
++#define FBIO_CURSOR            _IOWR('F', 0x08, struct fb_cursor)
++#endif
++/* 0x4607-0x460B are defined below */
++/* #define FBIOGET_MONITORSPEC	0x460C */
++/* #define FBIOPUT_MONITORSPEC	0x460D */
++/* #define FBIOSWITCH_MONIBIT	0x460E */
++#define FBIOGET_CON2FBMAP	0x460F
++#define FBIOPUT_CON2FBMAP	0x4610
++#define FBIOBLANK		0x4611		/* arg: 0 or vesa level + 1 */
++#define FBIOGET_VBLANK		_IOR('F', 0x12, struct fb_vblank)
++#define FBIO_ALLOC              0x4613
++#define FBIO_FREE               0x4614
++#define FBIOGET_GLYPH           0x4615
++#define FBIOGET_HWCINFO         0x4616
++#define FBIOPUT_MODEINFO        0x4617
++#define FBIOGET_DISPINFO        0x4618
++
++
++#define FB_TYPE_PACKED_PIXELS		0	/* Packed Pixels	*/
++#define FB_TYPE_PLANES			1	/* Non interleaved planes */
++#define FB_TYPE_INTERLEAVED_PLANES	2	/* Interleaved planes	*/
++#define FB_TYPE_TEXT			3	/* Text/attributes	*/
++#define FB_TYPE_VGA_PLANES		4	/* EGA/VGA planes	*/
++
++#define FB_AUX_TEXT_MDA		0	/* Monochrome text */
++#define FB_AUX_TEXT_CGA		1	/* CGA/EGA/VGA Color text */
++#define FB_AUX_TEXT_S3_MMIO	2	/* S3 MMIO fasttext */
++#define FB_AUX_TEXT_MGA_STEP16	3	/* MGA Millenium I: text, attr, 14 reserved bytes */
++#define FB_AUX_TEXT_MGA_STEP8	4	/* other MGAs:      text, attr,  6 reserved bytes */
++#define FB_AUX_TEXT_SVGA_GROUP	8	/* 8-15: SVGA tileblit compatible modes */
++#define FB_AUX_TEXT_SVGA_MASK	7	/* lower three bits says step */
++#define FB_AUX_TEXT_SVGA_STEP2	8	/* SVGA text mode:  text, attr */
++#define FB_AUX_TEXT_SVGA_STEP4	9	/* SVGA text mode:  text, attr,  2 reserved bytes */
++#define FB_AUX_TEXT_SVGA_STEP8	10	/* SVGA text mode:  text, attr,  6 reserved bytes */
++#define FB_AUX_TEXT_SVGA_STEP16	11	/* SVGA text mode:  text, attr, 14 reserved bytes */
++#define FB_AUX_TEXT_SVGA_LAST	15	/* reserved up to 15 */
++
++#define FB_AUX_VGA_PLANES_VGA4		0	/* 16 color planes (EGA/VGA) */
++#define FB_AUX_VGA_PLANES_CFB4		1	/* CFB4 in planes (VGA) */
++#define FB_AUX_VGA_PLANES_CFB8		2	/* CFB8 in planes (VGA) */
++
++#define FB_VISUAL_MONO01		0	/* Monochr. 1=Black 0=White */
++#define FB_VISUAL_MONO10		1	/* Monochr. 1=White 0=Black */
++#define FB_VISUAL_TRUECOLOR		2	/* True color	*/
++#define FB_VISUAL_PSEUDOCOLOR		3	/* Pseudo color (like atari) */
++#define FB_VISUAL_DIRECTCOLOR		4	/* Direct color */
++#define FB_VISUAL_STATIC_PSEUDOCOLOR	5	/* Pseudo color readonly */
++
++#define FB_ACCEL_NONE		0	/* no hardware accelerator	*/
++#define FB_ACCEL_ATARIBLITT	1	/* Atari Blitter		*/
++#define FB_ACCEL_AMIGABLITT	2	/* Amiga Blitter                */
++#define FB_ACCEL_S3_TRIO64	3	/* Cybervision64 (S3 Trio64)    */
++#define FB_ACCEL_NCR_77C32BLT	4	/* RetinaZ3 (NCR 77C32BLT)      */
++#define FB_ACCEL_S3_VIRGE	5	/* Cybervision64/3D (S3 ViRGE)	*/
++#define FB_ACCEL_ATI_MACH64GX	6	/* ATI Mach 64GX family		*/
++#define FB_ACCEL_DEC_TGA	7	/* DEC 21030 TGA		*/
++#define FB_ACCEL_ATI_MACH64CT	8	/* ATI Mach 64CT family		*/
++#define FB_ACCEL_ATI_MACH64VT	9	/* ATI Mach 64CT family VT class */
++#define FB_ACCEL_ATI_MACH64GT	10	/* ATI Mach 64CT family GT class */
++#define FB_ACCEL_SUN_CREATOR	11	/* Sun Creator/Creator3D	*/
++#define FB_ACCEL_SUN_CGSIX	12	/* Sun cg6			*/
++#define FB_ACCEL_SUN_LEO	13	/* Sun leo/zx			*/
++#define FB_ACCEL_IMS_TWINTURBO	14	/* IMS Twin Turbo		*/
++#define FB_ACCEL_3DLABS_PERMEDIA2 15	/* 3Dlabs Permedia 2		*/
++#define FB_ACCEL_MATROX_MGA2064W 16	/* Matrox MGA2064W (Millenium)	*/
++#define FB_ACCEL_MATROX_MGA1064SG 17	/* Matrox MGA1064SG (Mystique)	*/
++#define FB_ACCEL_MATROX_MGA2164W 18	/* Matrox MGA2164W (Millenium II) */
++#define FB_ACCEL_MATROX_MGA2164W_AGP 19	/* Matrox MGA2164W (Millenium II) */
++#define FB_ACCEL_MATROX_MGAG100	20	/* Matrox G100 (Productive G100) */
++#define FB_ACCEL_MATROX_MGAG200	21	/* Matrox G200 (Myst, Mill, ...) */
++#define FB_ACCEL_SUN_CG14	22	/* Sun cgfourteen		 */
++#define FB_ACCEL_SUN_BWTWO	23	/* Sun bwtwo			*/
++#define FB_ACCEL_SUN_CGTHREE	24	/* Sun cgthree			*/
++#define FB_ACCEL_SUN_TCX	25	/* Sun tcx			*/
++#define FB_ACCEL_MATROX_MGAG400	26	/* Matrox G400			*/
++#define FB_ACCEL_NV3		27	/* nVidia RIVA 128              */
++#define FB_ACCEL_NV4		28	/* nVidia RIVA TNT		*/
++#define FB_ACCEL_NV5		29	/* nVidia RIVA TNT2		*/
++#define FB_ACCEL_CT_6555x	30	/* C&T 6555x			*/
++#define FB_ACCEL_3DFX_BANSHEE	31	/* 3Dfx Banshee			*/
++#define FB_ACCEL_ATI_RAGE128	32	/* ATI Rage128 family		*/
++#define FB_ACCEL_IGS_CYBER2000	33	/* CyberPro 2000		*/
++#define FB_ACCEL_IGS_CYBER2010	34	/* CyberPro 2010		*/
++#define FB_ACCEL_IGS_CYBER5000	35	/* CyberPro 5000		*/
++#define FB_ACCEL_SIS_GLAMOUR    36	/* SiS 300/630/540              */
++#define FB_ACCEL_3DLABS_PERMEDIA3 37	/* 3Dlabs Permedia 3		*/
++#define FB_ACCEL_ATI_RADEON	38	/* ATI Radeon family		*/
++#define FB_ACCEL_I810           39      /* Intel 810/815                */
++#define FB_ACCEL_SIS_GLAMOUR_2  40	/* SiS 315, 650, 740		*/
++#define FB_ACCEL_SIS_XABRE      41	/* SiS 330 ("Xabre")		*/
++#define FB_ACCEL_I830           42      /* Intel 830M/845G/85x/865G     */
++#define FB_ACCEL_NV_10          43      /* nVidia Arch 10               */
++#define FB_ACCEL_NV_20          44      /* nVidia Arch 20               */
++#define FB_ACCEL_NV_30          45      /* nVidia Arch 30               */
++#define FB_ACCEL_NV_40          46      /* nVidia Arch 40               */
++#define FB_ACCEL_XGI_VOLARI_V	47	/* XGI Volari V3XT, V5, V8      */
++#define FB_ACCEL_XGI_VOLARI_Z	48	/* XGI Volari Z7                */
++#define FB_ACCEL_OMAP1610	49	/* TI OMAP16xx                  */
++#define FB_ACCEL_TRIDENT_TGUI	50	/* Trident TGUI			*/
++#define FB_ACCEL_TRIDENT_3DIMAGE 51	/* Trident 3DImage		*/
++#define FB_ACCEL_TRIDENT_BLADE3D 52	/* Trident Blade3D		*/
++#define FB_ACCEL_TRIDENT_BLADEXP 53	/* Trident BladeXP		*/
++#define FB_ACCEL_CIRRUS_ALPINE   53	/* Cirrus Logic 543x/544x/5480	*/
++#define FB_ACCEL_NEOMAGIC_NM2070 90	/* NeoMagic NM2070              */
++#define FB_ACCEL_NEOMAGIC_NM2090 91	/* NeoMagic NM2090              */
++#define FB_ACCEL_NEOMAGIC_NM2093 92	/* NeoMagic NM2093              */
++#define FB_ACCEL_NEOMAGIC_NM2097 93	/* NeoMagic NM2097              */
++#define FB_ACCEL_NEOMAGIC_NM2160 94	/* NeoMagic NM2160              */
++#define FB_ACCEL_NEOMAGIC_NM2200 95	/* NeoMagic NM2200              */
++#define FB_ACCEL_NEOMAGIC_NM2230 96	/* NeoMagic NM2230              */
++#define FB_ACCEL_NEOMAGIC_NM2360 97	/* NeoMagic NM2360              */
++#define FB_ACCEL_NEOMAGIC_NM2380 98	/* NeoMagic NM2380              */
++#define FB_ACCEL_PXA3XX		 99	/* PXA3xx			*/
++
++#define FB_ACCEL_SAVAGE4        0x80	/* S3 Savage4                   */
++#define FB_ACCEL_SAVAGE3D       0x81	/* S3 Savage3D                  */
++#define FB_ACCEL_SAVAGE3D_MV    0x82	/* S3 Savage3D-MV               */
++#define FB_ACCEL_SAVAGE2000     0x83	/* S3 Savage2000                */
++#define FB_ACCEL_SAVAGE_MX_MV   0x84	/* S3 Savage/MX-MV              */
++#define FB_ACCEL_SAVAGE_MX      0x85	/* S3 Savage/MX                 */
++#define FB_ACCEL_SAVAGE_IX_MV   0x86	/* S3 Savage/IX-MV              */
++#define FB_ACCEL_SAVAGE_IX      0x87	/* S3 Savage/IX                 */
++#define FB_ACCEL_PROSAVAGE_PM   0x88	/* S3 ProSavage PM133           */
++#define FB_ACCEL_PROSAVAGE_KM   0x89	/* S3 ProSavage KM133           */
++#define FB_ACCEL_S3TWISTER_P    0x8a	/* S3 Twister                   */
++#define FB_ACCEL_S3TWISTER_K    0x8b	/* S3 TwisterK                  */
++#define FB_ACCEL_SUPERSAVAGE    0x8c    /* S3 Supersavage               */
++#define FB_ACCEL_PROSAVAGE_DDR  0x8d	/* S3 ProSavage DDR             */
++#define FB_ACCEL_PROSAVAGE_DDRK 0x8e	/* S3 ProSavage DDR-K           */
++
++struct fb_fix_screeninfo {
++	char id[16];			/* identification string eg "TT Builtin" */
++	unsigned long smem_start;	/* Start of frame buffer mem */
++					/* (physical address) */
++	__u32 smem_len;			/* Length of frame buffer mem */
++	__u32 type;			/* see FB_TYPE_*		*/
++	__u32 type_aux;			/* Interleave for interleaved Planes */
++	__u32 visual;			/* see FB_VISUAL_*		*/
++	__u16 xpanstep;			/* zero if no hardware panning  */
++	__u16 ypanstep;			/* zero if no hardware panning  */
++	__u16 ywrapstep;		/* zero if no hardware ywrap    */
++	__u32 line_length;		/* length of a line in bytes    */
++	unsigned long mmio_start;	/* Start of Memory Mapped I/O   */
++					/* (physical address) */
++	__u32 mmio_len;			/* Length of Memory Mapped I/O  */
++	__u32 accel;			/* Indicate to driver which	*/
++					/*  specific chip/card we have	*/
++	__u16 reserved[3];		/* Reserved for future compatibility */
++};
++
++/* Interpretation of offset for color fields: All offsets are from the right,
++ * inside a "pixel" value, which is exactly 'bits_per_pixel' wide (means: you
++ * can use the offset as right argument to <<). A pixel afterwards is a bit
++ * stream and is written to video memory as that unmodified.
++ *
++ * For pseudocolor: offset and length should be the same for all color
++ * components. Offset specifies the position of the least significant bit
++ * of the pallette index in a pixel value. Length indicates the number
++ * of available palette entries (i.e. # of entries = 1 << length).
++ */
++struct fb_bitfield {
++	__u32 offset;			/* beginning of bitfield	*/
++	__u32 length;			/* length of bitfield		*/
++	__u32 msb_right;		/* != 0 : Most significant bit is */
++					/* right */
++};
++
++#define FB_NONSTD_HAM		1	/* Hold-And-Modify (HAM)        */
++#define FB_NONSTD_REV_PIX_IN_B	2	/* order of pixels in each byte is reversed */
++
++#define FB_ACTIVATE_NOW		0	/* set values immediately (or vbl)*/
++#define FB_ACTIVATE_NXTOPEN	1	/* activate on next open	*/
++#define FB_ACTIVATE_TEST	2	/* don't set, round up impossible */
++#define FB_ACTIVATE_MASK       15
++					/* values			*/
++#define FB_ACTIVATE_VBL	       16	/* activate values on next vbl  */
++#define FB_CHANGE_CMAP_VBL     32	/* change colormap on vbl	*/
++#define FB_ACTIVATE_ALL	       64	/* change all VCs on this fb	*/
++#define FB_ACTIVATE_FORCE     128	/* force apply even when no change*/
++#define FB_ACTIVATE_INV_MODE  256       /* invalidate videomode */
++
++#define FB_ACCELF_TEXT		1	/* (OBSOLETE) see fb_info.flags and vc_mode */
++
++#define FB_SYNC_HOR_HIGH_ACT	1	/* horizontal sync high active	*/
++#define FB_SYNC_VERT_HIGH_ACT	2	/* vertical sync high active	*/
++#define FB_SYNC_EXT		4	/* external sync		*/
++#define FB_SYNC_COMP_HIGH_ACT	8	/* composite sync high active   */
++#define FB_SYNC_BROADCAST	16	/* broadcast video timings      */
++					/* vtotal = 144d/288n/576i => PAL  */
++					/* vtotal = 121d/242n/484i => NTSC */
++#define FB_SYNC_ON_GREEN	32	/* sync on green */
++
++#define FB_VMODE_NONINTERLACED  0	/* non interlaced */
++#define FB_VMODE_INTERLACED	1	/* interlaced	*/
++#define FB_VMODE_DOUBLE		2	/* double scan */
++#define FB_VMODE_ODD_FLD_FIRST	4	/* interlaced: top line first */
++#define FB_VMODE_MASK		255
++
++#define FB_VMODE_YWRAP		256	/* ywrap instead of panning     */
++#define FB_VMODE_SMOOTH_XPAN	512	/* smooth xpan possible (internally used) */
++#define FB_VMODE_CONUPDATE	512	/* don't update x/yoffset	*/
++
++/*
++ * Display rotation support
++ */
++#define FB_ROTATE_UR      0
++#define FB_ROTATE_CW      1
++#define FB_ROTATE_UD      2
++#define FB_ROTATE_CCW     3
++
++#define PICOS2KHZ(a) (1000000000UL/(a))
++#define KHZ2PICOS(a) (1000000000UL/(a))
++
++struct fb_var_screeninfo {
++	__u32 xres;			/* visible resolution		*/
++	__u32 yres;
++	__u32 xres_virtual;		/* virtual resolution		*/
++	__u32 yres_virtual;
++	__u32 xoffset;			/* offset from virtual to visible */
++	__u32 yoffset;			/* resolution			*/
++
++	__u32 bits_per_pixel;		/* guess what			*/
++	__u32 grayscale;		/* != 0 Graylevels instead of colors */
++
++	struct fb_bitfield red;		/* bitfield in fb mem if true color, */
++	struct fb_bitfield green;	/* else only length is significant */
++	struct fb_bitfield blue;
++	struct fb_bitfield transp;	/* transparency			*/
++
++	__u32 nonstd;			/* != 0 Non standard pixel format */
++
++	__u32 activate;			/* see FB_ACTIVATE_*		*/
++
++	__u32 height;			/* height of picture in mm    */
++	__u32 width;			/* width of picture in mm     */
++
++	__u32 accel_flags;		/* (OBSOLETE) see fb_info.flags */
++
++	/* Timing: All values in pixclocks, except pixclock (of course) */
++	__u32 pixclock;			/* pixel clock in ps (pico seconds) */
++	__u32 left_margin;		/* time from sync to picture	*/
++	__u32 right_margin;		/* time from picture to sync	*/
++	__u32 upper_margin;		/* time from sync to picture	*/
++	__u32 lower_margin;
++	__u32 hsync_len;		/* length of horizontal sync	*/
++	__u32 vsync_len;		/* length of vertical sync	*/
++	__u32 sync;			/* see FB_SYNC_*		*/
++	__u32 vmode;			/* see FB_VMODE_*		*/
++	__u32 rotate;			/* angle we rotate counter clockwise */
++	__u32 reserved[5];		/* Reserved for future compatibility */
++};
++
++struct fb_cmap {
++	__u32 start;			/* First entry	*/
++	__u32 len;			/* Number of entries */
++	__u16 *red;			/* Red values	*/
++	__u16 *green;
++	__u16 *blue;
++	__u16 *transp;			/* transparency, can be NULL */
++};
++
++struct fb_con2fbmap {
++	__u32 console;
++	__u32 framebuffer;
++};
++
++/* VESA Blanking Levels */
++#define VESA_NO_BLANKING        0
++#define VESA_VSYNC_SUSPEND      1
++#define VESA_HSYNC_SUSPEND      2
++#define VESA_POWERDOWN          3
++
++enum osd_index_e {
++	OSD1 = 0,
++	OSD2,
++	VIU2_OSD1
++};
++
++enum {
++	/* screen: unblanked, hsync: on,  vsync: on */
++	FB_BLANK_UNBLANK       = VESA_NO_BLANKING,
++
++	/* screen: blanked,   hsync: on,  vsync: on */
++	FB_BLANK_NORMAL        = VESA_NO_BLANKING + 1,
++
++	/* screen: blanked,   hsync: on,  vsync: off */
++	FB_BLANK_VSYNC_SUSPEND = VESA_VSYNC_SUSPEND + 1,
++
++	/* screen: blanked,   hsync: off, vsync: on */
++	FB_BLANK_HSYNC_SUSPEND = VESA_HSYNC_SUSPEND + 1,
++
++	/* screen: blanked,   hsync: off, vsync: off */
++	FB_BLANK_POWERDOWN     = VESA_POWERDOWN + 1
++};
++
++#define FB_VBLANK_VBLANKING	0x001	/* currently in a vertical blank */
++#define FB_VBLANK_HBLANKING	0x002	/* currently in a horizontal blank */
++#define FB_VBLANK_HAVE_VBLANK	0x004	/* vertical blanks can be detected */
++#define FB_VBLANK_HAVE_HBLANK	0x008	/* horizontal blanks can be detected */
++#define FB_VBLANK_HAVE_COUNT	0x010	/* global retrace counter is available */
++#define FB_VBLANK_HAVE_VCOUNT	0x020	/* the vcount field is valid */
++#define FB_VBLANK_HAVE_HCOUNT	0x040	/* the hcount field is valid */
++#define FB_VBLANK_VSYNCING	0x080	/* currently in a vsync */
++#define FB_VBLANK_HAVE_VSYNC	0x100	/* verical syncs can be detected */
++
++struct fb_vblank {
++	__u32 flags;			/* FB_VBLANK flags */
++	__u32 count;			/* counter of retraces since boot */
++	__u32 vcount;			/* current scanline position */
++	__u32 hcount;			/* current scandot position */
++	__u32 reserved[4];		/* reserved for future compatibility */
++};
++
++/* Internal HW accel */
++#define ROP_COPY 0
++#define ROP_XOR  1
++
++struct fb_copyarea {
++	__u32 dx;
++	__u32 dy;
++	__u32 width;
++	__u32 height;
++	__u32 sx;
++	__u32 sy;
++};
++
++struct fb_fillrect {
++	__u32 dx;	/* screen-relative */
++	__u32 dy;
++	__u32 width;
++	__u32 height;
++	__u32 color;
++	__u32 rop;
++};
++
++struct fb_image {
++	__u32 dx;		/* Where to place image */
++	__u32 dy;
++	__u32 width;		/* Size of image */
++	__u32 height;
++	__u32 fg_color;		/* Only used when a mono bitmap */
++	__u32 bg_color;
++	__u8  depth;		/* Depth of the image */
++	const char *data;	/* Pointer to image data */
++	struct fb_cmap cmap;	/* color map info */
++};
++
++/*
++ * hardware cursor control
++ */
++
++#define FB_CUR_SETIMAGE 0x01
++#define FB_CUR_SETPOS   0x02
++#define FB_CUR_SETHOT   0x04
++#define FB_CUR_SETCMAP  0x08
++#define FB_CUR_SETSHAPE 0x10
++#define FB_CUR_SETSIZE	0x20
++#define FB_CUR_SETALL   0xFF
++
++struct fbcurpos {
++	__u16 x, y;
++};
++
++struct fb_cursor {
++	__u16 set;		/* what to set */
++	__u16 enable;		/* cursor on/off */
++	__u16 rop;		/* bitop operation */
++	const char *mask;	/* cursor mask bits */
++	struct fbcurpos hot;	/* cursor hot spot */
++	struct fb_image	image;	/* Cursor image */
++};
++
++#ifdef CONFIG_FB_BACKLIGHT
++/* Settings for the generic backlight code */
++#define FB_BACKLIGHT_LEVELS	128
++#define FB_BACKLIGHT_MAX	0xFF
++#endif
++
++#endif /* _LINUX_FB_H */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/gpio_i2c.h b/include/amlogic/gpio_i2c.h
+--- a/include/amlogic/gpio_i2c.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/gpio_i2c.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,28 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/gpio_i2c.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __GPIO_I2C_H__
++#define __GPIO_I2C_H__
++
++/*
++ * @i2c_index: Controller Index.
++ * @reg: Controller registers address.
++ * @clock_rate: clock source rate.
++ * @div_factor: divider factor.
++ * @i2c_index: Filter delay count ,if not, i2c frequecy
++ * is not correct.
++ */
++
++struct meson_gpio_i2c_platdata {
++	const char sda[10];
++	const char scl[10];
++	unsigned int clock_rate;
++	char is_odpin;
++};
++
++#endif /* __GPIO_I2C_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/hdmi.h b/include/amlogic/hdmi.h
+--- a/include/amlogic/hdmi.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/hdmi.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,761 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/hdmi.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __HDMI_H__
++#define __HDMI_H__
++
++/* Little-Endian format */
++enum scdc_addr {
++	SINK_VER = 0x01,
++	SOURCE_VER, /* RW */
++	UPDATE_0 = 0x10, /* RW */
++	UPDATE_1, /* RW */
++	TMDS_CFG = 0x20, /* RW */
++	SCRAMBLER_ST,
++	CONFIG_0 = 0x30, /* RW */
++	STATUS_FLAGS_0 = 0x40,
++	STATUS_FLAGS_1,
++	ERR_DET_0_L = 0x50,
++	ERR_DET_0_H,
++	ERR_DET_1_L,
++	ERR_DET_1_H,
++	ERR_DET_2_L,
++	ERR_DET_2_H,
++	ERR_DET_CHKSUM,
++	TEST_CONFIG_0 = 0xC0, /* RW */
++	MANUFACT_IEEE_OUI_2 = 0xD0,
++	MANUFACT_IEEE_OUI_1,
++	MANUFACT_IEEE_OUI_0,
++	DEVICE_ID = 0xD3, /* 0xD3 ~ 0xDD */
++	/* RW   0xDE ~ 0xFF */
++	MANUFACT_SPECIFIC = 0xDE,
++};
++
++#define HDMITX_VIC420_OFFSET	0x100
++#define HDMITX_VESA_OFFSET	0x300
++
++/* HDMI VIC definitions */
++enum hdmi_vic {
++	/* Refer to CEA 861-D */
++	HDMI_unknown = 0,
++	HDMI_640x480p60_4x3 = 1,
++	HDMI_720x480p60_4x3 = 2,
++	HDMI_720x480p60_16x9 = 3,
++	HDMI_1280x720p60_16x9 = 4,
++	HDMI_1920x1080i60_16x9 = 5,
++	HDMI_720x480i60_4x3 = 6,
++	HDMI_720x480i60_16x9 = 7,
++	HDMI_720x240p60_4x3 = 8,
++	HDMI_720x240p60_16x9 = 9,
++	HDMI_2880x480i60_4x3 = 10,
++	HDMI_2880x480i60_16x9 = 11,
++	HDMI_2880x240p60_4x3 = 12,
++	HDMI_2880x240p60_16x9 = 13,
++	HDMI_1440x480p60_4x3 = 14,
++	HDMI_1440x480p60_16x9 = 15,
++	HDMI_1920x1080p60_16x9 = 16,
++	HDMI_720x576p50_4x3 = 17,
++	HDMI_720x576p50_16x9 = 18,
++	HDMI_1280x720p50_16x9 = 19,
++	HDMI_1920x1080i50_16x9 = 20,
++	HDMI_720x576i50_4x3 = 21,
++	HDMI_720x576i50_16x9 = 22,
++	HDMI_720x288p_4x3 = 23,
++	HDMI_720x288p_16x9 = 24,
++	HDMI_2880x576i50_4x3 = 25,
++	HDMI_2880x576i50_16x9 = 26,
++	HDMI_2880x288p50_4x3 = 27,
++	HDMI_2880x288p50_16x9 = 28,
++	HDMI_1440x576p_4x3 = 29,
++	HDMI_1440x576p_16x9 = 30,
++	HDMI_1920x1080p50_16x9 = 31,
++	HDMI_1920x1080p24_16x9 = 32,
++	HDMI_1920x1080p25_16x9 = 33,
++	HDMI_1920x1080p30_16x9 = 34,
++	HDMI_2880x480p60_4x3 = 35,
++	HDMI_2880x480p60_16x9 = 36,
++	HDMI_2880x576p50_4x3 = 37,
++	HDMI_2880x576p50_16x9 = 38,
++	HDMI_1920x1080i_t1250_50_16x9 = 39,
++	HDMI_1920x1080i100_16x9 = 40,
++	HDMI_1280x720p100_16x9 = 41,
++	HDMI_720x576p100_4x3 = 42,
++	HDMI_720x576p100_16x9 = 43,
++	HDMI_720x576i100_4x3 = 44,
++	HDMI_720x576i100_16x9 = 45,
++	HDMI_1920x1080i120_16x9 = 46,
++	HDMI_1280x720p120_16x9 = 47,
++	HDMI_720x480p120_4x3 = 48,
++	HDMI_720x480p120_16x9 = 49,
++	HDMI_720x480i120_4x3 = 50,
++	HDMI_720x480i120_16x9 = 51,
++	HDMI_720x576p200_4x3 = 52,
++	HDMI_720x576p200_16x9 = 53,
++	HDMI_720x576i200_4x3 = 54,
++	HDMI_720x576i200_16x9 = 55,
++	HDMI_720x480p240_4x3 = 56,
++	HDMI_720x480p240_16x9 = 57,
++	HDMI_720x480i240_4x3 = 58,
++	HDMI_720x480i240_16x9 = 59,
++	/* Refer to CEA 861-F */
++	HDMI_1280x720p24_16x9 = 60,
++	HDMI_1280x720p25_16x9 = 61,
++	HDMI_1280x720p30_16x9 = 62,
++	HDMI_1920x1080p120_16x9 = 63,
++	HDMI_1920x1080p100_16x9 = 64,
++	HDMI_1280x720p24_64x27 = 65,
++	HDMI_1280x720p25_64x27 = 66,
++	HDMI_1280x720p30_64x27 = 67,
++	HDMI_1280x720p50_64x27 = 68,
++	HDMI_1280x720p60_64x27 = 69,
++	HDMI_1280x720p100_64x27 = 70,
++	HDMI_1280x720p120_64x27 = 71,
++	HDMI_1920x1080p24_64x27 = 72,
++	HDMI_1920x1080p25_64x27 = 73,
++	HDMI_1920x1080p30_64x27 = 74,
++	HDMI_1920x1080p50_64x27 = 75,
++	HDMI_1920x1080p60_64x27 = 76,
++	HDMI_1920x1080p100_64x27 = 77,
++	HDMI_1920x1080p120_64x27 = 78,
++	HDMI_1680x720p24_64x27 = 79,
++	HDMI_1680x720p25_64x27 = 80,
++	HDMI_1680x720p30_64x27 = 81,
++	HDMI_1680x720p50_64x27 = 82,
++	HDMI_1680x720p60_64x27 = 83,
++	HDMI_1680x720p100_64x27 = 84,
++	HDMI_1680x720p120_64x27 = 85,
++	HDMI_2560x1080p24_64x27 = 86,
++	HDMI_2560x1080p25_64x27 = 87,
++	HDMI_2560x1080p30_64x27 = 88,
++	HDMI_2560x1080p50_64x27 = 89,
++	HDMI_2560x1080p60_64x27 = 90,
++	HDMI_2560x1080p100_64x27 = 91,
++	HDMI_2560x1080p120_64x27 = 92,
++	HDMI_3840x2160p24_16x9 = 93,
++	HDMI_3840x2160p25_16x9 = 94,
++	HDMI_3840x2160p30_16x9 = 95,
++	HDMI_3840x2160p50_16x9 = 96,
++	HDMI_3840x2160p60_16x9 = 97,
++	HDMI_4096x2160p24_256x135 = 98,
++	HDMI_4096x2160p25_256x135 = 99,
++	HDMI_4096x2160p30_256x135 = 100,
++	HDMI_4096x2160p50_256x135 = 101,
++	HDMI_4096x2160p60_256x135 = 102,
++	HDMI_3840x2160p24_64x27 = 103,
++	HDMI_3840x2160p25_64x27 = 104,
++	HDMI_3840x2160p30_64x27 = 105,
++	HDMI_3840x2160p50_64x27 = 106,
++	HDMI_3840x2160p60_64x27 = 107,
++	HDMI_RESERVED = 108,
++	/*
++	the following vic is for those y420 mode
++	they are all beyond OFFSET_HDMITX_VIC420(0x1000)
++	and they has same vic with normal vic in the lower bytes.
++	*/
++	HDMI_VIC_Y420 =	HDMITX_VIC420_OFFSET,
++	HDMI_3840x2160p50_16x9_Y420 =
++		HDMITX_VIC420_OFFSET + HDMI_3840x2160p50_16x9,
++	HDMI_3840x2160p60_16x9_Y420 =
++		HDMITX_VIC420_OFFSET + HDMI_3840x2160p60_16x9,
++	HDMI_4096x2160p50_256x135_Y420 =
++		HDMITX_VIC420_OFFSET + HDMI_4096x2160p50_256x135,
++	HDMI_4096x2160p60_256x135_Y420 =
++		HDMITX_VIC420_OFFSET + HDMI_4096x2160p60_256x135,
++	HDMI_3840x2160p50_64x27_Y420 =
++		HDMITX_VIC420_OFFSET + HDMI_3840x2160p50_64x27,
++	HDMI_3840x2160p60_64x27_Y420 =
++		HDMITX_VIC420_OFFSET + HDMI_3840x2160p60_64x27,
++	HDMIV_640x480p60hz = HDMITX_VESA_OFFSET,
++	HDMIV_800x480p60hz,
++	HDMIV_800x600p60hz,
++	HDMIV_852x480p60hz,
++	HDMIV_854x480p60hz,
++	HDMIV_1024x600p60hz,
++	HDMIV_1024x768p60hz,
++	HDMIV_1152x864p75hz,
++	HDMIV_1280x600p60hz,
++	HDMIV_1280x768p60hz,
++	HDMIV_1280x800p60hz,
++	HDMIV_1280x960p60hz,
++	HDMIV_1280x1024p60hz,
++	HDMIV_1360x768p60hz,
++	HDMIV_1366x768p60hz,
++	HDMIV_1400x1050p60hz,
++	HDMIV_1440x900p60hz,
++	HDMIV_1440x2560p60hz,
++	HDMIV_1440x2560p70hz,
++	HDMIV_1600x900p60hz,
++	HDMIV_1600x1200p60hz,
++	HDMIV_1680x1050p60hz,
++	HDMIV_1920x1200p60hz,
++	HDMIV_2048x1080p24hz,
++	HDMIV_2160x1200p90hz,
++	HDMIV_2560x1080p60hz,
++	HDMIV_2560x1440p60hz,
++	HDMIV_2560x1600p60hz,
++	HDMIV_3440x1440p60hz,
++	HDMIV_2400x1200p90hz,
++	HDMIV_3840x1080p60hz,
++};
++
++/* Compliance with old definitions */
++#define HDMI_640x480p60         HDMI_640x480p60_4x3
++#define HDMI_480p60             HDMI_720x480p60_4x3
++#define HDMI_480p60_16x9        HDMI_720x480p60_16x9
++#define HDMI_720p60             HDMI_1280x720p60_16x9
++#define HDMI_1080i60            HDMI_1920x1080i60_16x9
++#define HDMI_480i60             HDMI_720x480i60_4x3
++#define HDMI_480i60_16x9        HDMI_720x480i60_16x9
++#define HDMI_480i60_16x9_rpt    HDMI_2880x480i60_16x9
++#define HDMI_1440x480p60        HDMI_1440x480p60_4x3
++#define HDMI_1440x480p60_16x9   HDMI_1440x480p60_16x9
++#define HDMI_1080p60            HDMI_1920x1080p60_16x9
++#define HDMI_576p50             HDMI_720x576p50_4x3
++#define HDMI_576p50_16x9        HDMI_720x576p50_16x9
++#define HDMI_720p50             HDMI_1280x720p50_16x9
++#define HDMI_1080i50            HDMI_1920x1080i50_16x9
++#define HDMI_576i50             HDMI_720x576i50_4x3
++#define HDMI_576i50_16x9        HDMI_720x576i50_16x9
++#define HDMI_576i50_16x9_rpt    HDMI_2880x576i50_16x9
++#define HDMI_1080p50            HDMI_1920x1080p50_16x9
++#define HDMI_1080p24            HDMI_1920x1080p24_16x9
++#define HDMI_1080p25            HDMI_1920x1080p25_16x9
++#define HDMI_1080p30            HDMI_1920x1080p30_16x9
++#define HDMI_1080p120           HDMI_1920x1080p120_16x9
++#define HDMI_480p60_16x9_rpt    HDMI_2880x480p60_16x9
++#define HDMI_576p50_16x9_rpt    HDMI_2880x576p50_16x9
++#define HDMI_4k2k_24            HDMI_3840x2160p24_16x9
++#define HDMI_4k2k_25            HDMI_3840x2160p25_16x9
++#define HDMI_4k2k_30            HDMI_3840x2160p30_16x9
++#define HDMI_4k2k_50            HDMI_3840x2160p50_16x9
++#define HDMI_4k2k_60            HDMI_3840x2160p60_16x9
++#define HDMI_4k2k_smpte_24      HDMI_4096x2160p24_256x135
++#define HDMI_4k2k_smpte_50      HDMI_4096x2160p50_256x135
++#define HDMI_4k2k_smpte_60      HDMI_4096x2160p60_256x135
++
++/* CEA TIMING STRUCT DEFINITION */
++struct hdmi_cea_timing {
++	unsigned int pixel_freq; /* Unit: 1000 */
++	unsigned int h_freq; /* Unit: Hz */
++	unsigned int v_freq; /* Unit: 0.001 Hz */
++	unsigned int vsync_polarity:1; /* 1: positive  0: negative */
++	unsigned int hsync_polarity:1;
++	unsigned short h_active;
++	unsigned short h_total;
++	unsigned short h_blank;
++	unsigned short h_front;
++	unsigned short h_sync;
++	unsigned short h_back;
++	unsigned short v_active;
++	unsigned short v_total;
++	unsigned short v_blank;
++	unsigned short v_front;
++	unsigned short v_sync;
++	unsigned short v_back;
++	unsigned short v_sync_ln;
++};
++
++/* Refer CEA861-D Page 116 Table 55 */
++struct dtd {
++	unsigned short pixel_clock;
++	unsigned short h_active;
++	unsigned short h_blank;
++	unsigned short v_active;
++	unsigned short v_blank;
++	unsigned short h_sync_offset;
++	unsigned short h_sync;
++	unsigned short v_sync_offset;
++	unsigned short v_sync;
++	unsigned char h_image_size;
++	unsigned char v_image_size;
++	unsigned char h_border;
++	unsigned char v_border;
++	unsigned char flags;
++	enum hdmi_vic vic;
++};
++
++/* Dolby Version support information from EDID*/
++/* Refer to DV Spec version2.9 page26 to page39*/
++enum block_type {
++	ERROR_NULL = 0,
++	ERROR_LENGTH,
++	ERROR_OUI,
++	ERROR_VER,
++	CORRECT,
++};
++
++
++
++#define DV_IEEE_OUI             0x00D046
++#define HDR10_PLUS_IEEE_OUI	0x90848B
++
++#define HDMI_PACKET_VEND        1
++#define HDMI_PACKET_DRM		0x86
++
++#define CMD_CONF_OFFSET         (0x14 << 24)
++#define CONF_AVI_BT2020         (CMD_CONF_OFFSET + 0X2000 + 0x00)
++	#define CLR_AVI_BT2020          0x0
++	#define SET_AVI_BT2020          0x1
++/* set value as COLORSPACE_RGB444, YUV422, YUV444, YUV420 */
++#define CONF_AVI_RGBYCC_INDIC   (CMD_CONF_OFFSET + 0X2000 + 0x01)
++#define CONF_AVI_Q01            (CMD_CONF_OFFSET + 0X2000 + 0x02)
++	#define RGB_RANGE_DEFAULT       0
++	#define RGB_RANGE_LIM           1
++	#define RGB_RANGE_FUL           2
++	#define RGB_RANGE_RSVD          3
++#define CONF_AVI_YQ01           (CMD_CONF_OFFSET + 0X2000 + 0x03)
++	#define YCC_RANGE_LIM           0
++	#define YCC_RANGE_FUL           1
++	#define YCC_RANGE_RSVD          2
++
++struct hdr_info {
++	unsigned int hdr_sup_eotf_sdr:1;
++	unsigned int hdr_sup_eotf_hdr:1;
++	unsigned int hdr_sup_eotf_smpte_st_2084:1;
++	unsigned int hdr_sup_eotf_hlg:1;
++	unsigned int hdr_sup_SMD_type1:1;
++	unsigned char hdr_lum_max;
++	unsigned char hdr_lum_avg;
++	unsigned char hdr_lum_min;
++	unsigned char rawdata[7];
++};
++
++struct hdr10_plus_info {
++	uint32_t ieeeoui;
++	uint8_t length;
++	uint8_t application_version;
++};
++
++enum hdmi_hdr_transfer {
++	T_UNKNOWN = 0,
++	T_BT709,
++	T_UNDEF,
++	T_BT601,
++	T_BT470M,
++	T_BT470BG,
++	T_SMPTE170M,
++	T_SMPTE240M,
++	T_LINEAR,
++	T_LOG100,
++	T_LOG316,
++	T_IEC61966_2_4,
++	T_BT1361E,
++	T_IEC61966_2_1,
++	T_BT2020_10,
++	T_BT2020_12,
++	T_SMPTE_ST_2084,
++	T_SMPTE_ST_28,
++	T_HLG,
++};
++
++enum hdmi_hdr_color {
++	C_UNKNOWN = 0,
++	C_BT709,
++	C_UNDEF,
++	C_BT601,
++	C_BT470M,
++	C_BT470BG,
++	C_SMPTE170M,
++	C_SMPTE240M,
++	C_FILM,
++	C_BT2020,
++};
++
++/* master_display_info for display device */
++struct master_display_info_s {
++	u32 present_flag;
++	u32 features;			/* feature bits bt2020/2084 */
++	u32 primaries[3][2];		/* normalized 50000 in G,B,R order */
++	u32 white_point[2]; 	/* normalized 50000 */
++	u32 luminance[2];		/* max/min lumin, normalized 10000 */
++	u32 max_content;		/* Maximum Content Light Level */
++	u32 max_frame_average;	/* Maximum Frame-average Light Level */
++};
++
++struct hdr10plus_para {
++	uint8_t application_version;
++	uint8_t targeted_max_lum;
++	uint8_t average_maxrgb;
++	uint8_t distribution_values[9];
++	uint8_t num_bezier_curve_anchors;
++	uint32_t knee_point_x;
++	uint32_t knee_point_y;
++	uint8_t bezier_curve_anchors[9];
++	uint8_t graphics_overlay_flag;
++	uint8_t no_delay_flag;
++};
++
++struct dv_info {
++	unsigned char rawdata[27];
++	enum block_type block_flag;
++	uint32_t ieeeoui;
++	uint8_t ver; /* 0 or 1 or 2*/
++	uint8_t length;/*ver1: 15 or 12*/
++
++	uint8_t sup_yuv422_12bit:1;
++	/* if as 0, then support RGB tunnel mode */
++	uint8_t sup_2160p60hz:1;
++	/* if as 0, then support 2160p30hz */
++	uint8_t sup_global_dimming:1;
++	uint16_t Rx;
++	uint16_t Ry;
++	uint16_t Gx;
++	uint16_t Gy;
++	uint16_t Bx;
++	uint16_t By;
++	uint16_t Wx;
++	uint16_t Wy;
++	uint16_t tminPQ;
++	uint16_t tmaxPQ;
++	uint8_t dm_major_ver;
++	uint8_t dm_minor_ver;
++	uint8_t dm_version;
++	uint8_t tmaxLUM;
++	uint8_t colorimetry:1;/* ver1*/
++	uint8_t tminLUM;
++	uint8_t low_latency;/* ver1_12 and 2*/
++	uint8_t sup_backlight_control:1;/*only ver2*/
++	uint8_t backlt_min_luma;/*only ver2*/
++	uint8_t Interface;/*only ver2*/
++	uint8_t sup_10b_12b_444;/*only ver2*/
++	uint8_t support_DV_RGB_444_8BIT;
++	uint8_t support_LL_YCbCr_422_12BIT;
++	uint8_t support_LL_RGB_444_10BIT;
++	uint8_t support_LL_RGB_444_12BIT;
++};
++
++enum eotf_type {
++	EOTF_T_NULL = 0,
++	EOTF_T_DOLBYVISION,
++	EOTF_T_HDR10,
++	EOTF_T_SDR,
++	EOTF_T_LL_MODE,
++	EOTF_T_MAX,
++};
++
++enum mode_type {
++	YUV422_BIT12 = 0,
++	RGB_8BIT,
++	RGB_10_12BIT,
++	YUV444_10_12BIT,
++};
++
++/* Dolby Version VSIF  parameter*/
++struct dv_vsif_para {
++	uint8_t ver; /* 0 or 1 or 2*/
++	uint8_t length;/*ver1: 15 or 12*/
++	union {
++		struct {
++			uint8_t low_latency:1;
++			uint8_t dobly_vision_signal:1;
++			uint8_t backlt_ctrl_MD_present:1;
++			uint8_t auxiliary_MD_present:1;
++			uint8_t eff_tmax_PQ_hi;
++			uint8_t eff_tmax_PQ_low;
++			uint8_t auxiliary_runmode;
++			uint8_t auxiliary_runversion;
++			uint8_t auxiliary_debug0;
++		} ver2;
++	} vers;
++};
++
++#define Y420CMDB_MAX 32
++#define VIC_MAX_NUM  256
++struct rx_cap {
++	unsigned int native_Mode;
++	/*video*/
++	unsigned int VIC[VIC_MAX_NUM];
++	unsigned int VIC_count;
++	unsigned int native_VIC;
++	/*vendor*/
++	unsigned int IEEEOUI;
++	unsigned int Max_TMDS_Clock1; /* HDMI1.4b TMDS_CLK */
++	unsigned int HF_IEEEOUI;	/* For HDMI Forum */
++	unsigned int Max_TMDS_Clock2; /* HDMI2.0 TMDS_CLK */
++	/* CEA861-F, Table 56, Colorimetry Data Block */
++	unsigned int colorimetry_data;
++	unsigned int scdc_present:1;
++	unsigned int scdc_rr_capable:1; /* SCDC read request */
++	unsigned int lte_340mcsc_scramble:1;
++	unsigned support_ycbcr444_flag:1;
++	unsigned support_ycbcr422_flag:1;
++	unsigned int dc_y444:1;
++	unsigned int dc_30bit:1;
++	unsigned int dc_36bit:1;
++	unsigned int dc_48bit:1;
++	unsigned int dc_y420:1;
++	unsigned int dc_30bit_420:1;
++	unsigned int dc_36bit_420:1;
++	unsigned int dc_48bit_420:1;
++	unsigned char edid_version;
++	unsigned char edid_revision;
++	unsigned int ColorDeepSupport;
++	unsigned int Video_Latency;
++	unsigned int Audio_Latency;
++	unsigned int Interlaced_Video_Latency;
++	unsigned int Interlaced_Audio_Latency;
++	unsigned int threeD_present;
++	unsigned int threeD_Multi_present;
++	unsigned int hdmi_vic_LEN;
++	enum hdmi_vic preferred_mode;
++	struct dtd dtd[16];
++	unsigned char dtd_idx;
++	unsigned char flag_vfpdb;
++	unsigned char number_of_dtd;
++	unsigned char pref_colorspace;
++	struct hdr_info hdr_info;
++	struct dv_info dv_info;
++	struct hdr10_plus_info hdr10plus_info;
++	/*blk0 check sum*/
++	unsigned char chksum;
++	/*blk0-3 check sum*/
++	char checksum[10];
++	unsigned char edid_changed;
++	/* for total = 32*8 = 256 VICs */
++	/* for Y420CMDB bitmap */
++	unsigned char bitmap_valid;
++	unsigned char bitmap_length;
++	unsigned char y420_all_vic;
++	unsigned char y420cmdb_bitmap[Y420CMDB_MAX];
++};
++
++enum color_attr_type {
++	COLOR_ATTR_YCBCR444_12BIT = 0,
++	COLOR_ATTR_YCBCR422_12BIT,
++	COLOR_ATTR_YCBCR420_12BIT,
++	COLOR_ATTR_RGB_12BIT,
++	COLOR_ATTR_YCBCR444_10BIT,
++	COLOR_ATTR_YCBCR422_10BIT,
++	COLOR_ATTR_YCBCR420_10BIT,
++	COLOR_ATTR_RGB_10BIT,
++	COLOR_ATTR_YCBCR444_8BIT,
++	COLOR_ATTR_YCBCR422_8BIT,
++	COLOR_ATTR_YCBCR420_8BIT,
++	COLOR_ATTR_RGB_8BIT,
++	COLOR_ATTR_RESERVED,
++};
++
++struct color_attr_to_string {
++	enum color_attr_type color_attr;
++	const char *color_attr_string;
++};
++
++#define DOLBY_VISION_LL_RGB             3
++#define DOLBY_VISION_LL_YUV             2
++#define DOLBY_VISION_STD_ENABLE         1
++#define DOLBY_VISION_DISABLE            0
++#define DOLBY_VISION_ENABLE	1
++
++#define HDMI_IEEEOUI 0x000C03
++
++enum hdmi_color_depth {
++	HDMI_COLOR_DEPTH_24B = 4,
++	HDMI_COLOR_DEPTH_30B = 5,
++	HDMI_COLOR_DEPTH_36B = 6,
++	HDMI_COLOR_DEPTH_48B = 7,
++};
++
++enum hdmi_color_format {
++	HDMI_COLOR_FORMAT_RGB,
++	HDMI_COLOR_FORMAT_422,
++	HDMI_COLOR_FORMAT_444,
++	HDMI_COLOR_FORMAT_420,
++};
++
++enum hdmi_color_range {
++	HDMI_COLOR_RANGE_LIM,
++	HDMI_COLOR_RANGE_FUL,
++};
++
++enum hdmi_audio_packet {
++	HDMI_AUDIO_PACKET_SMP = 0x02,
++	HDMI_AUDIO_PACKET_1BT = 0x07,
++	HDMI_AUDIO_PACKET_DST = 0x08,
++	HDMI_AUDIO_PACKET_HBR = 0x09,
++};
++
++enum hdmi_phy_para {
++	HDMI_PHYPARA_6G = 1, /* 2160p60hz 444 8bit */
++	HDMI_PHYPARA_4p5G, /* 2160p50hz 420 12bit */
++	HDMI_PHYPARA_3p7G, /* 2160p30hz 444 10bit */
++	HDMI_PHYPARA_3G, /* 2160p24hz 444 8bit */
++	HDMI_PHYPARA_LT3G, /* 1080p60hz 444 12bit */
++	HDMI_PHYPARA_DEF = HDMI_PHYPARA_LT3G,
++	HDMI_PHYPARA_270M, /* 480p60hz 444 8bit */
++};
++
++/* get hdmi cea timing
++ * t: struct hdmi_cea_timing *
++ */
++#define GET_TIMING(name) (t->name)
++
++struct parse_cd {
++	enum hdmi_color_depth cd;
++	const char *name;
++};
++
++struct parse_cs {
++	enum hdmi_color_format cs;
++	const char *name;
++};
++
++struct parse_cr {
++	enum hdmi_color_format cr;
++	const char *name;
++};
++
++#define EDID_BLK_NO	4
++#define EDID_BLK_SIZE	128
++struct hdmi_format_para {
++	enum hdmi_vic vic;
++	char *name; /* full name, 1280x720p60hz */
++	char *sname; /* short name, 1280x720p60hz -> 720p60hz */
++	char ext_name[32];
++	enum hdmi_color_depth cd; /* cd8, cd10 or cd12 */
++	enum hdmi_color_format cs; /* rgb, y444, y422, y420 */
++	enum hdmi_color_range cr; /* limit, full */
++	unsigned int pixel_repetition_factor;
++	unsigned int progress_mode:1; /* 0: Interlace  1: Progressive */
++	unsigned int scrambler_en:1;
++	unsigned int tmds_clk_div40:1;
++	unsigned int tmds_clk; /* Unit: 1000 */
++	struct hdmi_cea_timing timing;
++};
++
++struct hdmi_support_mode {
++	enum hdmi_vic vic;
++	char *sname;
++	char y420;
++};
++
++struct hdmitx_dev {
++	unsigned char rx_edid[512]; /* some RX may exceeds 256Bytes */
++	struct {
++		int (*get_hpd_state)(void);
++		int (*read_edid)(unsigned char *buf, unsigned char addr,
++				 unsigned char blk_no);
++		void (*turn_off)(void);
++		void (*list_support_modes)(void);
++		void (*dump_regs)(void);
++		void (*test_bist)(unsigned int mode);
++		void (*output_blank)(unsigned int blank);
++	} HWOp;
++	unsigned char rawedid[EDID_BLK_SIZE * EDID_BLK_NO];
++	struct rx_cap RXCap;
++	struct hdmi_format_para *para;
++	enum hdmi_vic vic;
++	unsigned int frac_rate_policy;
++	unsigned int mode420;
++	unsigned int dc30;
++	enum eotf_type hdmi_current_eotf_type;
++	enum mode_type hdmi_current_tunnel_mode;
++	/* Add dongle_mode, clock, phy may be different from mbox */
++	unsigned int dongle_mode;
++};
++
++#define MODE_LEN	32
++#define VESA_MAX_TIMING 64
++
++typedef struct input_hdmi_data {
++	char ubootenv_hdmimode[MODE_LEN];
++	char ubootenv_colorattribute[MODE_LEN];
++	int ubootenv_dv_type;
++	#if 0
++	bool isbestpolicy;
++	bool isSupport4K30Hz;
++	bool isSupport4K;
++	bool isDeepColor;
++	bool isframeratepriority;
++	bool isLowPowerMode;
++	#endif
++	struct rx_cap *pRXCap;
++} hdmi_data_t;
++
++typedef struct scene_output_info {
++	char final_displaymode[MODE_LEN];
++	char final_deepcolor[MODE_LEN];
++	int final_dv_type;
++} scene_output_info_t;
++
++struct dispmode_vic {
++	const char *disp_mode;
++	enum hdmi_vic VIC;
++};
++
++struct hdmi_format_para *hdmi_get_fmt_paras(enum hdmi_vic vic);
++enum hdmi_vic hdmi_get_fmt_vic(char const *name);
++void hdmi_parse_attr(struct hdmi_format_para *para, char const *name);
++int hdmitx_edid_VIC_support(enum hdmi_vic vic);
++enum hdmi_vic hdmitx_edid_vic_tab_map_vic(const char *disp_mode);
++const char *hdmitx_edid_vic_tab_map_string(enum hdmi_vic vic);
++const char *hdmitx_edid_vic_to_string(enum hdmi_vic vic);
++bool hdmitx_edid_check_valid_mode(struct hdmitx_dev *hdev,
++	struct hdmi_format_para *para);
++enum hdmi_vic hdmitx_edid_get_VIC(struct hdmitx_dev *hdev,
++	const char *disp_mode, char force_flag);
++bool edid_parsing_ok(struct hdmitx_dev *hdev);
++bool is_dolby_enabled(void);
++bool is_tv_support_dv(struct hdmitx_dev *hdev);
++void dolbyvision_scene_process(hdmi_data_t *hdmi_data,
++	scene_output_info_t *output_info);
++void sdr_scene_process(hdmi_data_t *hdmi_data,
++	scene_output_info_t *output_info);
++void get_hdmi_data(struct hdmitx_dev *hdev, hdmi_data_t *data);
++bool pre_process_str(char *name);
++struct hdmi_format_para *hdmi_tst_fmt_name(char const *name, char const *attr);
++bool is_supported_mode_attr(hdmi_data_t *hdmi_data, char *mode_attr);
++int get_ubootenv_dv_type(void);
++
++void hdmi_tx_set(struct hdmitx_dev *hdev);
++int hdmitx_likely_frac_rate_mode(char *mode);
++int hdmi_outputmode_check(char *mode, unsigned int frac);
++/* Parsing RAW EDID data from edid to pRXCap */
++unsigned int hdmi_edid_parsing(unsigned char *edid, struct rx_cap *pRXCap);
++struct hdmi_format_para *hdmi_match_dtd_paras(struct dtd *t);
++
++extern void hdmitx_set_drm_pkt(struct master_display_info_s *data);
++#ifndef CONFIG_AML_HDMITX20
++void __attribute__((weak))hdmitx_set_drm_pkt(struct master_display_info_s *data)
++{
++}
++#endif
++
++void hdmitx_set_vsif_pkt(enum eotf_type type, enum mode_type tunnel_mode,
++	struct dv_vsif_para *data);
++void hdmitx_set_hdr10plus_pkt(unsigned int flag,
++	struct hdr10plus_para *data);
++
++/*
++ * Must be called at uboot
++ */
++void hdmi_tx_init(void);
++
++extern struct hdmitx_dev hdmitx_device;
++bool hdmitx_find_vendor(struct hdmitx_dev *hdev);
++bool hdmitx_find_vendor_null_pkt(struct hdmitx_dev *hdev);
++/* the hdmitx output limits to 1080p */
++bool is_hdmitx_limited_1080p(void);
++
++#ifndef printk
++#define printk printf
++#endif
++#ifndef pr_info
++#define pr_info printf
++#endif
++
++#define hdmitx_debug() /* printf("hd: %s[%d]\n", __func__, __LINE__) */
++
++extern struct hdr_info *hdmitx_get_rx_hdr_info(void);
++#ifndef CONFIG_AML_HDMITX20
++struct hdr_info * __attribute__((weak))hdmitx_get_rx_hdr_info(void)
++{
++	return NULL;
++}
++#endif
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/i2c.h b/include/amlogic/i2c.h
+--- a/include/amlogic/i2c.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/i2c.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,36 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/i2c.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __I2C_H__
++#define __I2C_H__
++
++/*
++ * @i2c_index: Controller Index.
++ * @reg: Controller registers address.
++ * @clock_rate: clock source rate.
++ * @div_factor: divider factor.
++ * @i2c_index: Filter delay count ,if not, i2c frequecy
++ * is not correct.
++ */
++
++struct meson_i2c_platdata {
++	unsigned int i2c_index;
++	ulong reg;
++	unsigned int clock_rate;
++	unsigned int div_factor;
++	unsigned int delay_adjust;
++	unsigned int clock_frequency;
++};
++
++struct meson_i2c_slavedata {
++	uint chip_addr;
++	uint offset_len;
++	uint flags;
++};
++
++#endif /* __I2C_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/image_check.h b/include/amlogic/image_check.h
+--- a/include/amlogic/image_check.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/image_check.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * Copyright (c) 2019 Amlogic, Inc. All rights reserved.
++ */
++
++#ifndef __IMAGE_CHECK_H__
++#define __IMAGE_CHECK_H__
++
++#define SHA256_DIGEST_SIZE	32
++typedef struct {
++	uint32_t device_locked;
++	uint32_t verified_boot_state;
++	uint8_t verified_boot_key[SHA256_DIGEST_SIZE];
++	uint8_t verified_boot_hash[SHA256_DIGEST_SIZE];
++	uint32_t boot_patchlevel;
++} keymaster_boot_params;
++
++#endif /* __IMAGE_CHECK_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/instaboot.h b/include/amlogic/instaboot.h
+--- a/include/amlogic/instaboot.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/instaboot.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,32 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/instaboot.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __INSTABOOT_H_
++#define __INSTABOOT_H_
++
++#define __NEW_UTS_LEN 64
++
++struct new_utsname {
++	char sysname[__NEW_UTS_LEN + 1];
++	char nodename[__NEW_UTS_LEN + 1];
++	char release[__NEW_UTS_LEN + 1];
++	char version[__NEW_UTS_LEN + 1];
++	char machine[__NEW_UTS_LEN + 1];
++	char domainname[__NEW_UTS_LEN + 1];
++};
++
++struct instaboot_info {
++	struct new_utsname uts;
++	unsigned int version_code;
++};
++#define INSTABOOT_SIG	"INSTABOOT"
++
++extern int get_instaboot_header(struct instaboot_info* ib_info);
++extern int fdt_instaboot(void *fdt);
++
++#endif /* __INSTABOOT_H_ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/jtag.h b/include/amlogic/jtag.h
+--- a/include/amlogic/jtag.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/jtag.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,11 @@
++/*
++ * Copyright (C) ST-Ericsson SA 2009
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#ifndef _JTAG_H_
++#define _JTAG_H_
++
++void jtag_set_pinmux(unsigned int jtag_sel, int enable);
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/keyunify.h b/include/amlogic/keyunify.h
+--- a/include/amlogic/keyunify.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/keyunify.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/keyunify.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __KEYUNIFY_H__
++#define __KEYUNIFY_H__
++
++//APIs of key_unify*: unify interfaces for nandkeys/emmckeys/efuse keys
++
++int key_unify_init(const char* seednum, const char* dtbaddr);
++
++int key_unify_uninit(void);
++
++//keyType: user type to define how to parse/check the key value before burn to target
++int key_unify_write(const char* keyname, const void* keydata, const unsigned datalen);
++
++int key_unify_read(const char* keyname, void* keydata, const unsigned bufLen);
++
++int key_unify_query_size(const char* keyname, ssize_t* keysize);
++
++int key_unify_query_exist(const char* keyname, int* exist);
++
++int key_unify_query_secure(const char* keyname, int* isSecure);
++
++int key_unify_query_canOverWrite(const char* keyname, int* canOverWrite);
++
++//Does the key configured in dts
++int key_unify_query_key_has_configure(const char* keyname);
++
++//Another APIs with APP concerns, like special flower hdcp2
++//These APIs are based on key_unify_*
++//
++int key_manage_init(const char* seednum, const char* dtbaddr);
++int key_manage_exit(void);
++
++int key_manage_write(const char* keyname, const void* keydata, const unsigned datalen);
++
++int key_manage_read(const char* keyname, void* keydata, const unsigned bufLen);
++
++int key_manage_query_size(const char* keyname, ssize_t* keysize);
++
++int key_manage_query_exist(const char* keyname, int* exist);
++
++int key_manage_query_secure(const char* keyname, int* isSecure);
++
++int key_manage_query_canOverWrite(const char* keyname, int* canOverWrite);
++
++#endif// #ifndef __KEYUNIFY_H__
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/leds_state.h b/include/amlogic/leds_state.h
+--- a/include/amlogic/leds_state.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/leds_state.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,87 @@
++/*
++ * include/amlogic/leds_state.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++*/
++
++ /*
++  *
++ * Copyright (C) 2012 Amlogic, Inc.
++ *
++ * Author: jiayi.zhou@amlogic.com
++ *
++ */
++#ifndef _LEDS_STATE_H_
++#define _LEDS_STATE_H_
++
++#include <config.h>
++#include <common.h>
++#include <command.h>
++#include <asm/arch/mailbox.h>
++#include <asm/arch/secure_apb.h>
++
++#define	MAXIMUM_BLINK_NUM	15
++#define MAXIMUM_HIGH_MS		50*63
++#define MAXIMUM_LOW_MS		50*63
++#define MAXIMUM_BREATH_ID       3
++
++
++enum LedState {
++	LED_STATE_DEFAULT = 0,
++	LED_STATE_BRIGHTNESS,
++	LED_STATE_BREATH,
++	LED_STATE_BLINK_ON,
++	LED_STATE_BLINK_OFF,
++	LED_STATE_BLINK_BREATH,
++	/* */
++	LED_STATE_BLINK_ON_HANDLE,
++	LED_STATE_BLINK_OFF_HANDLE,
++	LED_STATE_BLINK_BREATH_HANDLE,
++#if 0
++	/* TODO: */
++	LED_STATE_SET_MAX_BRIGHTNESS,
++	LED_STATE_SET_PINMUX,
++	LED_STATE_CLEAR_PINMUX,
++	LED_STATE_INFO,
++	LED_STATE_DEBUG,
++#endif
++	LED_STATE_INVALID,
++};
++
++enum led_brightness {
++	LED_OFF = 0,
++	LED_HALF = 127,
++	LED_FULL = 255,
++};
++
++uint32_t meson_ledstate_set_brightness(uint32_t led_id, uint32_t brightness);
++uint32_t meson_ledstate_set_breath(uint32_t led_id, uint32_t breath_id);
++
++/*to do:Parameters five and six are reserved parameters*/
++uint32_t meson_ledstate_set_blink_times_on(uint32_t led_id, uint32_t
++		blink_times, uint32_t blink_high, uint32_t blink_low,
++		uint32_t brightness_high, uint32_t brightness_low);
++uint32_t meson_ledstate_set_blink_times_off(uint32_t led_id,
++		uint32_t blink_times,uint32_t blink_high,uint32_t blink_low,
++		uint32_t brightness_high, uint32_t brightness_low);
++
++#endif
++/*to do*/
++#if 0
++uint32_t set_led_blink_times_breath(uint32_t led_id,uint32_t blink_times,
++		uint32_t blink_high,uint32_t blink_low );
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/power_domain.h b/include/amlogic/power_domain.h
+--- a/include/amlogic/power_domain.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/power_domain.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,35 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/power_domain.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#define PWR_ON	0
++#define PWR_OFF	1
++
++#define	PM_DOS_HCODEC		0
++#define	PM_DOS_VDEC		1
++#define	PM_DOS_HEVC		2
++#define	PM_WAVE420L		3
++#define	PM_CSI			6
++#define	PM_VPU			8
++#define	PM_NN			16
++#define	PM_USB			17
++#define	PM_PCIE0		18
++#define	PM_GE2D			19
++#define	PM_PCIE1		20
++#define	PM_DSPA			21
++#define	PM_DSPB			22
++#define	PM_DEMOD		23
++
++#ifdef CONFIG_AML_POWER_DOMAIN
++void power_domain_switch(int pwr_domain, bool pwr_switch);
++#else
++#if (defined CONFIG_USB_DEVICE_V2)
++static void power_domain_switch(int pwr_domain, bool pwr_switch)
++{
++}
++#endif
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/pwm.h b/include/amlogic/pwm.h
+--- a/include/amlogic/pwm.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/pwm.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/pwm.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __PWM_H__
++#define __PWM_H__
++
++/*
++ * @pwm_index: Controller Index.
++ * @reg: Controller registers address.
++ */
++
++#define MESON_PWM0		0
++#define MESON_PWM1		1
++#define MESON_PWM2		2
++#define MESON_PWM3		3
++
++#define NO_DOUBLE_CHANNEL	0
++#define IS_DOUBLE_CHANNEL	1
++#define NO_BLINK 		0
++#define IS_BLINK		1
++
++enum {
++	PWM_AB		= 0x0,
++	PWM_CD		= 0x1,
++	PWM_EF		= 0x2,
++	PWMAO_AB	= 0x3,
++	PWMAO_CD	= 0x4,
++};
++
++struct meson_pwm_platdata {
++	unsigned int pwm_index;
++	ulong 	reg;
++	bool	is_double_channel;
++	bool	is_blink;
++};
++
++#endif /* __PWM_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/secure_storage.h b/include/amlogic/secure_storage.h
+--- a/include/amlogic/secure_storage.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/secure_storage.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,56 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/secure_storage.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __SECURE_STORAGE_H__
++#define __SECURE_STORAGE_H__
++
++/* return value*/
++#define RET_OK		0
++#define RET_EFAIL	1
++#define RET_EINVAL	2
++#define RET_EMEM	3
++
++#define RET_EUND	-1
++#define SMC_UNK		-1
++
++/* Attribute*/
++#define OBJ_ATTR_SECURE	(1<<0)
++
++#ifdef CONFIG_SECURE_STORAGE
++/* funtion name: secure_storage_write
++ * keyname : key name is ascii string
++ * keybuf : key buf
++ * keylen : key buf len
++ * keyattr: Secure/Normal, ...
++ *
++ * return  0: ok, 0x1fe: no space, other fail
++ * */
++int32_t secure_storage_write(uint8_t *keyname, uint8_t *keybuf,
++				uint32_t keylen, uint32_t keyattr);
++int32_t secure_storage_read(uint8_t *keyname, uint8_t *keybuf,
++				uint32_t keylen, uint32_t *reallen);
++int32_t secure_storage_query(uint8_t *keyname, uint32_t *retval);
++int32_t secure_storage_tell(uint8_t *keyname, uint32_t *retval);
++int32_t secure_storage_verify(uint8_t *keyname, uint8_t *hashbuf);
++int32_t secure_storage_status(uint8_t *keyname, uint32_t *retval);
++void *secure_storage_getbuffer(uint32_t *size);
++void secure_storage_notifier(void);
++void secure_storage_notifier_ex(uint32_t storagesize, uint32_t rsvarg);
++int32_t secure_storage_list(uint8_t *listbuf, uint32_t buflen,
++				uint32_t *readlen);
++int32_t secure_storage_remove(uint8_t *keyname);
++void secure_storage_set_info(uint32_t info);
++int32_t secure_storage_set_enctype(uint32_t type);
++/* return 0: success, -1: fail*/
++int32_t secure_storage_get_enctype(void);
++/*return -1: no storage, 0: default enc, 1: efuse enc, 2: fixed enc*/
++int32_t secure_storage_version(void);
++/*return -1: no storage, others: version*/
++#endif
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/sound.h b/include/amlogic/sound.h
+--- a/include/amlogic/sound.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/sound.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,173 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/sound.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef _SOUND_H_
++#define _SOUND_H_
++
++#define AIU_958_BPF			0x1500
++#define AIU_958_BRST		0x1501
++#define AIU_958_LENGTH		0x1502
++#define AIU_958_PADDSIZE	0x1503
++#define AIU_958_MISC		0x1504
++#define AIU_958_FORCE_LEFT	0x1505
++#define AIU_958_DISCARD_NUM	0x1506
++#define AIU_958_DCU_FF_CTRL	0x1507
++#define AIU_958_CHSTAT_L0	0x1508
++#define AIU_958_CHSTAT_L1	0x1509
++#define AIU_958_CTRL		0x150a
++#define AIU_958_RPT			0x150b
++#define AIU_I2S_MUTE_SWAP	0x150c
++#define AIU_I2S_SOURCE_DESC	0x150d
++#define AIU_I2S_MED_CTRL	0x150e
++#define AIU_I2S_MED_THRESH	0x150f
++#define AIU_I2S_DAC_CFG		0x1510
++#define AIU_I2S_SYNC		0x1511
++#define AIU_I2S_MISC		0x1512
++#define AIU_I2S_OUT_CFG		0x1513
++#define AIU_I2S_FF_CTRL		0x1514
++#define AIU_RST_SOFT		0x1515
++#define AIU_CLK_CTRL		0x1516
++#define AIU_MIX_ADCCFG		0x1517
++#define AIU_MIX_CTRL		0x1518
++#define AIU_CLK_CTRL_MORE	0x1519
++#define AIU_958_POP			0x151a
++#define AIU_MIX_GAIN		0x151b
++#define AIU_958_SYNWORD1	0x151c
++#define AIU_958_SYNWORD2	0x151d
++#define AIU_958_SYNWORD3	0x151e
++#define AIU_958_SYNWORD1_MASK	0x151f
++#define AIU_958_SYNWORD2_MASK	0x1520
++#define AIU_958_SYNWORD3_MASK	0x1521
++#define AIU_958_FFRDOUT_THD		0x1522
++#define AIU_958_LENGTH_PER_PAUSE	0x1523
++#define AIU_958_PAUSE_NUM		0x1524
++#define AIU_958_PAUSE_PAYLOAD	0x1525
++#define AIU_958_AUTO_PAUSE		0x1526
++#define AIU_958_PAUSE_PD_LENGTH	0x1527
++#define AIU_CODEC_DAC_LRCLK_CTRL	0x1528
++#define AIU_CODEC_ADC_LRCLK_CTRL	0x1529
++#define AIU_HDMI_CLK_DATA_CTRL		0x152a
++#define AIU_CODEC_CLK_DATA_CTRL		0x152b
++#define AIU_ACODEC_CTRL			0x152c
++#define AIU_958_CHSTAT_R0		0x1530
++#define AIU_958_CHSTAT_R1		0x1531
++#define AIU_958_VALID_CTRL		0x1532
++#define AIU_AUDIO_AMP_REG0		0x153c
++#define AIU_AUDIO_AMP_REG1		0x153d
++#define AIU_AUDIO_AMP_REG2		0x153e
++#define AIU_AUDIO_AMP_REG3		0x153f
++#define AIU_AIFIFO2_CTRL		0x1540
++#define AIU_AIFIFO2_STATUS		0x1541
++#define AIU_AIFIFO2_GBIT		0x1542
++#define AIU_AIFIFO2_CLB			0x1543
++#define AIU_CRC_CTRL			0x1544
++#define AIU_CRC_STATUS			0x1545
++#define AIU_CRC_SHIFT_REG		0x1546
++#define AIU_CRC_IREG			0x1547
++#define AIU_CRC_CAL_REG1		0x1548
++#define AIU_CRC_CAL_REG0		0x1549
++#define AIU_CRC_POLY_COEF1		0x154a
++#define AIU_CRC_POLY_COEF0		0x154b
++#define AIU_CRC_BIT_SIZE1		0x154c
++#define AIU_CRC_BIT_SIZE0		0x154d
++#define AIU_CRC_BIT_CNT1		0x154e
++#define AIU_CRC_BIT_CNT0		0x154f
++#define AIU_AMCLK_GATE_HI		0x1550
++#define AIU_AMCLK_GATE_LO		0x1551
++#define AIU_AMCLK_MSR			0x1552
++#define AIU_AUDAC_CTRL0			0x1553
++#define AIU_DELTA_SIGMA0		0x1555
++#define AIU_DELTA_SIGMA1		0x1556
++#define AIU_DELTA_SIGMA2		0x1557
++#define AIU_DELTA_SIGMA3		0x1558
++#define AIU_DELTA_SIGMA4		0x1559
++#define AIU_DELTA_SIGMA5		0x155a
++#define AIU_DELTA_SIGMA6		0x155b
++#define AIU_DELTA_SIGMA7		0x155c
++#define AIU_DELTA_SIGMA_LCNTS	0x155d
++#define AIU_DELTA_SIGMA_RCNTS	0x155e
++#define AIU_MEM_I2S_START_PTR	0x1560
++#define AIU_MEM_I2S_RD_PTR		0x1561
++#define AIU_MEM_I2S_END_PTR		0x1562
++#define AIU_MEM_I2S_MASKS		0x1563
++#define AIU_MEM_I2S_CONTROL		0x1564
++#define AIU_MEM_IEC958_START_PTR	0x1565
++#define AIU_MEM_IEC958_RD_PTR		0x1566
++#define AIU_MEM_IEC958_END_PTR		0x1567
++#define AIU_MEM_IEC958_MASKS		0x1568
++#define AIU_MEM_IEC958_CONTROL		0x1569
++#define AIU_MEM_AIFIFO2_START_PTR	0x156a
++#define AIU_MEM_AIFIFO2_CURR_PTR	0x156b
++#define AIU_MEM_AIFIFO2_END_PTR		0x156c
++#define AIU_MEM_AIFIFO2_BYTES_AVAIL	0x156d
++#define AIU_MEM_AIFIFO2_CONTROL		0x156e
++#define AIU_MEM_AIFIFO2_MAN_WP		0x156f
++#define AIU_MEM_AIFIFO2_MAN_RP		0x1570
++#define AIU_MEM_AIFIFO2_LEVEL		0x1571
++#define AIU_MEM_AIFIFO2_BUF_CNTL	0x1572
++#define AIU_MEM_I2S_MAN_WP		0x1573
++#define AIU_MEM_I2S_MAN_RP		0x1574
++#define AIU_MEM_I2S_LEVEL		0x1575
++#define AIU_MEM_I2S_BUF_CNTL	0x1576
++#define AIU_MEM_I2S_BUF_WRAP_COUNT	0x1577
++#define AIU_MEM_I2S_MEM_CTL			0x1578
++#define AIU_MEM_IEC958_MEM_CTL		0x1579
++#define AIU_MEM_IEC958_WRAP_COUNT	0x157a
++#define AIU_MEM_IEC958_IRQ_LEVEL	0x157b
++#define AIU_MEM_IEC958_MAN_WP		0x157c
++#define AIU_MEM_IEC958_MAN_RP		0x157d
++#define AIU_MEM_IEC958_LEVEL		0x157e
++#define AIU_MEM_IEC958_BUF_CNTL		0x157f
++#define AIU_AIFIFO_CTRL		0x1580
++#define AIU_AIFIFO_STATUS	0x1581
++#define AIU_AIFIFO_GBIT		0x1582
++#define AIU_AIFIFO_CLB		0x1583
++#define AIU_MEM_AIFIFO_START_PTR	0x1584
++#define AIU_MEM_AIFIFO_CURR_PTR		0x1585
++#define AIU_MEM_AIFIFO_END_PTR		0x1586
++#define AIU_MEM_AIFIFO_BYTES_AVAIL	0x1587
++#define AIU_MEM_AIFIFO_CONTROL		0x1588
++#define AIU_MEM_AIFIFO_MAN_WP		0x1589
++#define AIU_MEM_AIFIFO_MAN_RP		0x158a
++#define AIU_MEM_AIFIFO_LEVEL		0x158b
++#define AIU_MEM_AIFIFO_BUF_CNTL		0x158c
++#define AIU_MEM_AIFIFO_BUF_WRAP_COUNT	0x158d
++#define AIU_MEM_AIFIFO2_BUF_WRAP_COUNT	0x158e
++#define AIU_MEM_AIFIFO_MEM_CTL		0x158f
++#define AIFIFO_TIME_STAMP_CNTL		0x1590
++#define AIFIFO_TIME_STAMP_SYNC_0	0x1591
++#define AIFIFO_TIME_STAMP_SYNC_1	0x1592
++#define AIFIFO_TIME_STAMP_0			0x1593
++#define AIFIFO_TIME_STAMP_1			0x1594
++#define AIFIFO_TIME_STAMP_2			0x1595
++#define AIFIFO_TIME_STAMP_3			0x1596
++#define AIFIFO_TIME_STAMP_LENGTH	0x1597
++#define AIFIFO2_TIME_STAMP_CNTL		0x1598
++#define AIFIFO2_TIME_STAMP_SYNC_0	0x1599
++#define AIFIFO2_TIME_STAMP_SYNC_1	0x159a
++#define AIFIFO2_TIME_STAMP_0		0x159b
++#define AIFIFO2_TIME_STAMP_1		0x159c
++#define AIFIFO2_TIME_STAMP_2		0x159d
++#define AIFIFO2_TIME_STAMP_3		0x159e
++#define AIFIFO2_TIME_STAMP_LENGTH	0x159f
++#define IEC958_TIME_STAMP_CNTL		0x15a0
++#define IEC958_TIME_STAMP_SYNC_0	0x15a1
++#define IEC958_TIME_STAMP_SYNC_1	0x15a2
++#define IEC958_TIME_STAMP_0		0x15a3
++#define IEC958_TIME_STAMP_1		0x15a4
++#define IEC958_TIME_STAMP_2		0x15a5
++#define IEC958_TIME_STAMP_3		0x15a6
++#define IEC958_TIME_STAMP_LENGTH	0x15a7
++#define AIU_MEM_AIFIFO2_MEM_CTL		0x15a8
++#define AIU_I2S_CBUS_DDR_CNTL		0x15a9
++#define AIU_I2S_CBUS_DDR_WDATA		0x15aa
++#define AIU_I2S_CBUS_DDR_ADDR		0x15ab
++
++int aml_audio_init(void);
++
++#endif /* _SOUND_H_ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/spicc.h b/include/amlogic/spicc.h
+--- a/include/amlogic/spicc.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/spicc.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,43 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/spicc.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __SPICC_H__
++#define __SPICC_H__
++
++#define SPICC_DEFAULT_CLK_RATE 166666666
++#define CS_GPIO_MAX 2
++
++/*
++ * @compatible:
++ * @reg: controller registers address.
++ * @mem_map: memory_mapped for read operations.
++ * @clk_rate:
++ * @clk_set_rate:
++ * @pinctrl_enable:
++ * @num_chipselect:
++ * @cs_gpios:
++ */
++struct spicc_platdata {
++#ifndef CONFIG_OF_CONTROL
++	char *compatible;
++	int clk_rate;
++	int (*clk_set_rate)(int rate);
++	int (*clk_enable)(bool enable);
++	int (*pinctrl_enable)(bool enable);
++#endif
++	void __iomem *reg;
++	const char *cs_gpio_names[CS_GPIO_MAX];
++	unsigned int clk_cs_delay;
++	unsigned int mo_delay;
++	unsigned int mi_delay;
++	unsigned int mi_capture_delay;
++	unsigned int tt_delay;
++	unsigned int ti_delay;
++};
++
++#endif /* __SPICC_H__ */
+\ No newline at end of file
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/spifc.h b/include/amlogic/spifc.h
+--- a/include/amlogic/spifc.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/spifc.h	2026-02-09 11:25:48.685087595 +0800
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/spifc.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __SPIFC_H__
++#define __SPIFC_H__
++
++#define SPIFC_DEFAULT_CLK_RATE 166666666
++/*
++ * @reg: controller registers address.
++ * @mem_map: memory_mapped for read operations.
++ * @clk_get(): callback to get spifc clk pointer.
++ *   ret: should be "struct clk *"
++ *   dev: should be "struct udevice *"
++ * @clk_get_rate():
++ * @clk_enable():
++ * @pinctrl_get(): callback to get spifc pinctrl pointer.
++ *   ret: should be "struct pinctrl *"
++ *   dev: should be "struct udevice *"
++ * @num_chipselect:
++ * @cs_gpios:
++ */
++
++/*
++ * spifc driver will use the default clk81 rate 1666666666
++ * if without following platform callbacks.
++	static void* spifc_clk_get(void *dev, char *name)
++	{ return NULL; }
++	static int spifc_clk_get_rate(void *clk)
++	{ return 1666666666; }
++	static int spifc_clk_enable(void *clk, bool enable)
++	{ return 0; }
++	static void* spifc_pinctrl_get(void *dev, char *name)
++	{ return NULL; }
++ */
++
++struct spifc_platdata {
++	ulong reg;
++	ulong mem_map;
++	void *(*clk_get)(void *dev, char *name);
++	int (*clk_get_rate)(void *clk);
++	int (*clk_enable)(void *clk, bool enable);
++	void *(*pinctrl_get)(void *dev, char *name);
++	int (*pinctrl_enable)(void *pinctrl, bool enable);
++	int num_chipselect;
++	int *cs_gpios;
++};
++
++#endif /* __SPIFC_H__ */
+\ No newline at end of file
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/storage_if.h b/include/amlogic/storage_if.h
+--- a/include/amlogic/storage_if.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/storage_if.h	2026-02-09 11:25:48.689087813 +0800
+@@ -0,0 +1,75 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/storage_if.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __STORAGE_IF_H__
++#define __STORAGE_IF_H__
++
++
++/***
++upgrade_read_ops:
++
++partition_name: env / logo / recovery /boot / system /cache /media
++
++***/
++int store_read_ops(unsigned char *partition_name,unsigned char * buf, uint64_t off, uint64_t size);
++
++
++/***
++upgrade_write_ops:
++
++partition_name: env / logo / recovery /boot / system /cache /media
++
++***/
++int store_write_ops(unsigned char *partition_name,unsigned char * buf,uint64_t off, uint64_t size);
++
++
++/***
++upgrade_write_ops:
++
++partition_name: env / logo / recovery /boot / system /cache /media
++
++***/
++int store_get_partition_size(unsigned char *partition_name, uint64_t *size);
++
++
++/***
++upgrade_erase_ops:
++
++partition_name: boot / data
++
++flag = 0; indicate erase partition ;
++flag = 1; indicate scurb whole nand;
++
++***/
++int store_erase_ops(unsigned char *par_name, uint64_t off, uint64_t size, unsigned char flag);
++
++/***
++bootloader:
++***/
++int store_boot_read(unsigned char * buf, uint64_t off, uint64_t size);
++
++int store_boot_write(unsigned char * buf,uint64_t off, uint64_t size);
++
++int store_init(unsigned  flag);
++
++int store_exit(void);
++
++//dtb read/write
++//@rwFlag: 0---read, 1---write, 2---iread
++int store_dtb_rw(void* buf, unsigned dtbSz, int rwFlag);
++
++//key read/write
++int store_key_read(uint8_t * buffer,
++			uint32_t length, uint32_t *actual_lenth);
++int store_key_write(uint8_t * buffer,
++			uint32_t length, uint32_t *actual_lenth);
++
++extern int check_valid_dts(unsigned char *buffer, unsigned char **dts);
++
++#endif//ifndef __STORAGE_IF_H__
++
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/storagekey.h b/include/amlogic/storagekey.h
+--- a/include/amlogic/storagekey.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/storagekey.h	2026-02-09 11:25:48.689087813 +0800
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/storagekey.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __STORAGEKEY_H__
++#define __STORAGEKEY_H__
++
++
++/* storage key interface */
++/**
++ *1.amlkey_init: init storage key
++ * return ok 0, fail not 0
++ */
++extern int32_t amlkey_init(uint8_t *seed, uint32_t len);
++
++/**
++ *2. amlkey_isexsit: query key, already programmed ?
++ * return: exsit 1, non 0
++ */
++extern int32_t amlkey_isexsit(const uint8_t * name);
++
++/**
++ * 3. query if the key is secure
++ * return secure 1, non 0;
++ */
++extern int32_t amlkey_issecure(const uint8_t * name);
++
++/**
++ * 4. amlkey_size: actual bytes of key value
++ *  return actual size.
++ */
++extern ssize_t amlkey_size(const uint8_t *name);
++
++/**
++ *5. amlkey_read: read non-secure key in bytes.
++ * return actual size read back; 0 means read failed!
++ */
++extern ssize_t amlkey_read(const uint8_t *name,
++				uint8_t *buffer, uint32_t len);
++
++/**
++ * 6. amlkey_write: write secure/non-secure key in bytes.
++ * return actual size write down. 0 means write failed!
++ */
++extern ssize_t amlkey_write(const uint8_t *name,
++				uint8_t *buffer, uint32_t len, uint32_t secure);
++
++/**
++ * 7. get the hash value of programmed secure key | 32bytes length, sha256
++ * return success 0, fail -1
++ */
++extern int32_t amlkey_hash_4_secure(const uint8_t * name, uint8_t * hash);
++
++/**
++ * 8. amlkey_del: del key by name
++ * return success 0, fail non-0.
++ */
++extern int32_t amlkey_del(const uint8_t * name);
++
++
++#endif /* __STORAGEKEY_H__ */
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/vinfo.h b/include/amlogic/vinfo.h
+--- a/include/amlogic/vinfo.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/vinfo.h	2026-02-09 11:25:48.689087813 +0800
+@@ -0,0 +1,156 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/vinfo.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef __VINFO_H_
++#define __VINFO_H_
++
++struct vinfo_s {
++	ushort width;  /* Number of columns (i.e. 160) */
++	ushort height; /* Number of rows (i.e. 100) */
++	ushort field_height; /* for interlace */
++	u_char vl_bpix; /* Bits per pixel, 0 = 1 */
++
++	void *vd_base; /* Start of framebuffer memory */
++
++	void *vd_console_address; /* Start of console buffer */
++	short console_col;
++	short console_row;
++
++	int vd_color_fg;
++	int vd_color_bg;
++
++	ushort *cmap; /* Pointer to the colormap */
++	void *priv; /* Pointer to driver-specific data */
++};
++
++
++/************************************************************************/
++/* ** BITMAP DISPLAY SUPPORT						*/
++/************************************************************************/
++#if defined(CONFIG_CMD_BMP) || defined(CONFIG_SPLASH_SCREEN)
++# include <bmp_layout.h>
++# include <asm/byteorder.h>
++#endif
++
++/*
++ *  Information about displays we are using. This is for configuring
++ *  the LCD controller and memory allocation. Someone has to know what
++ *  is connected, as we can't autodetect anything.
++ */
++#define CONFIG_SYS_HIGH	0	/* Pins are active high			*/
++#define CONFIG_SYS_LOW		1	/* Pins are active low			*/
++
++#define LCD_COLOR2	2
++#define LCD_COLOR4	4
++#define LCD_COLOR8	8
++#define LCD_COLOR16	16
++#define LCD_COLOR24	24
++#define LCD_COLOR32	32
++
++
++/*----------------------------------------------------------------------*/
++#if defined(CONFIG_LCD_INFO_BELOW_LOGO)
++# define LCD_INFO_X		0
++# define LCD_INFO_Y		(BMP_LOGO_HEIGHT + VIDEO_FONT_HEIGHT)
++#elif defined(CONFIG_LCD_LOGO)
++# define LCD_INFO_X		(BMP_LOGO_WIDTH + 4 * VIDEO_FONT_WIDTH)
++# define LCD_INFO_Y		(VIDEO_FONT_HEIGHT)
++#else
++# define LCD_INFO_X		(VIDEO_FONT_WIDTH)
++# define LCD_INFO_Y		(VIDEO_FONT_HEIGHT)
++#endif
++
++/* Calculate nr. of bits per pixel  and nr. of colors */
++#define NBITS(bit_code)		(bit_code)
++#define NCOLORS(bit_code)	(1 << NBITS(bit_code))
++
++/************************************************************************/
++/* ** CONSOLE CONSTANTS							*/
++/************************************************************************/
++#if LCD_BPP == LCD_MONOCHROME
++
++/*
++ * Simple black/white definitions
++ */
++# define CONSOLE_COLOR_BLACK	0
++# define CONSOLE_COLOR_WHITE	1	/* Must remain last / highest	*/
++
++#elif LCD_BPP == LCD_COLOR8
++
++/*
++ * 8bpp color definitions
++ */
++# define CONSOLE_COLOR_BLACK	0
++# define CONSOLE_COLOR_RED	1
++# define CONSOLE_COLOR_GREEN	2
++# define CONSOLE_COLOR_YELLOW	3
++# define CONSOLE_COLOR_BLUE	4
++# define CONSOLE_COLOR_MAGENTA	5
++# define CONSOLE_COLOR_CYAN	6
++# define CONSOLE_COLOR_GREY	14
++# define CONSOLE_COLOR_WHITE	15	/* Must remain last / highest	*/
++
++#elif LCD_BPP == LCD_COLOR24
++/*
++ * 24bpp color definitions
++ */
++# define CONSOLE_COLOR_BLACK	 0
++# define CONSOLE_COLOR_RED 	0x0000ff
++# define CONSOLE_COLOR_GREEN	0x00ff00
++# define CONSOLE_COLOR_YELLOW	0x00ffff
++# define CONSOLE_COLOR_BLUE	0xff0000
++# define CONSOLE_COLOR_MAGENTA	0xff00ff
++# define CONSOLE_COLOR_CYAN	0xffff00
++# define CONSOLE_COLOR_GREY	0x808080
++# define CONSOLE_COLOR_WHITE	0xffffff	/* Must remain last / highest	*/
++
++#else
++
++/*
++ * 16bpp color definitions
++ */
++# define CONSOLE_COLOR_BLACK	0x0000
++# define CONSOLE_COLOR_RED 		0xf800
++# define CONSOLE_COLOR_GREEN	0x07e0
++# define CONSOLE_COLOR_YELLOW	0xffe0
++# define CONSOLE_COLOR_BLUE		0x001f
++# define CONSOLE_COLOR_MAGENTA	0xf81f
++# define CONSOLE_COLOR_CYAN		0x07ff
++# define CONSOLE_COLOR_WHITE	0xffff	/* Must remain last / highest	*/
++
++#endif /* color definitions */
++
++/************************************************************************/
++#ifndef PAGE_SIZE
++# define PAGE_SIZE	4096
++#endif
++
++/************************************************************************/
++/* ** CONSOLE DEFINITIONS & FUNCTIONS					*/
++/************************************************************************/
++#if defined(CONFIG_LCD_LOGO) && !defined(CONFIG_LCD_INFO_BELOW_LOGO)
++# define CONSOLE_ROWS		((info->vl_row-BMP_LOGO_HEIGHT) \
++					/ VIDEO_FONT_HEIGHT)
++#else
++# define CONSOLE_ROWS		(info->vl_row / VIDEO_FONT_HEIGHT)
++#endif
++
++#define CONSOLE_COLS		(panel_info.vl_col / VIDEO_FONT_WIDTH)
++#define CONSOLE_ROW_SIZE	(VIDEO_FONT_HEIGHT * lcd_line_length)
++#define CONSOLE_ROW_FIRST	(info->vd_console_address)
++#define CONSOLE_ROW_SECOND	(info->vd_console_address + CONSOLE_ROW_SIZE)
++#define CONSOLE_ROW_LAST	(info->vd_console_address + CONSOLE_SIZE \
++					- CONSOLE_ROW_SIZE)
++#define CONSOLE_SIZE		(CONSOLE_ROW_SIZE * CONSOLE_ROWS)
++#define CONSOLE_SCROLL_SIZE	(CONSOLE_SIZE - CONSOLE_ROW_SIZE)
++
++# define COLOR_MASK(c)		(c)
++
++/************************************************************************/
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/vmode.h b/include/amlogic/vmode.h
+--- a/include/amlogic/vmode.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/vmode.h	2026-02-09 11:25:48.689087813 +0800
+@@ -0,0 +1,107 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/vmode.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef VMODE_H
++#define VMODE_H
++
++typedef enum vmode_e {
++	VMODE_480I = 0,
++	VMODE_480I_RPT,
++	VMODE_480CVBS,
++	VMODE_480P,
++	VMODE_480P_RPT,
++	VMODE_480P_120HZ,
++	VMODE_576I,
++	VMODE_576I_RPT,
++	VMODE_576CVBS,
++	VMODE_576P,
++	VMODE_576P_RPT,
++	VMODE_576P_100HZ,
++	VMODE_720P,
++	VMODE_768P,
++	VMODE_1080I,
++	VMODE_1080P,
++	VMODE_720P_50HZ,
++	VMODE_720P_100HZ,
++	VMODE_720P_120HZ,
++	VMODE_1080I_50HZ,
++	VMODE_1080I_100HZ,
++	VMODE_1080I_120HZ,
++	VMODE_1080P_30HZ,
++	VMODE_1080P_50HZ,
++	VMODE_1080P_25HZ,
++	VMODE_1080P_24HZ,
++	VMODE_1080P_100HZ,
++	VMODE_1080P_120HZ,
++	VMODE_4K2K_30HZ,
++	VMODE_4K2K_25HZ,
++	VMODE_4K2K_24HZ,
++	VMODE_4K2K_SMPTE,
++	VMODE_4K2K_SMPTE_25HZ,
++	VMODE_4K2K_SMPTE_30HZ,
++	VMODE_4K2K_SMPTE_50HZ,
++	VMODE_4K2K_SMPTE_60HZ,
++	VMODE_4K2K_SMPTE_50HZ_Y420,
++	VMODE_4K2K_SMPTE_60HZ_Y420,
++	VMODE_4K2K_FAKE_5G,
++	VMODE_4K2K_60HZ,
++	VMODE_4K2K_60HZ_Y420,
++	VMODE_4K2K_50HZ,
++	VMODE_4K2K_50HZ_Y420,
++	VMODE_4K2K_5G,
++	VMODE_4K1K_120HZ,
++	VMODE_4K1K_120HZ_Y420,
++	VMODE_4K1K_100HZ,
++	VMODE_4K1K_100HZ_Y420,
++	VMODE_4K05K_240HZ,
++	VMODE_4K05K_240HZ_Y420,
++	VMODE_4K05K_200HZ,
++	VMODE_4K05K_200HZ_Y420,
++	VMODE_640x480p60hz,
++	VMODE_800x480p60hz,
++	VMODE_800x600p60hz,
++	VMODE_852x480p60hz,
++	VMODE_854x480p60hz,
++	VMODE_1024x600p60hz,
++	VMODE_1024x768p60hz,
++	VMODE_1152x864p75hz,
++	VMODE_1280x600p60hz,
++	VMODE_1280x768p60hz,
++	VMODE_1280x800p60hz,
++	VMODE_1280x960p60hz,
++	VMODE_1280x1024p60hz,
++	VMODE_1360x768p60hz,
++	VMODE_1366x768p60hz,
++	VMODE_1400x1050p60hz,
++	VMODE_1440x900p60hz,
++	VMODE_1440x2560p60hz,
++	VMODE_1440x2560p70hz,
++	VMODE_1600x900p60hz,
++	VMODE_1600x1200p60hz,
++	VMODE_1680x1050p60hz,
++	VMODE_1920x1200p60hz,
++	VMODE_2160x1200p90hz,
++	VMODE_2560x1080p60hz,
++	VMODE_2560x1440p60hz,
++	VMODE_2560x1600p60hz,
++	VMODE_3440x1440p60hz,
++	VMODE_3840x1080p120hz,
++	VMODE_3840x1080p100hz,
++	VMODE_VGA,
++	VMODE_SVGA,
++	VMODE_XGA,
++	VMODE_SXGA,
++	VMODE_WSXGA,
++	VMODE_FHDVGA,
++	VMODE_LCD,
++	VMODE_MAX,
++	VMODE_INIT_NULL,
++	VMODE_MASK = 0xFF,
++} vmode_t;
++
++#endif
+diff -ruN '--exclude=.git' '--exclude=build' '--exclude=.gitignore' '--exclude=.mailmap' '--exclude=*.o' '--exclude=*.a' '--exclude=*.pyc' '--exclude=aml-user-key.sig' '--exclude=aml-user-key-v3.sig' '--exclude=aml-key' a/include/amlogic/vout.h b/include/amlogic/vout.h
+--- a/include/amlogic/vout.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/amlogic/vout.h	2026-02-09 11:25:48.689087813 +0800
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++/*
++ * include/amlogic/vout.h
++ *
++ * Copyright (C) 2020 Amlogic, Inc. All rights reserved.
++ *
++ */
++
++#ifndef VOUT_H
++#define VOUT_H
++
++#include <amlogic/vinfo.h>
++
++#define VOUT_VIU1_SEL    1
++#define VOUT_VIU2_SEL    2
++
++enum viu_mux_e {
++	VIU_MUX_ENCL = 0,
++	VIU_MUX_ENCI,
++	VIU_MUX_ENCP,
++	VIU_MUX_MAX,
++};
++
++void vout_init(void);
++void vout_vinfo_dump(void);
++int vout_get_current_vmode(void);
++int vout_get_current_axis(int *axis);
++void vout_set_current_vmode(int mode);
++struct vinfo_s *vout_get_current_vinfo(void);
++extern void vout_viu_mux(int viu_sel, int venc_sel);
++extern unsigned long get_fb_addr(void);
++#endif
++
