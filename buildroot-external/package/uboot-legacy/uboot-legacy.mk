@@ -10,8 +10,8 @@ UBOOT_LEGACY_SITE_METHOD = git
 UBOOT_LEGACY_LICENSE = GPL-2.0+
 UBOOT_LEGACY_LICENSE_FILES = COPYING
 
-UBOOT_LEGACY_BOARD = axg_hubv3x_v1
-UBOOT_LEGACY_BOARD_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3x
+UBOOT_LEGACY_BOARD = axg_hubv3l_v1
+UBOOT_LEGACY_BOARD_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l
 UBOOT_LEGACY_FIP_DIR = $(UBOOT_LEGACY_BOARD_DIR)/aml-fip
 
 # Install produced images (u-boot.bin*) to BINARIES_DIR via
@@ -22,7 +22,7 @@ UBOOT_LEGACY_INSTALL_IMAGES = YES
 UBOOT_LEGACY_CROSS = aarch64-elf-
 
 # Patches are applied automatically by buildroot via BR2_GLOBAL_PATCH_DIR
-# -> patches/uboot-legacy/ (51 SDK patches + 1 hubv3x board patch)
+# -> patches/uboot-legacy/ (51 SDK patches + 1 hubv3l board patch)
 
 # Amlogic u-boot uses make <board>_config, not make <board>_defconfig
 define UBOOT_LEGACY_CONFIGURE_CMDS

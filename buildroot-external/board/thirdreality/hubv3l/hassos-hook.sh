@@ -1,7 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2155
 #
-# HubV3X post-image hook
+# HubV3L post-image hook
 #
 # Produces aml_upgrade_package.img for Amlogic USB Burning Tool.
 #
@@ -19,14 +19,14 @@
 #   - dtbTool, mkbootimg, aml_image_v2_packer_new, aml_upgrade_pkg_gen.sh
 #
 
-BOARD_DIR="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3x"
+BOARD_DIR="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3l"
 TOOLS_DIR="${BOARD_DIR}/aml-tools"
 FIP_DIR="${BOARD_DIR}/aml-fip"
 UPGRADE_DIR="${BOARD_DIR}/upgrade-axg"
 
-# Override create_disk_image - hubv3x uses Amlogic image packaging
+# Override create_disk_image - hubv3l uses Amlogic image packaging
 function create_disk_image() {
-    echo "HubV3X: skipping genimage (using Amlogic packaging)"
+    echo "HubV3L: skipping genimage (using Amlogic packaging)"
 }
 
 function hassos_pre_image() {
@@ -36,7 +36,7 @@ function hassos_pre_image() {
 function hassos_post_image() {
     echo ""
     echo "###########################################################"
-    echo "# HubV3X post-image: Amlogic AXG packaging"
+    echo "# HubV3L post-image: Amlogic AXG packaging"
     echo "###########################################################"
     echo ""
 

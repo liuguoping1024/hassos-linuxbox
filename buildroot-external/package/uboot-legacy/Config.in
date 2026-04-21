@@ -1,7 +1,7 @@
 config BR2_PACKAGE_UBOOT_LEGACY
 	bool "uboot-legacy"
 	help
-	  Amlogic A113X u-boot for HubV3X.
+	  Amlogic A113X u-boot for HubV3L.
 	  Downloads upstream u-boot v2015.01, applies Amlogic SDK patches,
 	  compiles BL33, and runs FIP packaging (bl2+bl30+bl31+bl33).
 	  Produces u-boot.bin and variants in BINARIES_DIR.

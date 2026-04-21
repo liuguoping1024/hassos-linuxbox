@@ -1,4 +1,4 @@
-# HubV3X SDK Buildroot 集成方案 (方案 C - 修订版)
+# HubV3L SDK Buildroot 集成方案 (方案 C - 修订版)
 
 ## 背景
 
@@ -9,8 +9,8 @@
 
 ## 核心原则
 
-1. u-boot 必须重编 (hubv3x 板级定制, 基于 upstream v2015.01 + SDK patch)
-2. kernel 必须重编 (hubv3x 硬件适配, 基于 upstream v5.4.180 + SDK patch)
+1. u-boot 必须重编 (hubv3l 板级定制, 基于 upstream v2015.01 + SDK patch)
+2. kernel 必须重编 (hubv3l 硬件适配, 基于 upstream v5.4.180 + SDK patch)
 3. rootfs 用 HAOS 的 erofs (替换 SDK 的 ubifs)
 4. 不复制 SDK 的 kernel/bootloader 源码目录, 使用 patches/ 目录的 patch
 5. FIP 预编译二进制 (bl2/bl30/bl31) 和工具 (fip_create/aml_encrypt_axg) 从 SDK 搬入
@@ -121,15 +121,15 @@ hassos-linuxbox/
 ├── buildroot/                   # HAOS buildroot 2024.02 (不动)
 ├── buildroot-external/          # HAOS BR2_EXTERNAL
 │   ├── configs/
-│   │   └── thirdreality_hubv3x_defconfig
+│   │   └── thirdreality_hubv3l_defconfig
 │   ├── package/
 │   │   ├── uboot-legacy/       # [新增] custom package: 编译 u-boot + FIP
 │   │   │   ├── uboot-legacy.mk
 │   │   │   └── Config.in
-│   │   └── hubv3x-aml-imgpack/ # [新增] host package: aml_image_v2_packer_new
-│   │       ├── hubv3x-aml-imgpack.mk
+│   │   └── hubv3l-aml-imgpack/ # [新增] host package: aml_image_v2_packer_new
+│   │       ├── hubv3l-aml-imgpack.mk
 │   │       └── Config.in
-│   ├── board/thirdreality/hubv3x/
+│   ├── board/thirdreality/hubv3l/
 │   │   ├── hassos-hook.sh       # post-image: mkbootimg + rootfs替换 + aml打包
 │   │   ├── rootfs-overlay/
 │   │   ├── patches/
@@ -147,8 +147,8 @@ hassos-linuxbox/
 │   │   ├── upgrade-axg/         # [新增] aml_upgrade_package.conf 等模板
 │   │   └── logo.img             # [新增] 预编译 logo (直接从 SDK 拿)
 │   └── ...
-├── Makefile                     # 不改 (hubv3x 也走同一棵 buildroot)
-└── make-buildroot-release.sh    # 不改 (hubv3x 也走 BR2_EXTERNAL 流程)
+├── Makefile                     # 不改 (hubv3l 也走同一棵 buildroot)
+└── make-buildroot-release.sh    # 不改 (hubv3l 也走 BR2_EXTERNAL 流程)
 ```
 
 ### 源码来源
@@ -182,7 +182,7 @@ buildroot 原生的 `BR2_LINUX_KERNEL` 可以直接用:
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="5.4.180"
-BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3x/patches/linux"
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/patches/linux"
 BR2_LINUX_KERNEL_DEFCONFIG="meson64_a64_smarthome"
 BR2_LINUX_KERNEL_IMAGE_TARGET="Image.gz"
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
@@ -193,8 +193,8 @@ buildroot 会自动: 下载 v5.4.180 → 应用 46 个 patch → 编译 Image.gz
 
 注意: 必须屏蔽 HAOS 原有的 kernel patch。HAOS buildroot-external 可能有
 `BR2_LINUX_KERNEL_PATCH` 或 `BR2_GLOBAL_PATCH_DIR` 指向其他 board 的 patch,
-hubv3x 的 defconfig 里要明确覆盖这些, 只指向 SDK 的 46 个 patch。
-同理, HAOS 原有的 kernel defconfig (如果有全局的) 也要被 hubv3x 的覆盖。
+hubv3l 的 defconfig 里要明确覆盖这些, 只指向 SDK 的 46 个 patch。
+同理, HAOS 原有的 kernel defconfig (如果有全局的) 也要被 hubv3l 的覆盖。
 
 ### boot.img 生成策略
 
@@ -290,7 +290,7 @@ function hassos_post_image() {
 
 ```bash
 # 1. FIP 预编译二进制 + 工具
-mkdir -p buildroot-external/board/thirdreality/hubv3x/aml-fip
+mkdir -p buildroot-external/board/thirdreality/hubv3l/aml-fip
 cp -a /disk4T/.../bootloader/uboot-repo/bl2    aml-fip/
 cp -a /disk4T/.../bootloader/uboot-repo/bl30   aml-fip/
 cp -a /disk4T/.../bootloader/uboot-repo/bl31_1.3  aml-fip/
@@ -298,7 +298,7 @@ cp -a /disk4T/.../bootloader/uboot-repo/fip    aml-fip/
 cp -a /disk4T/.../patches/uboot-v2015.01/binary  aml-fip/
 
 # 2. 打包工具
-mkdir -p buildroot-external/board/thirdreality/hubv3x/aml-tools
+mkdir -p buildroot-external/board/thirdreality/hubv3l/aml-tools
 cp /disk4T/.../buildroot/linux/mkbootimg/*      aml-tools/
 cp /disk4T/.../buildroot/linux/dtbTool/*        aml-tools/
 cp /disk4T/.../output/.../host/usr/bin/aml_image_v2_packer_new  aml-tools/
@@ -307,23 +307,23 @@ cp /disk4T/.../output/.../host/usr/bin/res_packer               aml-tools/
 
 # 3. 升级模板
 cp -a /disk4T/.../buildroot/board/amlogic/common/upgrade/upgrade-axg  \
-    buildroot-external/board/thirdreality/hubv3x/upgrade-axg/
+    buildroot-external/board/thirdreality/hubv3l/upgrade-axg/
 
 # 4. SDK ramdisk (预编译 blob, 后续可自己编)
 cp /disk4T/.../output/.../images/rootfs.cpio.gz  \
-    buildroot-external/board/thirdreality/hubv3x/aml-fip/
+    buildroot-external/board/thirdreality/hubv3l/aml-fip/
 
 # 4b. logo.img (预编译, 直接使用)
 cp /disk4T/.../output/.../images/logo.img  \
-    buildroot-external/board/thirdreality/hubv3x/aml-fip/
+    buildroot-external/board/thirdreality/hubv3l/aml-fip/
 
 # 5. u-boot patch
 cp /disk4T/.../patches/uboot-v2015.01/*.patch  \
-    buildroot-external/board/thirdreality/hubv3x/patches/uboot/
+    buildroot-external/board/thirdreality/hubv3l/patches/uboot/
 
 # 6. kernel patch
 cp /disk4T/.../patches/kernel-v5.4.180/*.patch  \
-    buildroot-external/board/thirdreality/hubv3x/patches/linux/
+    buildroot-external/board/thirdreality/hubv3l/patches/linux/
 ```
 
 ### Phase 2: 创建 uboot-legacy custom package
@@ -333,7 +333,7 @@ cp /disk4T/.../patches/kernel-v5.4.180/*.patch  \
 config BR2_PACKAGE_UBOOT_LEGACY
     bool "uboot-legacy"
     help
-      Amlogic A113X u-boot for HubV3X.
+      Amlogic A113X u-boot for HubV3L.
       Downloads upstream v2015.01, applies SDK patches, builds with FIP.
 ```
 
@@ -343,8 +343,8 @@ UBOOT_LEGACY_VERSION = v2015.01
 UBOOT_LEGACY_SITE = https://github.com/u-boot/u-boot.git
 UBOOT_LEGACY_SITE_METHOD = git
 UBOOT_LEGACY_BOARD = axg_s420_v1
-UBOOT_LEGACY_FIP_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3x/aml-fip
-UBOOT_LEGACY_PATCH_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3x/patches/uboot
+UBOOT_LEGACY_FIP_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/aml-fip
+UBOOT_LEGACY_PATCH_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/patches/uboot
 
 define UBOOT_LEGACY_CONFIGURE_CMDS
     cd $(@D) && $(MAKE) $(UBOOT_LEGACY_BOARD)_config
@@ -356,7 +356,7 @@ define UBOOT_LEGACY_BUILD_CMDS
         CROSS_COMPILE=aarch64-elf- \
         SYSTEMMODE=null AVBMODE=null BOOTCTRLMODE=null FASTBOOTMODE=null AVB2RECOVERY=null
     # FIP 打包
-    $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3x/scripts/build-fip.sh \
+    $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/scripts/build-fip.sh \
         $(@D) $(UBOOT_LEGACY_FIP_DIR) $(UBOOT_LEGACY_BOARD) $(BINARIES_DIR)
 endef
 
@@ -369,7 +369,7 @@ $(eval $(generic-package))
 
 ### Phase 3: 更新 defconfig
 
-`buildroot-external/configs/thirdreality_hubv3x_defconfig`:
+`buildroot-external/configs/thirdreality_hubv3l_defconfig`:
 ```ini
 # ---- 架构 ----
 BR2_aarch64=y
@@ -382,7 +382,7 @@ BR2_cortex_a53=y
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="5.4.180"
-BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3x/patches/linux"
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/patches/linux"
 BR2_LINUX_KERNEL_USE_DEFCONFIG=y
 BR2_LINUX_KERNEL_DEFCONFIG="meson64_a64_smarthome"
 BR2_LINUX_KERNEL_IMAGE_TARGET="Image.gz"
@@ -401,15 +401,15 @@ BR2_TARGET_ROOTFS_EROFS=y
 # (hassio, supervisor, docker, systemd 等)
 
 # ---- Post-image ----
-BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3x/hassos-hook.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/hassos-hook.sh"
 ```
 
 ### Phase 4: 简化 hassos-hook.sh
 
 ```bash
 function hassos_post_image() {
-    local TOOLS="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3x/aml-tools"
-    local UPGRADE="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3x/upgrade-axg"
+    local TOOLS="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3l/aml-tools"
+    local UPGRADE="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3l/upgrade-axg"
 
     # 1. dtbTool → dtb.img
     "${TOOLS}/dtbTool" -o "${BINARIES_DIR}/dtb.img" \
@@ -420,7 +420,7 @@ function hassos_post_image() {
     # 2. mkbootimg → boot.img
     "${TOOLS}/mkbootimg" \
         --kernel "${BINARIES_DIR}/Image.gz" \
-        --ramdisk "${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3x/aml-fip/rootfs.cpio.gz" \
+        --ramdisk "${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3l/aml-fip/rootfs.cpio.gz" \
         --second "${BINARIES_DIR}/dtb.img" \
         --base 0x0 --kernel_offset 0x1080000 \
         --cmdline "root=/dev/system rootfstype=erofs ro rootwait init=/sbin/init console=ttyS0,115200" \
@@ -451,7 +451,7 @@ function hassos_post_image() {
 2. **u-boot 工具链**
    - Amlogic u-boot 2015.01 需要 aarch64-elf-gcc (Linaro 7.5, bare-metal)
    - 这跟 buildroot 的 linux 工具链 (aarch64-none-linux-gnu) 不同
-   - hubv3x-uboot package 需要自己管理工具链路径
+   - hubv3l-uboot package 需要自己管理工具链路径
 
 3. **FIP 工具是 x86_64 二进制**
    - fip_create, aml_encrypt_axg 是 host 端 x86_64 ELF
@@ -470,7 +470,7 @@ function hassos_post_image() {
 ## 验证
 
 ```bash
-./make-buildroot-release.sh -b hubv3x
+./make-buildroot-release.sh -b hubv3l
 # 产物: output/images/aml_upgrade_package.img
 # 用 Amlogic USB Burning Tool 烧录验证
 ```

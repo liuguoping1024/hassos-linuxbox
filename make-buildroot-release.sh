@@ -48,16 +48,16 @@ case "${BOARD}" in
     hubv3)  DEFCONFIG="thirdreality_hubv3_defconfig"  ;;
     hubv3a) DEFCONFIG="thirdreality_hubv3a_defconfig" ;;
     hubv3b) DEFCONFIG="thirdreality_hubv3b_defconfig" ;;
-    hubv3x) DEFCONFIG="thirdreality_hubv3x_defconfig" ;;
+    hubv3l) DEFCONFIG="thirdreality_hubv3l_defconfig" ;;
     *)
-        echo "Error: unknown board '${BOARD}', must be hubv3|hubv3a|hubv3b|hubv3x"
+        echo "Error: unknown board '${BOARD}', must be hubv3|hubv3a|hubv3b|hubv3l"
         exit 1
         ;;
 esac
 
 NEEDS_NODEJS=false
 case "${BOARD}" in
-    hubv3a|hubv3b|hubv3x) NEEDS_NODEJS=true ;;
+    hubv3a|hubv3b|hubv3l) NEEDS_NODEJS=true ;;
 esac
 
 echo "========================================"
