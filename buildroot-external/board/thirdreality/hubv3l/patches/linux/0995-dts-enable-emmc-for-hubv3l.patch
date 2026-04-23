@@ -1,0 +1,11 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -547,7 +547,7 @@
+ };
+ 
+ &sd_emmc_c {
+-	status = "disabled";
++	status = "okay";
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&emmc_conf_pull_up>, <&emmc_conf_pull_done>;
+ 

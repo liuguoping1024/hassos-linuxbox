@@ -1,0 +1,20 @@
+--- a/drivers/mmc/host/meson-gx-mmc.c	2026-04-23 11:40:58.917548454 +0800
++++ b/drivers/mmc/host/meson-gx-mmc.c	2026-04-23 11:40:59.137530334 +0800
+@@ -279,7 +279,7 @@
+ 	writel(cfg, host->regs + SD_EMMC_CFG);
+ 	host->ddr = ddr;
+ 
+-	if (host->run_pxp_flag == 0) {
++	if (0 /* HUBV3L: bypass clk framework, use direct reg write */) {
+ 		if (rate <= 24000000) {
+ 			ret = clk_set_parent(host->mux[0], host->clk[0]);
+ 			if (ret) {
+@@ -3847,7 +3847,7 @@
+ 		host->pins_clk_gate = NULL;
+ 	}
+ 
+-	if (host->run_pxp_flag == 0) {
++	if (0 /* HUBV3L: bypass clk framework, use direct reg write */) {
+ 		host->core_clk = devm_clk_get(&pdev->dev, "core");
+ 		if (IS_ERR(host->core_clk)) {
+ 			ret = PTR_ERR(host->core_clk);
