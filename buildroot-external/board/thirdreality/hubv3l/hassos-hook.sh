@@ -88,7 +88,7 @@ function _create_boot_img() {
         --kernel   "${kernel}" \
         --base     0x0 \
         --kernel_offset 0x1080000 \
-        --cmdline  "root=/dev/system rootfstype=erofs ro rootwait init=/sbin/init console=ttyS0,115200n8" \
+        --cmdline  "root=/dev/system rootfstype=erofs ro rootwait init=/sbin/init console=ttyS0,115200n8 zram.num_devices=3" \
         --ramdisk  "${ramdisk}" \
         --second   "${dtb}" \
         --output   "${BINARIES_DIR}/boot.img"

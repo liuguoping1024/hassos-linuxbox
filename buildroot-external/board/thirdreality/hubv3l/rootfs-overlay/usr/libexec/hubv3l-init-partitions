@@ -1,0 +1,40 @@
+#!/bin/sh
+# Initialize HubV3L eMMC partitions on first boot.
+# Creates ext4 filesystems on overlay and data partitions if not already formatted.
+
+set -e
+
+OVERLAY_DEV="/dev/overlay"
+DATA_DEV="/dev/data"
+
+format_if_needed() {
+    local dev="$1"
+    local label="$2"
+
+    if ! blkid "$dev" | grep -q 'TYPE='; then
+        echo "hubv3l-init: formatting $dev as ext4 (label=$label)"
+        mkfs.ext4 -F -L "$label" -q "$dev"
+    else
+        echo "hubv3l-init: $dev already formatted ($(blkid -s TYPE -o value "$dev"))"
+    fi
+}
+
+# Wait for devices
+for dev in "$OVERLAY_DEV" "$DATA_DEV"; do
+    timeout=30
+    while [ ! -b "$dev" ] && [ "$timeout" -gt 0 ]; do
+        sleep 0.1
+        timeout=$((timeout - 1))
+    done
+    if [ ! -b "$dev" ]; then
+        echo "hubv3l-init: ERROR: $dev not found after timeout"
+        exit 1
+    fi
+done
+
+format_if_needed "$OVERLAY_DEV" "hassos-overlay"
+format_if_needed "$DATA_DEV" "hassos-data"
+
+# Create marker so this doesn't run again
+mkdir -p /tmp/hubv3l-init-done
+echo "hubv3l-init: partitions ready"

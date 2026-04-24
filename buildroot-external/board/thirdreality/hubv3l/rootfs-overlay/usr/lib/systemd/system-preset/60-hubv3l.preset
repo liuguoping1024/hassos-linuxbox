@@ -1,0 +1,9 @@
+enable serial-getty@ttyS0.service
+disable emergency-serial.service
+disable debug-shell.service
+disable mosquitto.service
+disable zigbee2mqtt.service
+disable z2m-mem-monitor.service
+disable z2m-mem-monitor.timer
+disable hubv3-supervisor.service
+disable hubv3-bridge.service

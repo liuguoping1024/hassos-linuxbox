@@ -1,0 +1,49 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts	2026-04-23 15:39:05.541599585 +0800
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts	2026-04-23 17:07:25.245081008 +0800
+@@ -231,7 +231,7 @@
+ 		aml-audio-card,hp-det-gpio = <&gpio GPIOA_5 GPIO_ACTIVE_LOW>;
+ 		//interrupts = <GIC_SPI 51 IRQ_TYPE_EDGE_RISING>;
+ 		//interrupt-names = "audio_exception64";
+-		status = "okay";
++		status = "disabled";
+ 		aml-audio-card,dai-link@0 {
+ 			format = "dsp_a";
+ 			mclk-fs = <256>;//512
+@@ -343,7 +343,7 @@
+ 	};
+ 
+ 	partitions: partitions{
+-		parts = <11>;
++		parts = <12>;
+ 		part-0 = <&logo>;
+ 		part-1 = <&recovery>;
+ 		part-2 = <&rsv>;
+@@ -353,8 +353,9 @@
+ 		part-6 = <&instaboot>;
+ 		part-7 = <&boot>;
+ 		part-8 = <&system>;
+-		part-9 = <&cache>;
+-		part-10 = <&data>;
++		part-9 = <&overlay>;
++		part-10 = <&cache>;
++		part-11 = <&data>;
+ 
+ 		logo:logo{
+ 			pname = "logo";
+@@ -400,9 +401,15 @@
+ 		system:system
+ 		{
+ 			pname = "system";
+-			size = <0x0 0x80000000>;
++			size = <0x0 0x10000000>;
+ 			mask = <1>;
+ 		};
++		overlay:overlay
++		{
++			pname = "overlay";
++			size = <0x0 0x8000000>;
++			mask = <2>;
++		};
+ 		cache:cache
+ 		{
+ 			pname = "cache";
