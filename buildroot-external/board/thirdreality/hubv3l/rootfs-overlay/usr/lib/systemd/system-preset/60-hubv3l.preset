@@ -5,8 +5,11 @@ disable debug-shell.service
 # ThirdReality services (from shared overlay)
 enable hubv3-overlay.service
 enable hubv3-usb-sync.service
-enable amlogicw1.service
-enable amlogicw1-bt.service
+# WiFi driver not in kernel yet — masked via /dev/null symlink
+disable amlogicw1.service
+disable amlogicw1-bt.service
+# RAUC not used on hubv3l — masked via /dev/null symlink
+disable raucdb-update.service
 
 # Application services — disabled by default, enabled after packages installed
 disable mosquitto.service
