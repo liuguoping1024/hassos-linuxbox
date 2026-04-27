@@ -35,6 +35,14 @@ done
 format_if_needed "$OVERLAY_DEV" "hassos-overlay"
 format_if_needed "$DATA_DEV" "hassos-data"
 
-# Create marker so this doesn't run again
-mkdir -p /tmp/hubv3l-init-done
+# Create swapfile on data partition if not present
+if mountpoint -q /mnt/data 2>/dev/null; then
+    if [ ! -f /mnt/data/swapfile ]; then
+        echo "hubv3l-init: creating 256MB swapfile on /mnt/data"
+        dd if=/dev/zero of=/mnt/data/swapfile bs=1M count=256 2>/dev/null
+        chmod 600 /mnt/data/swapfile
+        mkswap /mnt/data/swapfile
+    fi
+fi
+
 echo "hubv3l-init: partitions ready"

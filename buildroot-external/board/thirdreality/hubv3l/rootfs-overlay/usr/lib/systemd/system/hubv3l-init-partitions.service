@@ -2,8 +2,7 @@
 Description=Initialize HubV3L eMMC partitions (first boot)
 DefaultDependencies=no
 Before=mnt-overlay.mount mnt-data.mount local-fs-pre.target
-After=dev-overlay.device dev-data.device
-ConditionPathExists=!/mnt/overlay/initialized
+After=systemd-udevd.service
 
 [Service]
 Type=oneshot

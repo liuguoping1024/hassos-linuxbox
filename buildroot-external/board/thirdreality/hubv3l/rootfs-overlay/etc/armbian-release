@@ -1,5 +1,5 @@
-BOARD=trhubv3a
-BOARD_NAME="TRHub-V3A"
+BOARD=trhubv3l
+BOARD_NAME="TRHub-V3L"
 BOARDFAMILY=linuxbox/hubv3
 LINUXFAMILY=meson64
 ARCH=arm64

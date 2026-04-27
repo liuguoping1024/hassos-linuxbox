@@ -1,6 +1,14 @@
 enable serial-getty@ttyS0.service
 disable emergency-serial.service
 disable debug-shell.service
+
+# ThirdReality services (from shared overlay)
+enable hubv3-overlay.service
+enable hubv3-usb-sync.service
+enable amlogicw1.service
+enable amlogicw1-bt.service
+
+# Application services — disabled by default, enabled after packages installed
 disable mosquitto.service
 disable zigbee2mqtt.service
 disable z2m-mem-monitor.service
