@@ -1,0 +1,76 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -18,6 +18,8 @@
+ 	aliases {
+ 		serial0 = &uart_AO;
+ 		serial1 = &uart_A;
++		serial3 = &uart_AO_B;
++		serial6 = &uart_B;
+ 	};
+ 
+ 	memory@00000000 {
+@@ -213,11 +215,11 @@
+ 		compatible = "amlogic, meson-uart";
+ 		reg = <0x0 0xffd23000 0x0 0x18>;
+ 		interrupts = <0 75 1>;
+-		status = "disable";
+-		//clocks = <&xtal
+-		//	&clkc CLKID_UART1>;
+-		//clock-names = "clk_uart",
+-		//	"clk_gate";
++		status = "disabled";
++		clocks = <&xtal
++			&clkc CLKID_CLK81_UART1>;
++		clock-names = "clk_uart",
++			"clk_gate";
+ 		fifosize = < 64 >;
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&b_uart_pins>;
+@@ -912,5 +914,19 @@
+ &uart_A {
+ 	status = "okay";
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&a_uart_txrx_pins>;
+ };
++
++/* Zigbee (BL706) */
++&uart_AO_B {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&ao_b_uart_pins>;
++};
++
++/* Thread (BL706) */
++&uart_B {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&b_uart_x_pins>;
++};
+--- a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+@@ -1336,8 +1336,8 @@
+ 	ao_b_uart_pins:ao_b_uart {
+ 		mux {
+ 			groups = "uart_ao_tx_b_z",
+ 				"uart_ao_rx_b_z";
+-			function = "uart_ao_b";
++			function = "uart_ao_b_z";
+ 		};
+ 	};
+ 
+@@ -1378,6 +1378,15 @@
+ 		};
+ 	};
+ 
++	b_uart_x_pins:b_uart_x {
++		mux {
++			groups = "uart_tx_b_x",
++				"uart_rx_b_x";
++			function = "uart_b";
++			bias-disable;
++		};
++	};
++
+ 	a_i2c_master:a_i2c {
+ 		mux {
+ 			groups = "i2c0_sck",

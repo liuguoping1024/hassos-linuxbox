@@ -1,0 +1,46 @@
+From: HubV3L DTS customization
+Subject: [PATCH] dts: hubv3l: split uart_A pinctrl to release GPIOA_0 for button
+
+uart_A was using a_uart_pins which claims all 4 pins (tx/rx/cts/rts,
+GPIOA_0~3). Split into separate tx/rx and cts/rts pin groups.
+Use only tx/rx for uart_A, freeing GPIOA_0 for user button GPIO.
+
+---
+
+--- a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+@@ -1356,6 +1356,24 @@
+ 		};
+ 	};
+ 
++	a_uart_txrx_pins:a_uart_txrx {
++		mux {
++			groups = "uart_tx_a",
++				"uart_rx_a";
++			function = "uart_a";
++			bias-disable;
++		};
++	};
++
++	a_uart_cts_rts_pins:a_uart_cts_rts {
++		mux {
++			groups = "uart_cts_a",
++				"uart_rts_a";
++			function = "uart_a";
++			bias-disable;
++		};
++	};
++
+ 	b_uart_pins:b_uart {
+ 		mux {
+ 			groups = "uart_tx_b_z",
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -914,5 +914,6 @@
+ 
+ &uart_A {
+ 	status = "okay";
+-	uart-has-rtscts;
++	pinctrl-names = "default";
++	pinctrl-0 = <&a_uart_txrx_pins>;
+ };

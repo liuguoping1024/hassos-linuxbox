@@ -1,0 +1,17 @@
+# Create /dev/ttyAML* symlinks pointing to /dev/ttyS* for backward
+# compatibility with scripts written for the Linux 6.6 mainline kernel.
+#
+# The 5.4 SDK AMLOGIC_UART driver registers as "meson_uart" with
+# major 511 and creates /dev/ttyS* devices. The 6.6 mainline kernel
+# uses /dev/ttyAML* instead. This rule bridges the gap.
+#
+# Mapping (matches DTS aliases):
+#   ttyS0 -> ttyAML0  (Console / uart_AO)
+#   ttyS1 -> ttyAML1  (Bluetooth / uart_A)
+#   ttyS3 -> ttyAML3  (Zigbee / uart_AO_B)
+#   ttyS6 -> ttyAML6  (Thread / uart_B)
+
+KERNEL=="ttyS0", SUBSYSTEM=="tty", SYMLINK+="ttyAML0"
+KERNEL=="ttyS1", SUBSYSTEM=="tty", SYMLINK+="ttyAML1"
+KERNEL=="ttyS3", SUBSYSTEM=="tty", SYMLINK+="ttyAML3"
+KERNEL=="ttyS6", SUBSYSTEM=="tty", SYMLINK+="ttyAML6"

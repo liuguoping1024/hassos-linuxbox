@@ -1,0 +1,120 @@
+From: HubV3L DTS customization
+Subject: [PATCH] dts: hubv3l: remove pwmleds/keypad, fix WiFi/BT pins, simplify vcc3v3
+
+- Remove gpio_keypad node (HubV3L has no key board)
+- Remove pwmleds node (LEDs controlled via gpioset, not PWM)
+- Remove PWM pinctrl for GPIOZ_4/5 and GPIOAO_3
+- aml_wifi: comment out power_on_2-gpios
+- aml_bt: update pins (reset=GPIOX_21, btwakeup=GPIOZ_7, hostwake=GPIOZ_6)
+- wifi_32k_pins: add bias-disable
+- vcc3v3_reg: remove GPIO enable control (not needed on HubV3L hardware)
+- usb3_phy: remove GPIO VBUS power control (fixed 5V supply)
+---
+
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -137,8 +137,6 @@
+ 			interrupts = <0 16 4>;
+ 			portnum = <0>;
+ 			otg = <1>;
+-			gpio-vbus-power = "GPIOZ_3";
+-			gpios = <&gpio GPIOZ_3 GPIO_ACTIVE_HIGH>;
+ 	};
+ 
+ 	usb0: usb@ff500000 {
+@@ -306,41 +304,9 @@
+ 		regulator-always-on;
+ 	};
+ 
+-	gpio_keypad{
+-		compatible = "amlogic, gpio_keypad";
+-		status = "okay";
+-		scan_period = <20>;
+-		key_num = <2>;
+-		key_name = "Function", "FactoryReset";
+-		key_code = <0x160 0x194>;
+-		key-gpios = <&gpio_ao GPIOAO_10 GPIO_ACTIVE_LOW
+-					&gpio_ao GPIOAO_11 GPIO_ACTIVE_LOW>;
+-		detect_mode = <0>;/*0:polling mode, 1:irq mode*/
+-	};
+-
+-	pwmleds {
+-		compatible = "pwm-leds";
+-		pinctrl-names = "default";
+-		status = "okay";
++	/* gpio_keypad removed - HubV3L has no key board */
+ 
+-		red {
+-			label = "RGB_R";
+-			max-brightness = <255>;
+-			pwms = <&pwm_aoab MESON_PWM_0 1000000 0>;
+-		};
+-
+-		green {
+-			label = "RGB_G";
+-			max-brightness = <255>;
+-			pwms = <&pwm_ab MESON_PWM_1 1000000 0>;
+-		};
+-
+-		blue {
+-			label = "RGB_B";
+-			max-brightness = <255>;
+-			pwms = <&pwm_ab MESON_PWM_0 1000000 0>;
+-		};
+-	};
++	/* pwmleds removed - HubV3L LEDs controlled via gpioset */
+ 
+ 	partitions: partitions{
+ 		parts = <12>;
+@@ -918,25 +884,22 @@
+ 	status = "okay";
+ 	interrupt-gpios = <&gpio  GPIOX_6  GPIO_ACTIVE_HIGH>;
+ 	power_on-gpios = <&gpio   GPIOX_7  GPIO_ACTIVE_HIGH>;
+-	power_on_2-gpios= <&gpio  GPIOX_16 GPIO_ACTIVE_HIGH>;
++	//power_on_2-gpios= <&gpio  GPIOX_16 GPIO_ACTIVE_HIGH>;
+ };
+ 
+ &aml_bt {
+ 	status = "okay";
+-	reset-gpios = <&gpio    GPIOX_19 GPIO_ACTIVE_LOW>;
+-	//hostwake-gpios = <&gpio GPIOX_19 GPIO_ACTIVE_HIGH>;
++	reset-gpios = <&gpio    GPIOX_21 GPIO_ACTIVE_HIGH>;
++	btwakeup-gpios = <&gpio GPIOZ_7 GPIO_ACTIVE_HIGH>;
++	hostwake-gpios = <&gpio GPIOZ_6 GPIO_ACTIVE_HIGH>;
+ };
+ 
+ &pwm_ab {
+ 	status = "okay";
+-	pinctrl-0 = <&pwm_a_pins1 &pwm_b_pins1>;
+-	pinctrl-names = "default";
+ };
+ 
+ &pwm_aoab {
+     status = "okay";
+-    pinctrl-0 = <&pwm_ao_a_pins1>;
+-    pinctrl-names = "default";
+ };
+ 
+ &pwm_aocd {
+--- a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+@@ -456,11 +456,6 @@
+ 		regulator-name = "VCC_3.3V";
+ 		regulator-min-microvolt = <3300000>;
+ 		regulator-max-microvolt = <3300000>;
+-		//Ref: L= > POWER_On(default) test ok
+-		gpio = <&gpio_ao GPIOAO_12 GPIO_ACTIVE_LOW>;
+-		startup-delay-us = <70000>;
+-		enable-active-low;
+-		regulator-boot-on;
+ 		regulator-always-on;
+ 	};
+ 
+@@ -1570,6 +1565,7 @@
+ 		mux {
+ 			groups ="pwm_a_x20";
+ 			function = "pwm_a";
++			bias-disable;
+ 		};
+ 	};
+ 
