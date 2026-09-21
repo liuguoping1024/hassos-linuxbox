@@ -7,6 +7,27 @@
 #
 ################################################################################
 
+# Vendor provenance
+# -----------------
+# src/ is the Amlogic W155S1 WiFi driver taken verbatim from the A113X
+# 5.4 SDK, then modified in four files:
+#
+#   upstream: sdk_A113X_202210/hardware/aml-5.4/wifi/amlogic/project_w1
+#   version : v1.4.3_20220726-br
+#             driver:cdaa9633f9d9fb3f159e69fb1cc914bdcc0c0b85+patch-239328
+#
+#   local changes vs that tree:
+#     vmac/Makefile
+#     vmac/wifi_cfg80211.c
+#     vmac/wifi_drv_config.c   default conf_path
+#     vmac/wifi_hal_cmd.c        /vendor/etc/wifi/w1 -> /lib/firmware/w1
+#
+# Diff against the SDK path above to see the delta; do not keep .bak
+# copies in-tree for this.
+#
+# A newer vendor drop (v1.8.1_20250613-w1-br) was evaluated and not
+# adopted. It is not part of this SDK; archived outside the repo at
+# /disk4T/liuguoping/hubv3l-vendor-archive/aml-wifi-src-v1.8.1_20250613/
 AML_WIFI_VERSION = 1.0
 AML_WIFI_SITE = $(BR2_EXTERNAL_HASSOS_PATH)/package/aml-wifi/src
 AML_WIFI_SITE_METHOD = local

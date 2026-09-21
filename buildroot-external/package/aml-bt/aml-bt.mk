@@ -7,6 +7,17 @@
 #
 ################################################################################
 
+# Vendor provenance
+# -----------------
+#   upstream: sdk_A113X_202210/hardware/aml-5.4/bluetooth/amlogic/aml_bt/
+#             sdio_driver_bt
+#   produces: sdio_bt.ko  (SDIO transport, not UART)
+#
+# NOTE: this is the SDIO BT driver, while the shared w1_bt_start.sh still
+# attaches over UART (aml_hciattach on /dev/ttyAML1). That mismatch is
+# why hci0 never appears on hubv3l even though the driver reports
+# "Init sdio_bt OK!". w1_bt_start.sh needs splitting per kernel line the
+# same way w1_start.sh already is.
 AML_BT_VERSION = 1.0
 AML_BT_SITE = $(BR2_EXTERNAL_HASSOS_PATH)/package/aml-bt/src/sdio_driver_bt
 AML_BT_SITE_METHOD = local
