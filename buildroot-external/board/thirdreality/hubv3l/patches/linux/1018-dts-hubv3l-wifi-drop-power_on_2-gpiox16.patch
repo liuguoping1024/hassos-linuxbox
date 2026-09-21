@@ -1,0 +1,8 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -886,5 +886,4 @@
+ 	status = "okay";
+ 	interrupt-gpios = <&gpio  GPIOX_6  GPIO_ACTIVE_HIGH>;
+ 	power_on-gpios = <&gpio   GPIOX_7  GPIO_ACTIVE_HIGH>;
+-	power_on_2-gpios= <&gpio  GPIOX_16 GPIO_ACTIVE_HIGH>;
+ };

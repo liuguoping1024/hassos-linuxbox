@@ -1,0 +1,12 @@
+--- a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+@@ -1020,6 +1020,6 @@
+ 		irq_trigger_type = "GPIO_IRQ_LOW";
+-		dhd_static_buf;  /* if use bcm wifi, config dhd_static_buf */
+-		pinctrl-0 = <&wifi_32k_pwmao_c_pins>;
+-		pinctrl-names = "default";
++		//dhd_static_buf;  /* if use bcm wifi, config dhd_static_buf */
++		//pinctrl-0 = <&wifi_32k_pwmao_c_pins>;
++		//pinctrl-names = "default";
+ 		pwm_config = <&wifi_pwm_conf>;
+ 	};

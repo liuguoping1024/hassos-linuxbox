@@ -4,7 +4,7 @@ Subject: [PATCH] dts: hubv3l: remove pwmleds/keypad, fix WiFi/BT pins, simplify 
 - Remove gpio_keypad node (HubV3L has no key board)
 - Remove pwmleds node (LEDs controlled via gpioset, not PWM)
 - Remove PWM pinctrl for GPIOZ_4/5 and GPIOAO_3
-- aml_wifi: comment out power_on_2-gpios
+- aml_wifi: keep power_on_2-gpios (GPIOX_16)
 - aml_bt: update pins (reset=GPIOX_21, btwakeup=GPIOZ_7, hostwake=GPIOZ_6)
 - wifi_32k_pins: add bias-disable
 - vcc3v3_reg: remove GPIO enable control (not needed on HubV3L hardware)
@@ -71,7 +71,7 @@ Subject: [PATCH] dts: hubv3l: remove pwmleds/keypad, fix WiFi/BT pins, simplify 
  	interrupt-gpios = <&gpio  GPIOX_6  GPIO_ACTIVE_HIGH>;
  	power_on-gpios = <&gpio   GPIOX_7  GPIO_ACTIVE_HIGH>;
 -	power_on_2-gpios= <&gpio  GPIOX_16 GPIO_ACTIVE_HIGH>;
-+	//power_on_2-gpios= <&gpio  GPIOX_16 GPIO_ACTIVE_HIGH>;
++	power_on_2-gpios= <&gpio  GPIOX_16 GPIO_ACTIVE_HIGH>;
  };
  
  &aml_bt {

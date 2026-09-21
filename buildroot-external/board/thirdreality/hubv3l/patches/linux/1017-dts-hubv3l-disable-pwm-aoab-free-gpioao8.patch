@@ -1,0 +1,13 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -901,9 +901,7 @@
+ };
+ 
+ &pwm_aoab {
+-status = "okay";
+-pinctrl-0 = <&pwm_ao_c_pins1>;
+-pinctrl-names = "default";
++status = "disabled";
+ };
+ 
+ &pwm_aocd {

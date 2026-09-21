@@ -18,11 +18,12 @@ BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_HASSOS_PATH)/scripts/post-image.sh"
 BR2_ROOTFS_POST_SCRIPT_ARGS="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/hassos-hook.sh"
 BR2_SYSTEM_DEFAULT_PATH="/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# ---- Kernel: upstream v5.4.180 + SDK patches (46 patches) ----
+# ---- Kernel: upstream v5.4.180 + SDK patches + WiFi/BT driver patches ----
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="5.4.180"
 # Patches applied via BR2_GLOBAL_PATCH_DIR -> patches/linux/
+# Includes: 46 SDK patches + local DTS/driver fixes (1000-1002, 1013-1020)
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/kernel-linuxbox-hubv3l.config"
 BR2_LINUX_KERNEL_IMAGEGZ=y

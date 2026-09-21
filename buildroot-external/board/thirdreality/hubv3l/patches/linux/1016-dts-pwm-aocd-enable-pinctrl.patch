@@ -1,0 +1,9 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -1,4 +1,6 @@
+ &pwm_aocd {
+-    status = "okay";
++status = "okay";
++pinctrl-0 = <&pwm_ao_c_pins1>;
++pinctrl-names = "default";
+ };

@@ -1,0 +1,8 @@
+--- a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+@@ -761,4 +761,4 @@
+ 					<870000 96>,
+ 					<860000 100>;
+-			status = "okay";
++			status = "disabled";
+ 		}; /* end of vddcpu0*/

@@ -1,0 +1,9 @@
+--- a/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
++++ b/arch/arm64/boot/dts/amlogic/axg_s420_1g.dts
+@@ -1,5 +1,5 @@
+ 	sd-uhs-sdr104;
+-	max-frequency = <200000000>;
++	max-frequency = <50000000>;
+ 
+ 	non-removable;
+ 	disable-wp;

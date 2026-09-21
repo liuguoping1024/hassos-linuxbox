@@ -1,0 +1,11 @@
+--- a/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
++++ b/arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+@@ -1382,7 +1382,7 @@
+ 			groups = "uart_tx_b_x",
+ 				"uart_rx_b_x";
+ 			function = "uart_b";
+-			bias-disable;
++			bias-pull-up;
+ 		};
+ 	};
+ 
