@@ -4,7 +4,26 @@ BOOTSTATE_SIZE=8M
 SYSTEM_SIZE=256M
 KERNEL_SIZE=24M
 OVERLAY_SIZE=96M
+
+# Size of the hassos-data *partition*.
 DATA_SIZE=6000M
+
+# Size of the data.ext4 *filesystem image* we actually ship, which is
+# deliberately much smaller than the partition it lands in.
+#
+# mnt-data.mount already pulls in systemd-growfs@mnt-data.service, so the
+# filesystem is grown to fill its partition on first boot regardless of how
+# small it starts. genimage pads the rest of the partition with zeros, and xz
+# squeezes those back out, so the .img is unaffected either way.
+#
+# The Amlogic USB burn tool is what makes this matter: it writes every byte it
+# is handed to eMMC, so a full-size empty data.ext4 added ~6 GB of zeros to
+# every single flash (~25x the rest of the image put together).
+#
+# Lower bound is set by online resize, not by the data: mke2fs reserves GDT
+# blocks for roughly 1024x growth, giving 64M a ceiling of 64 GiB. 32M would
+# cap at 32 GiB, which is too close for comfort on a 32 GB NAND board.
+DATA_INITIAL_SIZE=64M
 
 function create_disk_image() {
     if [ -f "${BOARD_DIR}/genimage.cfg" ]; then
