@@ -1,0 +1,23 @@
+# ThirdReality board-family service presets (all HubV3 variants).
+#
+# Ordering: 60-<board>.preset  >  65-thirdreality.preset  >  70-os.preset
+# (lexicographic order, first matching line wins)
+#
+# IMPORTANT: systemd's fallback for a unit not named in ANY preset file is
+# ENABLE, not disable. This file exists so the units we actually depend on
+# are enabled by intent rather than by that fallback.
+
+# WiFi/BT driver loaders.
+# Required on the 6.6 mainline boards: /etc/modules is intentionally empty,
+# so aml_sdio/vlsicomm are loaded by w1_start.sh from this unit, not by
+# systemd-modules-load.
+enable amlogicw1.service
+enable amlogicw1-bt.service
+
+# Read-only rootfs overlay bring-up.
+enable hubv3-overlay.service
+
+# LinuxBox Supervisor must run on every board.
+# Installed by hubv3-supervisor.mk as "supervisor.service" (NOT
+# "hubv3-supervisor.service" — that name does not exist).
+enable supervisor.service

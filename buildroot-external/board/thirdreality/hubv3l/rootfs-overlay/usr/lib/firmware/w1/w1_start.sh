@@ -1,21 +1,24 @@
 #!/bin/bash
-# Amlogic W155S1 WiFi driver loader — 6.6 mainline boards (hubv3/a/b/c).
+# HubV3L WiFi driver loader (5.4 kernel, out-of-tree build)
 #
-# On this line the drivers are built IN-TREE as modules
-# (CONFIG_AMLOGIC_WIFI_W1=m), so they live under the kernel's own module
-# directory. /etc/modules is intentionally empty; this script (run from
-# amlogicw1.service) is the single place that loads them.
-#
-# The 5.4 SDK boards use a separate copy of this script in the sdk54 tree:
-# there the drivers are built out-of-tree by the aml-wifi package and the
-# chip needs an explicit power-on first. Do not merge the two.
+# Modules installed to /lib/modules/$(uname -r)/kernel/amlogic/wifi/
+# by the aml-wifi buildroot package.
 
-MODDIR="/usr/lib/modules/$(uname -r)/kernel/drivers/net/wireless/w1/vmac"
+MODDIR="/lib/modules/$(uname -r)/kernel/amlogic/wifi"
+
+# Power on the WiFi chip before loading modules. The /sys/class/aml_wifi/power
+# node is provided by the in-kernel aml_wifi platform driver (present at boot,
+# before insmod). Powering on enables the SDIO slot so aml_sdio can enumerate.
+if [ -e /sys/class/aml_wifi/power ]; then
+    echo "Powering on WiFi (aml_wifi)..."
+    echo 1 > /sys/class/aml_wifi/power
+    sleep 1
+fi
 
 # Load WiFi SDIO transport
 if ! lsmod | grep -q "^aml_sdio"; then
     echo "Loading module: aml_sdio.ko ..."
-    insmod "${MODDIR}/aml_sdio.ko"
+    insmod ${MODDIR}/aml_sdio.ko
 else
     echo "Module aml_sdio.ko is already loaded."
 fi
@@ -23,14 +26,13 @@ fi
 # Load main WiFi driver
 if ! lsmod | grep -q "^vlsicomm"; then
     echo "Loading module: vlsicomm.ko ..."
-    insmod "${MODDIR}/vlsicomm.ko"
+    insmod ${MODDIR}/vlsicomm.ko
 else
     echo "Module vlsicomm.ko is already loaded."
 fi
 
-# Bring an interface up if it exists and is not already up.
-# NOTE: this rootfs has no `ifconfig` (busybox CONFIG_IFCONFIG=n and no
-# net-tools package); use iproute2 `ip` instead.
+# Function to check and bring up a network interface.
+# NOTE: buildroot/busybox rootfs has no `ifconfig`; use iproute2 `ip` instead.
 bring_up_interface() {
     local iface="$1"
     if ip link show "$iface" &>/dev/null; then
@@ -45,7 +47,7 @@ bring_up_interface() {
     fi
 }
 
-# Bring an interface down if it exists and is up.
+# Function to check and bring down a network interface.
 bring_down_interface() {
     local iface="$1"
     if ip link show "$iface" &>/dev/null; then
@@ -61,10 +63,12 @@ bring_down_interface() {
 }
 
 # Bring up wlan0, bring down wlan1 and p2p0.
-# WARNING: Do NOT delete p2p0 (`iw dev p2p0 del`). The vendor driver keeps a
-# resident timer/work thread that still references the p2p0 vif; deleting it
-# makes that timer dereference a freed vif and panics the kernel shortly
-# after boot. Leaving it down + NetworkManager-unmanaged is harmless.
+# WARNING: Do NOT delete p2p0! The driver keeps a resident timer/work thread
+# (hal_work_thread -> wifi_mac_set_scan_time -> wifi_mac_get_wnet_vif_by_vid)
+# that references the p2p0 vif (vid 1). Deleting it (`iw dev p2p0 del`) makes
+# that timer dereference a freed/NULL vif and triggers a kernel panic shortly
+# after boot. p2p0 is harmless when just left down + unmanaged (the NM config
+# already excludes it via unmanaged-devices).
 bring_up_interface "wlan0"
 bring_down_interface "wlan1"
 bring_down_interface "p2p0"

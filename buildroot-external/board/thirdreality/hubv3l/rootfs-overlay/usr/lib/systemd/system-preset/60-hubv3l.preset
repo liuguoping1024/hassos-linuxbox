@@ -1,20 +1,41 @@
+# HubV3L (Amlogic A113X / 5.4 SDK) service presets.
+#
+# Preset files are evaluated in lexicographic order and the FIRST matching
+# line wins, so this file overrides 65-thirdreality.preset and 70-os.preset.
+#
+# IMPORTANT: systemd's fallback for a unit not named in ANY preset file is
+# ENABLE, not disable. Anything that must not auto-start has to be listed
+# here explicitly, and the name must match the installed unit file exactly
+# (a typo silently degrades to "not mentioned" -> enabled).
+
 enable serial-getty@ttyS0.service
-disable emergency-serial.service
 disable debug-shell.service
 
 # ThirdReality services (from shared overlay)
 enable hubv3-overlay.service
 enable hubv3-usb-sync.service
-# WiFi driver not in kernel yet — masked via /dev/null symlink
-disable amlogicw1.service
+
+# WiFi/BT drivers
+enable amlogicw1.service
 disable amlogicw1-bt.service
+
 # RAUC not used on hubv3l — masked via /dev/null symlink
 disable raucdb-update.service
 
-# Application services — disabled by default, enabled after packages installed
+# Application services.
+#
+# supervisor.service is NOT listed here on purpose: it must stay enabled on
+# every board, and 65-thirdreality.preset asserts that explicitly.
+#
+# Unit names must match what the packages actually install:
+#   hubv3-supervisor.mk -> supervisor.service
+#   hubv3-bridge.mk     -> linuxbox-hubv3-bridge.service
+# (the old names "hubv3-supervisor.service" / "hubv3-bridge.service" were
+# typos that silently degraded to the enable-by-default fallback)
 disable mosquitto.service
 disable zigbee2mqtt.service
 disable z2m-mem-monitor.service
 disable z2m-mem-monitor.timer
-disable hubv3-supervisor.service
-disable hubv3-bridge.service
+
+# Bridge temporarily off on hubv3l during bring-up.
+disable linuxbox-hubv3-bridge.service
