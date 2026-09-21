@@ -25,6 +25,11 @@ function create_disk_image() {
     export ota_compatible ota_version
     # variables used in genimage configs
     export BOOTSTATE_SIZE SYSTEM_SIZE KERNEL_SIZE OVERLAY_SIZE DATA_SIZE
+    # RAUC signing key location, consumed by image-raucb-*.cfg.
+    # rauc_key_dir() resolves to the repo root, which is /build inside the
+    # build container (Dockerfile WORKDIR) — same files as before in CI.
+    RAUC_KEY_DIR="$(rauc_key_dir)"
+    export RAUC_KEY_DIR
     RAUC_MANIFEST=$(tempio -template "${BR2_EXTERNAL_HASSOS_PATH}/ota/manifest.raucm.gtpl")
     IMAGE_NAME="$(hassos_image_basename)"
     BOOT_SPL_TYPE=$(test "$BOOT_SPL" == "true" && echo "spl" || echo "nospl")
