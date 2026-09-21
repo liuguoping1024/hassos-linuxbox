@@ -1,0 +1,11 @@
+config BR2_PACKAGE_AML_BOOTLOADER_MESSAGE
+	bool "aml-bootloader-message"
+	select BR2_PACKAGE_ZLIB
+	help
+	  Amlogic bootloader message tools.
+	  Read and write the misc partition bootloader control block (BCB).
+	  Used for A/B partition switching, recovery mode, and OTA markers.
+
+	  Provides: urlmisc command-line tool and libbootloader_message.a
+
+	  Source: sdk_A113X_202210/vendor/amlogic/aml_commonlib/bootloader_message

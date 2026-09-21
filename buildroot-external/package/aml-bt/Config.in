@@ -1,0 +1,7 @@
+config BR2_PACKAGE_AML_BT
+	bool "aml-bt"
+	depends on BR2_LINUX_KERNEL
+	depends on BR2_PACKAGE_AML_WIFI
+	help
+	  Amlogic W1 Bluetooth SDIO driver (out-of-tree kernel module).
+	  Produces sdio_bt.ko. Depends on aml-wifi for SDIO transport symbols.

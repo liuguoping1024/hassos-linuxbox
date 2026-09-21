@@ -1,0 +1,11 @@
+config BR2_PACKAGE_AML_UBOOTENV
+	bool "aml-ubootenv"
+	select BR2_PACKAGE_ZLIB
+	help
+	  Amlogic U-Boot environment access tool (uenv).
+	  Read and write U-Boot environment variables from Linux userspace.
+	  Adapted for Amlogic's eMMC env storage format.
+
+	  Useful for OTA upgrade markers, boot mode switching, and debugging.
+
+	  Source: sdk_A113X_202210/vendor/amlogic/aml_commonlib/ubootenv

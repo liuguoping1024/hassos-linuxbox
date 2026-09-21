@@ -1,0 +1,10 @@
+config BR2_PACKAGE_AML_BT_CT
+	bool "aml-bt-ct"
+	help
+	  Amlogic W1 Bluetooth HCI attach tool and firmware.
+	  Provides aml_bt_hciattach which initializes the W1 BT UART
+	  interface and loads the BT firmware (fw_out.bin).
+
+	  Required for Bluetooth functionality on HubV3L.
+
+	  Source: sdk_A113X_202210/vendor/amlogic/aml_bt_ct

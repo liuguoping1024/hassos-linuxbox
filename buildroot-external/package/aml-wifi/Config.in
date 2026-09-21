@@ -1,0 +1,8 @@
+config BR2_PACKAGE_AML_WIFI
+	bool "aml-wifi"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Amlogic W1 WiFi SDIO driver (out-of-tree kernel module).
+	  Produces vlsicomm.ko and aml_sdio.ko.
+
+	  Built using $(MAKE) -C $(LINUX_DIR) M= exactly like the SDK.

@@ -1,0 +1,10 @@
+config BR2_PACKAGE_AML_UTIL
+	bool "aml-util"
+	depends on BR2_LINUX_KERNEL
+	select BR2_PACKAGE_LIBUSB
+	help
+	  Amlogic system utility tools for HubV3L.
+	  Includes wifi_power (WiFi power control), multi_wifi_load_driver
+	  (WiFi/BT kernel module loader), and usb_monitor.
+
+	  Source: sdk_A113X_202210/vendor/amlogic/aml_commonlib/utils

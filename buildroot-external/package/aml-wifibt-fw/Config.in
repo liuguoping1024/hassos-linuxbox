@@ -1,0 +1,12 @@
+config BR2_PACKAGE_AML_WIFIBT_FW
+	bool "aml-wifibt-fw"
+	help
+	  Amlogic W1 WiFi/BT firmware and RF configuration files.
+
+	  WiFi: RF calibration data for various W1 chip revisions
+	  (/etc/wifi/w1/aml_wifi_rf*.txt)
+
+	  BT: UART firmware (w1_bt_fw_uart.bin), RF config, and
+	  A2DP mode configuration (/etc/bluetooth/aml/)
+
+	  Required for WiFi and Bluetooth on HubV3L.

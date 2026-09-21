@@ -1,0 +1,8 @@
+config BR2_PACKAGE_AML_COMMONLIB
+	bool "aml-commonlib"
+	help
+	  Amlogic common library providing logging (aml_log) and
+	  socket IPC (aml_socketipc) facilities used by other
+	  Amlogic userspace tools (aml-util, etc.).
+
+	  Source: sdk_A113X_202210/vendor/amlogic/aml_commonlib
