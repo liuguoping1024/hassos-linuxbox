@@ -123,8 +123,13 @@ BR2_TARGET_ROOTFS_EROFS_LZ4HC_LEVEL=12
 # ---- U-Boot: legacy SDK 2015.01 (via uboot-legacy package) ----
 # BR2_TARGET_UBOOT is not set
 BR2_PACKAGE_UBOOT_LEGACY=y
-BR2_PACKAGE_UBOOT_LEGACY_BOARD_DEFCONFIG="axg_hubv3l_v1"
-BR2_PACKAGE_UBOOT_LEGACY_SDK_PATH="/disk4T/liuguoping/sdk_A113X_202210"
+# NOTE: BR2_PACKAGE_UBOOT_LEGACY_BOARD_DEFCONFIG and _SDK_PATH used to be set
+# here, but uboot-legacy/Config.in never declared those symbols, so kconfig
+# silently dropped them and the original Amlogic SDK tree was never read.
+# The real settings live in the package:
+#   board name  -> UBOOT_LEGACY_BOARD (axg_hubv3l_v1) in uboot-legacy.mk
+#   prebuilt BL / FIP tools -> board/thirdreality/hubv3l/aml-fip/, aml-tools/
+#   bare-metal toolchain    -> AML_BAREMETAL_TOOLCHAIN env var (see uboot-legacy.mk)
 
 # ---- Host tools ----
 BR2_PACKAGE_HOST_DOSFSTOOLS=y

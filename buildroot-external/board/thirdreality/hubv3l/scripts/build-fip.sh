@@ -7,8 +7,17 @@
 #
 set -e
 
-# Toolchains
-export PATH="/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-elf/bin:${PATH}"
+# Bare-metal aarch64-elf toolchain (Amlogic u-boot 2015.01 / BL30 / BL301).
+# Location is overridable so this is not tied to one workstation; the default
+# matches the historical hardcoded path.
+AML_BAREMETAL_TOOLCHAIN="${AML_BAREMETAL_TOOLCHAIN:-/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-elf}"
+if [ ! -x "${AML_BAREMETAL_TOOLCHAIN}/bin/aarch64-elf-gcc" ]; then
+    echo "ERROR: bare-metal toolchain not found." >&2
+    echo "  looked for: ${AML_BAREMETAL_TOOLCHAIN}/bin/aarch64-elf-gcc" >&2
+    echo "  set AML_BAREMETAL_TOOLCHAIN=/path/to/gcc-linaro-<ver>-aarch64-elf" >&2
+    exit 1
+fi
+export PATH="${AML_BAREMETAL_TOOLCHAIN}/bin:${PATH}"
 
 BL33_DIR="$1"       # u-boot source/build dir (contains build/)
 FIP_BASE="$2"       # aml-fip/ dir (contains bl2/, bl30/, bl31_1.3/, fip/)

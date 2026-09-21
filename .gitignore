@@ -13,3 +13,4 @@ output*/
 
 # Build & debug logs
 *.log
+/logs

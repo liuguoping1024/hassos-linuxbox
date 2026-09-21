@@ -19,19 +19,37 @@ UBOOT_LEGACY_FIP_DIR = $(UBOOT_LEGACY_BOARD_DIR)/aml-fip
 UBOOT_LEGACY_INSTALL_IMAGES = YES
 
 # Toolchain: Amlogic u-boot 2015.01 requires bare-metal aarch64-elf-gcc
+# (not the buildroot linux-gnu cross toolchain). Override the location with
+# the AML_BAREMETAL_TOOLCHAIN environment variable; the default matches the
+# historical hardcoded path.
 UBOOT_LEGACY_CROSS = aarch64-elf-
+UBOOT_LEGACY_BAREMETAL = $(if $(AML_BAREMETAL_TOOLCHAIN),$(AML_BAREMETAL_TOOLCHAIN),/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-elf)
+UBOOT_LEGACY_BAREMETAL_BIN = $(UBOOT_LEGACY_BAREMETAL)/bin
+
+# Fail loudly and early if the bare-metal toolchain is missing. Without this
+# the missing compiler is masked by the "|| true" in BUILD_CMDS and only
+# surfaces much later as a confusing "BL33 u-boot.bin not built".
+define UBOOT_LEGACY_CHECK_BAREMETAL
+	test -x "$(UBOOT_LEGACY_BAREMETAL_BIN)/aarch64-elf-gcc" || { \
+		echo "ERROR: bare-metal toolchain not found."; \
+		echo "  looked for: $(UBOOT_LEGACY_BAREMETAL_BIN)/aarch64-elf-gcc"; \
+		echo "  set AML_BAREMETAL_TOOLCHAIN=/path/to/gcc-linaro-<ver>-aarch64-elf"; \
+		exit 1; \
+	}
+endef
 
 # Patches are applied automatically by buildroot via BR2_GLOBAL_PATCH_DIR
 # -> patches/uboot-legacy/ (51 SDK patches + 1 hubv3l board patch)
 
 # Amlogic u-boot uses make <board>_config, not make <board>_defconfig
 define UBOOT_LEGACY_CONFIGURE_CMDS
-	PATH="/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-elf/bin:$(PATH)" \
+	$(UBOOT_LEGACY_CHECK_BAREMETAL)
+	PATH="$(UBOOT_LEGACY_BAREMETAL_BIN):$(PATH)" \
 	$(MAKE) -C $(@D) $(UBOOT_LEGACY_BOARD)_config
 endef
 
 define UBOOT_LEGACY_BUILD_CMDS
-	PATH="/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-elf/bin:$(PATH)" \
+	PATH="$(UBOOT_LEGACY_BAREMETAL_BIN):$(PATH)" \
 	$(MAKE) -C $(@D) -j$(PARALLEL_JOBS) \
 		CROSS_COMPILE=$(UBOOT_LEGACY_CROSS) \
 		SYSTEMMODE=null AVBMODE=null BOOTCTRLMODE=null \
@@ -45,6 +63,7 @@ endef
 
 # FIP packaging: bl2+bl30+bl31+bl33 -> u-boot.bin (encrypted/signed)
 define UBOOT_LEGACY_INSTALL_IMAGES_CMDS
+	AML_BAREMETAL_TOOLCHAIN="$(UBOOT_LEGACY_BAREMETAL)" \
 	$(UBOOT_LEGACY_BOARD_DIR)/scripts/build-fip.sh \
 		"$(@D)" \
 		"$(UBOOT_LEGACY_FIP_DIR)" \
