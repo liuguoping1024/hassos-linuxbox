@@ -1,6 +1,7 @@
 config BR2_PACKAGE_HUBV3_SUPERVISOR
 	bool "hubv3-supervisor"
 	depends on BR2_PACKAGE_BLUEZ5_UTILS
+	depends on BR2_PACKAGE_HAS_UDEV # pkg_check_modules(LIBUDEV REQUIRED libudev)
 	select BR2_PACKAGE_LIBGLIB2
 	select BR2_PACKAGE_JSON_C
 	select BR2_PACKAGE_AVAHI
@@ -12,6 +13,14 @@ config BR2_PACKAGE_HUBV3_SUPERVISOR
 	select BR2_PACKAGE_LIBYAML
 	select BR2_PACKAGE_SQLITE
 	select BR2_PACKAGE_CJSON
+	# libmosquitto: hard requirement since supervisor 82834e07
+	# (CMakeLists.txt aborts with FATAL_ERROR when mosquitto.h is absent).
+	# Selected here rather than set per-board so a new board defconfig
+	# cannot miss it.
+	select BR2_PACKAGE_MOSQUITTO
+	# libuuid, via pkg_check_modules(LIBUUID REQUIRED uuid)
+	select BR2_PACKAGE_UTIL_LINUX
+	select BR2_PACKAGE_UTIL_LINUX_LIBUUID
 	help
 	  LinuxBox Supervisor for ThirdReality Hub V3.
 	  A C-based device management daemon providing hardware control
@@ -23,3 +32,6 @@ config BR2_PACKAGE_HUBV3_SUPERVISOR
 
 comment "hubv3-supervisor needs bluez5_utils"
 	depends on !BR2_PACKAGE_BLUEZ5_UTILS
+
+comment "hubv3-supervisor needs udev (systemd or eudev)"
+	depends on !BR2_PACKAGE_HAS_UDEV

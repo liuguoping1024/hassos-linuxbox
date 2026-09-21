@@ -4,13 +4,33 @@
 #
 ################################################################################
 
-HUBV3_SUPERVISOR_VERSION = 5366af512ac4807d212a9e2380947fbc01ac5bbc
+HUBV3_SUPERVISOR_VERSION = fd480b77fff455a54327c546950e6dda840606ac
 HUBV3_SUPERVISOR_SITE = git@github.com:liuguoping1024/LinuxBox_Supervisor.git
 HUBV3_SUPERVISOR_SITE_METHOD = git
 HUBV3_SUPERVISOR_LICENSE = Proprietary
+# Every REQUIRED dependency in the upstream CMakeLists.txt must be listed here,
+# not merely selected in Config.in. Config.in only guarantees the package is
+# *enabled*; DEPENDENCIES is what guarantees it is *built first*. An undeclared
+# dependency works by luck and fails non-deterministically under -j: the
+# mosquitto.h failure on hubv3 was exactly this, and util-linux/udev were in
+# the same state (enabled everywhere, so never caught).
+#
+# Mapping from CMakeLists.txt to buildroot packages:
+#   pkg_check_modules glib-2.0 gio-2.0 -> libglib2
+#   pkg_check_modules json-c           -> json-c
+#   pkg_check_modules avahi-client     -> avahi
+#   pkg_check_modules libcurl          -> libcurl
+#   pkg_check_modules openssl          -> openssl
+#   pkg_check_modules uuid             -> util-linux (BR2_PACKAGE_UTIL_LINUX_LIBUUID)
+#   pkg_check_modules libudev          -> udev (virtual; systemd provides it here)
+#   gpiod.h / microhttpd.h / cjson     -> libgpiod / libmicrohttpd / cjson
+#   sqlite3.h / yaml.h                 -> sqlite / libyaml
+#   bluetooth/bluetooth.h              -> bluez5_utils
+#   mosquitto.h                        -> mosquitto
 HUBV3_SUPERVISOR_DEPENDENCIES = \
 	host-pkgconf libglib2 json-c avahi libgpiod openssl \
-	libmicrohttpd libcurl libyaml sqlite cjson bluez5_utils
+	libmicrohttpd libcurl libyaml sqlite cjson bluez5_utils \
+	mosquitto util-linux udev
 
 HUBV3_SUPERVISOR_CONF_OPTS = -DCMAKE_BUILD_TYPE=Release
 
