@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-ZIGBEE2MQTT_VERSION = 3r_blz_2.7.0
+ZIGBEE2MQTT_VERSION = 3r_blz_2.11.0
 ZIGBEE2MQTT_SITE = https://github.com/thirdreality/zigbee2mqtt.git
 ZIGBEE2MQTT_SITE_METHOD = git
 ZIGBEE2MQTT_LICENSE = GPL-3.0

@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-ZIGBEE_HERDSMAN_VERSION = 3r_blz_7.0.3
+ZIGBEE_HERDSMAN_VERSION = 3r_blz_10.0.8
 ZIGBEE_HERDSMAN_SITE = https://github.com/thirdreality/zigbee-herdsman.git
 ZIGBEE_HERDSMAN_SITE_METHOD = git
 ZIGBEE_HERDSMAN_LICENSE = MIT
