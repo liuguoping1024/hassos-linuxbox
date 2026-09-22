@@ -1,5 +1,5 @@
 BOARD_ID=hubv3b
-BOARD_NAME="Thirdreality LinuxBox Hubv3b"
+BOARD_NAME="Thirdreality LinuxBox HubV3B"
 CHASSIS=embedded
 BOOTLOADER=uboot
 KERNEL_FILE=Image

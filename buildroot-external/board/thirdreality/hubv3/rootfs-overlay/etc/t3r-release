@@ -1,8 +1,8 @@
-PRETTY_NAME="LinuxBox Dev Edition"
+PRETTY_NAME="LinuxBox/HubV3"
 NAME="LinuxBox/HubV3"
 MODLE="3RLB01081MH"
-VERSION_ID="1140121"
-VERSION="v1.14.01.21"
+VERSION_ID="2140150"
+VERSION="v2.14.01.50"
 HOME_URL="https://3reality.com/"
 SUPPORT_URL="Support@3reality.com"
 
