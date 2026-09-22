@@ -29,7 +29,6 @@ disable raucdb-update.service
 #
 # Unit names must match what the packages actually install:
 #   hubv3-supervisor.mk -> supervisor.service
-#   hubv3-bridge.mk     -> linuxbox-hubv3-bridge.service
 # (the old names "hubv3-supervisor.service" / "hubv3-bridge.service" were
 # typos that silently degraded to the enable-by-default fallback)
 disable mosquitto.service
@@ -37,5 +36,3 @@ disable zigbee2mqtt.service
 disable z2m-mem-monitor.service
 disable z2m-mem-monitor.timer
 
-# Bridge temporarily off on hubv3l during bring-up.
-disable linuxbox-hubv3-bridge.service

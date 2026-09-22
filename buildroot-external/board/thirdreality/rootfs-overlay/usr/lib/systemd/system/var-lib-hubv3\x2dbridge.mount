@@ -4,6 +4,15 @@ Requires=mnt-overlay.mount hubv3-overlay.service
 After=mnt-overlay.mount hubv3-overlay.service
 Before=linuxbox-hubv3-bridge.service supervisor.service
 
+# This unit lives in the shared thirdreality overlay, so every board installs
+# it, but hubv3 does not set BR2_PACKAGE_HUBV3_BRIDGE. Without this condition
+# systemd creates /var/lib/hubv3-bridge as a mountpoint on a board that has no
+# bridge binary, no bridge service and nothing to put in it.
+#
+# /etc/hubv3-bridge is created by hubv3-bridge.mk, so its presence is the
+# package's own footprint rather than a board list that has to be kept in sync.
+ConditionPathExists=/etc/hubv3-bridge
+
 [Mount]
 What=/mnt/overlay/var/lib/hubv3-bridge
 Where=/var/lib/hubv3-bridge

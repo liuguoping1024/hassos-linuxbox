@@ -21,3 +21,11 @@ enable hubv3-overlay.service
 # Installed by hubv3-supervisor.mk as "supervisor.service" (NOT
 # "hubv3-supervisor.service" — that name does not exist).
 enable supervisor.service
+
+# LinuxBox bridge. Only hubv3b sets BR2_PACKAGE_HUBV3_BRIDGE, so
+# linuxbox-hubv3-bridge.service exists only there and this line is a no-op on
+# the other boards. It is spelled out because the warning at the top of this
+# file applies: a unit named in no preset file is ENABLED by systemd's
+# fallback, which is how the bridge came to run on hubv3a without anyone
+# deciding that it should.
+enable linuxbox-hubv3-bridge.service
