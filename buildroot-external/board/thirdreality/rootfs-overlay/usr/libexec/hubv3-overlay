@@ -1,14 +1,29 @@
 #!/bin/sh
+#
+# Create the persistent directories under /mnt/overlay that the bind mounts in
+# usr/lib/systemd/system/ expect, and seed them on first boot.
+#
+# This script lives in the shared thirdreality overlay, so it runs on every
+# board. Each block is therefore guarded by something the corresponding package
+# itself installs, rather than by a board list that has to be kept in sync with
+# the defconfigs. That drift is exactly how hubv3 - which has no zigbee2mqtt,
+# no broker of its own and no bridge - ended up with empty directories for all
+# three, plus a /var/lib/hubv3-bridge mountpoint for a bridge it does not have.
 
-# Zigbee2MQTT persistent data
-mkdir -p /mnt/overlay/opt/zigbee2mqtt/data
-mkdir -p /mnt/overlay/opt/zigbee2mqtt/data/external_converters
+# Zigbee2MQTT persistent data. /opt/zigbee2mqtt is created by zigbee2mqtt.mk.
+if [ -d /opt/zigbee2mqtt ]; then
+    mkdir -p /mnt/overlay/opt/zigbee2mqtt/data
+    mkdir -p /mnt/overlay/opt/zigbee2mqtt/data/external_converters
+fi
 
-# Mosquitto persistent data
+# Mosquitto persistent data.
+# Unconditional: every board runs a broker, so /etc/mosquitto and
+# var-lib-mosquitto.mount both live in this shared overlay.
 mkdir -p /mnt/overlay/var/lib/mosquitto
 
-# Supervisor persistent state (survives zram /var remount)
-# Seed from /etc/hubv3-supervisor on first boot, then bind-mount overlay dir
+# Supervisor persistent state (survives the zram /var remount).
+# Unconditional - the supervisor runs on every board.
+# Seed from /etc/hubv3-supervisor on first boot, then bind-mount the overlay dir.
 if [ ! -d /mnt/overlay/var/lib/hubv3-supervisor ]; then
     mkdir -p /mnt/overlay/var/lib/hubv3-supervisor
     if [ -d /etc/hubv3-supervisor ]; then
@@ -16,12 +31,11 @@ if [ ! -d /mnt/overlay/var/lib/hubv3-supervisor ]; then
     fi
 fi
 
-# Bridge persistent state (seed from /etc/hubv3-bridge on first boot)
-if [ ! -d /mnt/overlay/var/lib/hubv3-bridge ]; then
+# Bridge persistent state. /etc/hubv3-bridge is created by hubv3-bridge.mk, so
+# it exists exactly on the boards that build the bridge - hubv3b only.
+if [ -d /etc/hubv3-bridge ] && [ ! -d /mnt/overlay/var/lib/hubv3-bridge ]; then
     mkdir -p /mnt/overlay/var/lib/hubv3-bridge
-    if [ -d /etc/hubv3-bridge ]; then
-        cp -a /etc/hubv3-bridge/. /mnt/overlay/var/lib/hubv3-bridge/
-    fi
+    cp -a /etc/hubv3-bridge/. /mnt/overlay/var/lib/hubv3-bridge/
 fi
 
 # bflb_iot firmware tool needs a writable layer (overlayfs)
