@@ -1,4 +1,4 @@
-# LinuxBox Supervisor Configuration File
+# LinuxBox HubV3/HubV3B Supervisor Configuration File
 # Default location: /etc/hubv3-supervisor/configuration.yaml
 # This configuration is used by the C-based supervisor to manage system behavior
 
@@ -9,6 +9,30 @@ version: 1
 # System Information Configuration
 # ============================================================================
 system_info:
+  # Timezone as a UTC offset "+HH:MM" / "-HH:MM" (default "+00:00" = UTC).
+  # Supervisor-managed and decoupled from the OS timezone. Used e.g. to sync
+  # time to a USB Clock accessory. Set via: POST /api/timezone  (offset=<minutes>)
+  timezone: "+00:00"
+
+  # Package-manager backend. Decides how component versions are read, whether
+  # .deb OTA is offered, and whether component presence is verified on startup.
+  #   auto - probe for dpkg: Armbian has it, Buildroot does not (recommended)
+  #   dpkg - force the Debian backend
+  #   none - force "no package manager"
+  #
+  # On Armbian components arrive incrementally as .deb packages, so one can
+  # genuinely be missing. On Buildroot every component is baked into the image,
+  # so there is nothing to verify and no per-package version to report.
+  package_backend: "auto"
+
+  # Units that satisfy the startup component check. The check passes when ANY
+  # one of them is present, which covers the HA / matter2mqtt / openhab build
+  # variants. Failing it shows the white 1Hz slow blink (SYS_SYSTEM_CORRUPTED).
+  #
+  # Skipped entirely when package_backend resolves to none.
+  required_any_of:
+    - "mosquitto.service"
+
   # Release information files
   release_files:
     t3r: "/etc/t3r-release"
