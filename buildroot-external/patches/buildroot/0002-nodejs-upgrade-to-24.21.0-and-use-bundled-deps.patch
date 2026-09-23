@@ -1,0 +1,247 @@
+Upgrade Node.js from 20.18.2 (Buildroot 2024.02 default) to 24.21.0.
+
+Three things beyond the version bump:
+
+1. c-ares, libuv and nghttp2 are switched from the system copies to the ones
+   bundled in the Node tree. Buildroot 2024.02.x carries c-ares 1.27.0,
+   libuv 1.48.0 and nghttp2 1.64.0, while Node 24.21.0 bundles and validates
+   against newer releases (nghttp2 1.70.0). Only the bundled combination is
+   tested upstream, so link those statically instead of relying on the older
+   system libraries. zlib and OpenSSL stay shared - Node 24 has no hard
+   minimum for OpenSSL and Buildroot's 3.2.4 satisfies the >= 3.2 feature
+   checks in src/crypto/crypto_util.h.
+
+2. 0001-add-qemu-wrapper-support.patch is dropped and the wrapper is wired in
+   through Node's own mechanism instead.
+
+   That patch injected an @MAYBE_WRAPPER@ marker in front of every build tool
+   gyp has to execute, then sed'd it to the qemu wrapper path. Node 24 does
+   this natively: node.gyp and tools/v8_gypfiles/v8.gyp carry '<@(emulator)'
+   slots in front of node_js2c, node_mksnapshot, torque, mksnapshot,
+   bytecode_builtins_list_generator and gen-regexp-special-case, defaulting to
+   an empty list via "'emulator%': []," in common.gypi. The old patch no
+   longer applies against those files (2 of 4 hunks in node.gyp and 1 of 5 in
+   v8.gyp are rejected), and there is no reason to carry it: NODEJS_SRC_WRAPPER_FIXUP
+   now points the native slots at the wrapper. The host build needs no fixup
+   at all, since the empty default expands to nothing - so
+   HOST_NODEJS_SRC_WRAPPER_FIXUP is gone too.
+
+   Note configure.py's --emulator option is NOT usable here: it is silently
+   ignored whenever --cross-compiling is passed, which Buildroot always does.
+
+3. The linux-armv7l hash is dropped. Node stopped publishing official 32-bit
+   ARM builds, so there is no such tarball for 24.x.
+
+Hashes are from https://nodejs.org/dist/v24.21.0/SHASUMS256.txt
+The LICENSE hash is calculated locally from node-v24.21.0.tar.xz.
+
+diff --git a/package/nodejs/nodejs-src/0001-add-qemu-wrapper-support.patch b/package/nodejs/nodejs-src/0001-add-qemu-wrapper-support.patch
+deleted file mode 100644
+index 18f320e..0000000
+--- a/package/nodejs/nodejs-src/0001-add-qemu-wrapper-support.patch
++++ /dev/null
+@@ -1,114 +0,0 @@
+-From 1f6c55d7318e7075169004b4314708f4766ec193 Mon Sep 17 00:00:00 2001
+-From: Adam Duskett <aduskett@gmail.com>
+-Date: Mon, 27 Sep 2021 12:55:09 -0700
+-Subject: [PATCH] add qemu-wrapper support
+-
+-V8's JIT infrastructure requires binaries such as mksnapshot and mkpeephole to
+-be run in the host during the build. However, these binaries must have the
+-same bit-width as the target (e.g. a x86_64 host targeting ARMv6 needs to
+-produce a 32-bit binary). To work around this issue, cross-compile the
+-binaries for the target and run them on the host with QEMU, much like
+-gobject-introspection.
+-
+-However, for the host-variant we do not want to use a
+-qemu-wrapper, so add @MAYBE_WRAPPER@ to the needed files and sed the path to
+-the qemu-wrapper on target builds, and remove @MAYBE_WRAPPER@ entirely on
+-host-builds.
+-
+-[Adam: Update for 20.9.0]
+-Signed-off-by: Adam Duskett <aduskett@gmail.com>
+----
+- node.gyp                 |  6 ++++--
+- tools/v8_gypfiles/v8.gyp | 10 +++++-----
+- 2 files changed, 9 insertions(+), 7 deletions(-)
+-
+-diff --git a/node.gyp b/node.gyp
+-index 97cdbb531d..db5cf51ce6 100644
+---- a/node.gyp
+-+++ b/node.gyp
+-@@ -662,7 +662,7 @@
+-                   'action_name': 'node_mksnapshot',
+-                   'process_outputs_as_sources': 1,
+-                   'inputs': [
+--                    '<(node_mksnapshot_exec)',
+-+                    @MAYBE_WRAPPER@ '<(node_mksnapshot_exec)',
+-                     '<(node_snapshot_main)',
+-                   ],
+-                   'outputs': [
+-@@ -682,7 +682,7 @@
+-                   'action_name': 'node_mksnapshot',
+-                   'process_outputs_as_sources': 1,
+-                   'inputs': [
+--                    '<(node_mksnapshot_exec)',
+-+                    @MAYBE_WRAPPER@ '<(node_mksnapshot_exec)',
+-                   ],
+-                   'outputs': [
+-                     '<(SHARED_INTERMEDIATE_DIR)/node_snapshot.cc',
+-@@ -966,6 +966,7 @@
+-           'action_name': 'node_js2c',
+-           'process_outputs_as_sources': 1,
+-           'inputs': [
+-+            @MAYBE_WRAPPER@
+-             '<(node_js2c_exec)',
+-             '<@(library_files)',
+-             '<@(deps_files)',
+-@@ -975,6 +976,7 @@
+-             '<(SHARED_INTERMEDIATE_DIR)/node_javascript.cc',
+-           ],
+-           'action': [
+-+            @MAYBE_WRAPPER@
+-             '<(node_js2c_exec)',
+-             '<@(_outputs)',
+-             'lib',
+-diff --git a/tools/v8_gypfiles/v8.gyp b/tools/v8_gypfiles/v8.gyp
+-index 73099a03e4..88ca91efb4 100644
+---- a/tools/v8_gypfiles/v8.gyp
+-+++ b/tools/v8_gypfiles/v8.gyp
+-@@ -81,7 +81,7 @@
+-         {
+-           'action_name': 'run_torque_action',
+-           'inputs': [  # Order matters.
+--            '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)torque<(EXECUTABLE_SUFFIX)',
+-+            @MAYBE_WRAPPER@ '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)torque<(EXECUTABLE_SUFFIX)',
+-             '<@(torque_files)',
+-           ],
+-           'outputs': [
+-@@ -112,7 +112,7 @@
+-             '<@(torque_outputs_inc)',
+-           ],
+-           'action': [
+--            '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)torque<(EXECUTABLE_SUFFIX)',
+-+            @MAYBE_WRAPPER@ '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)torque<(EXECUTABLE_SUFFIX)',
+-             '-o', '<(SHARED_INTERMEDIATE_DIR)/torque-generated',
+-             '-v8-root', '<(V8_ROOT)',
+-             '<@(torque_files_without_v8_root)',
+-@@ -224,7 +224,7 @@
+-         {
+-           'action_name': 'generate_bytecode_builtins_list_action',
+-           'inputs': [
+--            '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)bytecode_builtins_list_generator<(EXECUTABLE_SUFFIX)',
+-+            @MAYBE_WRAPPER@ '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)bytecode_builtins_list_generator<(EXECUTABLE_SUFFIX)',
+-           ],
+-           'outputs': [
+-             '<(generate_bytecode_builtins_list_output)',
+-@@ -401,7 +401,7 @@
+-             ],
+-           },
+-           'inputs': [
+--            '<(mksnapshot_exec)',
+-+            @MAYBE_WRAPPER@ '<(mksnapshot_exec)',
+-           ],
+-           'outputs': [
+-             '<(INTERMEDIATE_DIR)/snapshot.cc',
+-@@ -1660,7 +1660,7 @@
+-         {
+-           'action_name': 'run_gen-regexp-special-case_action',
+-           'inputs': [
+--            '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)gen-regexp-special-case<(EXECUTABLE_SUFFIX)',
+-+            @MAYBE_WRAPPER@ '<(PRODUCT_DIR)/<(EXECUTABLE_PREFIX)gen-regexp-special-case<(EXECUTABLE_SUFFIX)',
+-           ],
+-           'outputs': [
+-             '<(SHARED_INTERMEDIATE_DIR)/src/regexp/special-case.cc',
+--- 
+-2.37.3
+-
+diff --git a/package/nodejs/nodejs-src/nodejs-src.mk b/package/nodejs/nodejs-src/nodejs-src.mk
+index 8f93420..74c709c 100644
+--- a/package/nodejs/nodejs-src/nodejs-src.mk
++++ b/package/nodejs/nodejs-src/nodejs-src.mk
+@@ -21,9 +21,6 @@ NODEJS_SRC_DEPENDENCIES = \
+ 	host-pkgconf \
+ 	host-python3 \
+ 	host-qemu \
+-	c-ares \
+-	libuv \
+-	nghttp2 \
+ 	zlib \
+ 	$(call qstrip,$(BR2_PACKAGE_NODEJS_MODULES_ADDITIONAL_DEPS))
+ HOST_NODEJS_SRC_DEPENDENCIES = \
+@@ -37,9 +34,6 @@ NODEJS_SRC_INSTALL_STAGING = YES
+ 
+ NODEJS_SRC_CONF_OPTS = \
+ 	--shared-zlib \
+-	--shared-cares \
+-	--shared-libuv \
+-	--shared-nghttp2 \
+ 	--cross-compiling \
+ 	--dest-os=linux \
+ 	--ninja
+@@ -190,19 +184,21 @@ define NODEJS_SRC_INSTALL_V8_QEMU_WRAPPER
+ endef
+ NODEJS_SRC_PRE_CONFIGURE_HOOKS += NODEJS_SRC_INSTALL_V8_QEMU_WRAPPER
+ 
++# Node 24 ships native '<@(emulator)' slots in front of every build tool it
++# has to execute (node_js2c, node_mksnapshot, torque, mksnapshot,
++# bytecode_builtins_list_generator, gen-regexp-special-case), defaulting to an
++# empty list via "'emulator%': []," in common.gypi. That is exactly what the
++# old 0001-add-qemu-wrapper-support.patch open-coded with an @MAYBE_WRAPPER@
++# marker, so point those slots at the wrapper instead of carrying the patch.
++# configure.py's --emulator option cannot be used: it is ignored whenever
++# --cross-compiling is passed, which is always the case here.
++# The host build needs no fixup - the empty default expands to nothing.
+ define NODEJS_SRC_WRAPPER_FIXUP
+-	$(SED) "s%@MAYBE_WRAPPER@%'<(PRODUCT_DIR)/v8-qemu-wrapper',%g" $(@D)/node.gyp
+-	$(SED) "s%@MAYBE_WRAPPER@%'<(PRODUCT_DIR)/v8-qemu-wrapper',%g" $(@D)/tools/v8_gypfiles/v8.gyp
++	$(SED) "s%'<@(emulator)',%'<(PRODUCT_DIR)/v8-qemu-wrapper',%g" $(@D)/node.gyp
++	$(SED) "s%'<@(emulator)',%'<(PRODUCT_DIR)/v8-qemu-wrapper',%g" $(@D)/tools/v8_gypfiles/v8.gyp
+ endef
+ NODEJS_SRC_PRE_CONFIGURE_HOOKS += NODEJS_SRC_WRAPPER_FIXUP
+ 
+-# Do not run the qemu-wrapper for the host build.
+-define HOST_NODEJS_SRC_WRAPPER_FIXUP
+-	$(SED) "s%@MAYBE_WRAPPER@%%g" $(@D)/node.gyp
+-	$(SED) "s%@MAYBE_WRAPPER@%%g" $(@D)/tools/v8_gypfiles/v8.gyp
+-endef
+-HOST_NODEJS_SRC_PRE_CONFIGURE_HOOKS += HOST_NODEJS_SRC_WRAPPER_FIXUP
+-
+ define NODEJS_SRC_CONFIGURE_CMDS
+ 	(cd $(@D); \
+ 		$(TARGET_CONFIGURE_OPTS) \
+diff --git a/package/nodejs/nodejs.hash b/package/nodejs/nodejs.hash
+index 486e5fc..0118e22 100644
+--- a/package/nodejs/nodejs.hash
++++ b/package/nodejs/nodejs.hash
+@@ -1,10 +1,9 @@
+-# From https://nodejs.org/dist/v20.18.2/SHASUMS256.txt.asc
+-sha256  05819d72dcc0aa788baab1066e18ede5f1ab6730a1925cd6b15c131b55fd4272  node-v20.18.2-headers.tar.xz
+-sha256  5c1437aa16e7e6a2e0687a42c4d3f0a8f8a2039cda8880cb3be8cd983aeefb44  node-v20.18.2-linux-arm64.tar.xz
+-sha256  63d4df56fb2e34a5077345f78941094204d2223ce03b8ebc9c1500e6e2aae68d  node-v20.18.2-linux-armv7l.tar.xz
+-sha256  828a2635261ca225cd4a8a4b1a914003cdc7b30656c2e9092ac7aab02ac361db  node-v20.18.2-linux-ppc64le.tar.xz
+-sha256  4e50f727ae09bdafecf2322c72faf7cd82bf3b8851a16b8bb63974e0d8d6eceb  node-v20.18.2-linux-x64.tar.xz
+-sha256  69bf81b70f3a95ae0763459f02860c282d7e3a47567c8afaf126cc778176a882  node-v20.18.2.tar.xz
++# From https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.asc
++sha256  7497abc2fac1d332fae580046b6b39d0de283dfaf267207a32b59753739c1517  node-v24.21.0-headers.tar.xz
++sha256  6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2  node-v24.21.0-linux-arm64.tar.xz
++sha256  1936fd64623a2f98d1fb31b456686d10c30e92639899cfefdefa8835d22adccd  node-v24.21.0-linux-ppc64le.tar.xz
++sha256  fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6  node-v24.21.0-linux-x64.tar.xz
++sha256  a6f54defb6fd7c84f41dba13d61e78e9b4e0961712cf61f29715c05f5ced94fc  node-v24.21.0.tar.xz
+ 
+ # Locally calculated
+-sha256  4f0e8660d7fe2f8f7759a54c53907300c555992b580e846b30b75121c53ad180  LICENSE
++sha256  5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace  LICENSE
+diff --git a/package/nodejs/nodejs.mk b/package/nodejs/nodejs.mk
+index 2bdebcd..5c4163e 100644
+--- a/package/nodejs/nodejs.mk
++++ b/package/nodejs/nodejs.mk
+@@ -5,7 +5,7 @@
+ ################################################################################
+ 
+ # _VERSION, _SOURCE and _SITE must be kept empty to avoid downloading anything
+-NODEJS_COMMON_VERSION = 20.18.2
++NODEJS_COMMON_VERSION = 24.21.0
+ NODEJS_COMMON_SOURCE = node-v$(NODEJS_COMMON_VERSION).tar.xz
+ NODEJS_COMMON_SITE = http://nodejs.org/dist/v$(NODEJS_COMMON_VERSION)
+ 
