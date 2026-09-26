@@ -41,6 +41,12 @@ define ZIGBEE_HERDSMAN_INSTALL_TARGET_CMDS
 	rm -rf $(TARGET_DIR)/opt/zigbee-herdsman/node_modules/@esbuild
 	rm -rf $(TARGET_DIR)/opt/zigbee-herdsman/node_modules/esbuild
 	rm -rf $(TARGET_DIR)/opt/zigbee-herdsman/node_modules/@biomejs
+	# pnpm itself (installed by BUILD_CMDS step 1) and its native helpers are
+	# build-only; none appear in the package.json "dependencies".
+	rm -rf $(TARGET_DIR)/opt/zigbee-herdsman/node_modules/pnpm
+	rm -rf $(TARGET_DIR)/opt/zigbee-herdsman/node_modules/@pnpm
+	rm -rf $(TARGET_DIR)/opt/zigbee-herdsman/node_modules/@napi-rs
+	rm -rf $(TARGET_DIR)/opt/zigbee-herdsman/node_modules/.bin/pnpm*
 	# 2. serialport multi-platform prebuilds (keep only linux-arm64)
 	find $(TARGET_DIR)/opt/zigbee-herdsman/node_modules -path "*/prebuilds/linux-x64" -type d \
 		-exec rm -rf {} + 2>/dev/null || true
@@ -50,6 +56,11 @@ define ZIGBEE_HERDSMAN_INSTALL_TARGET_CMDS
 		-exec rm -rf {} + 2>/dev/null || true
 	find $(TARGET_DIR)/opt/zigbee-herdsman/node_modules -path "*/.ignored_bindings-cpp" -type d \
 		-exec rm -rf {} + 2>/dev/null || true
+	# 3. catch-all: any remaining x86-64 package dir, so a new transitive
+	# optionalDependency does not fail the arch check after a long build
+	find $(TARGET_DIR)/opt/zigbee-herdsman/node_modules \
+		\( -name "*linux-x64*" -o -name "*darwin-*" -o -name "*win32-*" \) \
+		-maxdepth 4 -exec rm -rf {} + 2>/dev/null || true
 endef
 
 $(eval $(generic-package))

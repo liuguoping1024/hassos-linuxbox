@@ -128,6 +128,12 @@ define ZIGBEE2MQTT_INSTALL_TARGET_CMDS
 	rm -rf $(TARGET_DIR)/opt/zigbee2mqtt/node_modules/@esbuild
 	rm -rf $(TARGET_DIR)/opt/zigbee2mqtt/node_modules/esbuild
 	rm -rf $(TARGET_DIR)/opt/zigbee2mqtt/node_modules/@biomejs
+	# pnpm itself (installed by BUILD_CMDS step 1) and its native helpers are
+	# build-only; none appear in the package.json "dependencies".
+	rm -rf $(TARGET_DIR)/opt/zigbee2mqtt/node_modules/pnpm
+	rm -rf $(TARGET_DIR)/opt/zigbee2mqtt/node_modules/@pnpm
+	rm -rf $(TARGET_DIR)/opt/zigbee2mqtt/node_modules/@napi-rs
+	rm -rf $(TARGET_DIR)/opt/zigbee2mqtt/node_modules/.bin/pnpm*
 	find $(TARGET_DIR)/opt/zigbee2mqtt/node_modules -path "*/prebuilds/linux-x64" -type d \
 		-exec rm -rf {} + 2>/dev/null || true
 	find $(TARGET_DIR)/opt/zigbee2mqtt/node_modules -path "*/prebuilds/linux-arm" -type d \
@@ -139,6 +145,11 @@ define ZIGBEE2MQTT_INSTALL_TARGET_CMDS
 	# Remove intermediate build objects (obj.target dirs with .o files)
 	find $(TARGET_DIR)/opt/zigbee2mqtt/node_modules -name "obj.target" -type d \
 		-exec rm -rf {} + 2>/dev/null || true
+	# catch-all: any remaining x86-64 package dir, so a new transitive
+	# optionalDependency does not fail the arch check after a long build
+	find $(TARGET_DIR)/opt/zigbee2mqtt/node_modules \
+		\( -name "*linux-x64*" -o -name "*darwin-*" -o -name "*win32-*" \) \
+		-maxdepth 4 -exec rm -rf {} + 2>/dev/null || true
 endef
 
 $(eval $(generic-package))
