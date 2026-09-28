@@ -1,0 +1,40 @@
+dts: hubv3a: drop HS400, cap eMMC at 100MHz
+
+The board booted but every write to eMMC failed:
+
+  meson-gx-mmc ffe07000.emmc: 25 [0x260000], CRC[0x20100]
+  blk_update_request: I/O error, dev mmcblk0, sector 2490368 op 0x1:(WRITE)
+  EXT4-fs (mmcblk0p14): VFS: Can't find ext4 filesystem
+
+CMD25 (WRITE_MULTIPLE_BLOCK) with status bit8 (TXD_ERR) set, i.e. a CRC
+error on the data-out path. Reads were fine throughout - the read-only
+erofs rootfs mounted cleanly - so this is the write path only.
+
+meson-gx-mmc only tunes the read window (aml_sd_emmc_adjust_win /
+emmc_ds_manual_sht produce "adj_win"/"tuning-c" in the log). The write
+side gets a fixed delay from set_emmc_nwr_clks() and the log shows it
+running with dly1 = 0, dly2 = 0 - no margin at all. scan_emmc_tx_win()
+exists but is debug-only and never runs at probe. At HS400 400MHz that
+was not enough for this part.
+
+hubv3l uses the exact same node and does not show this, so it is a
+board/part difference, not a software regression. HS200 at 100MHz is
+plenty here: the rootfs is read-only and /dev/data sees little traffic.
+
+--- a/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts
++++ b/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts
+@@ -530,8 +530,12 @@
+ 	cap-mmc-highspeed;
+ 	mmc-ddr-1_8v;
+ 	mmc-hs200-1_8v;
+-	mmc-hs400-1_8v;
+-	max-frequency = <200000000>;
++	/*
++	 * HS400 is left out on purpose: the driver tunes the read window but
++	 * never the write path, so writes ran without margin and every CMD25
++	 * came back TXD_ERR, which left mkfs unable to create data/overlay.
++	 */
++	max-frequency = <100000000>;
+ 	non-removable;
+ 	disable-wp;
+ 	init_core_phase = <3>;
