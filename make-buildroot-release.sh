@@ -47,13 +47,12 @@ unset _var _old _new
 #
 # line   mainline = 6.6.120 + u-boot 2024.01 (tracks HAOS upstream / armbian)
 #        sdk54    = Amlogic A113X vendor SDK, 5.4.180 + u-boot 2015.01
-#
-# hubv3c (2G / 32G NAND / zigbee-only, own PCB) is not implemented yet.
 # ---------------------------------------------------------------------------
 BOARDS=(
-    "hubv3a:thirdreality_hubv3a_defconfig:mainline:512M:8G:zigbee"
+    "hubv3a:thirdreality_hubv3a_defconfig:mainline:1G:8G:zigbee"
     "hubv3:thirdreality_hubv3_defconfig:mainline:2G:8G:zigbee+thread"
     "hubv3b:thirdreality_hubv3b_defconfig:mainline:2G:8G:zigbee+thread"
+    "hubv3c:thirdreality_hubv3c_defconfig:mainline:2G:32G:zigbee+thread"
     "hubv3l:thirdreality_hubv3l_defconfig:sdk54:1G:8G:zigbee+thread"
 )
 
