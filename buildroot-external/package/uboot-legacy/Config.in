@@ -1,7 +1,22 @@
 config BR2_PACKAGE_UBOOT_LEGACY
 	bool "uboot-legacy"
 	help
-	  Amlogic A113X u-boot for HubV3L.
-	  Downloads upstream u-boot v2015.01, applies Amlogic SDK patches,
-	  compiles BL33, and runs FIP packaging (bl2+bl30+bl31+bl33).
+	  Amlogic A113X (AXG) u-boot v2015.01 for the sdk54 board line
+	  (hubv3a, hubv3l). Downloads upstream u-boot v2015.01, applies the
+	  Amlogic SDK patches plus the per-board patch, compiles BL33, and
+	  runs FIP packaging (bl2+bl30+bl301+bl31+bl33).
 	  Produces u-boot.bin and variants in BINARIES_DIR.
+
+if BR2_PACKAGE_UBOOT_LEGACY
+
+config BR2_PACKAGE_UBOOT_LEGACY_BOARD
+	string "u-boot board name"
+	default "axg_hubv3l_v1"
+	help
+	  Amlogic board name: the prefix of <board>_config in u-boot and the
+	  directory under board/amlogic/. Created by the board-level patch in
+	  board/thirdreality/<dir>/patches/uboot-legacy/. Also selects which
+	  sdk54/aml-fip/binary/board/amlogic/<board>/aml-user-key.sig is used
+	  for secure-boot signing.
+
+endif

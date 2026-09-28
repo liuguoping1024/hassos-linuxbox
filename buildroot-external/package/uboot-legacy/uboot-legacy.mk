@@ -10,9 +10,9 @@ UBOOT_LEGACY_SITE_METHOD = git
 UBOOT_LEGACY_LICENSE = GPL-2.0+
 UBOOT_LEGACY_LICENSE_FILES = COPYING
 
-UBOOT_LEGACY_BOARD = axg_hubv3l_v1
-UBOOT_LEGACY_BOARD_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l
-UBOOT_LEGACY_FIP_DIR = $(UBOOT_LEGACY_BOARD_DIR)/aml-fip
+UBOOT_LEGACY_BOARD = $(call qstrip,$(BR2_PACKAGE_UBOOT_LEGACY_BOARD))
+UBOOT_LEGACY_SDK_DIR = $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/sdk54
+UBOOT_LEGACY_FIP_DIR = $(UBOOT_LEGACY_SDK_DIR)/aml-fip
 
 # Install produced images (u-boot.bin*) to BINARIES_DIR via
 # UBOOT_LEGACY_INSTALL_IMAGES_CMDS (runs build-fip.sh).
@@ -64,7 +64,7 @@ endef
 # FIP packaging: bl2+bl30+bl31+bl33 -> u-boot.bin (encrypted/signed)
 define UBOOT_LEGACY_INSTALL_IMAGES_CMDS
 	AML_BAREMETAL_TOOLCHAIN="$(UBOOT_LEGACY_BAREMETAL)" \
-	$(UBOOT_LEGACY_BOARD_DIR)/scripts/build-fip.sh \
+	$(UBOOT_LEGACY_SDK_DIR)/scripts/build-fip.sh \
 		"$(@D)" \
 		"$(UBOOT_LEGACY_FIP_DIR)" \
 		"$(UBOOT_LEGACY_BOARD)" \

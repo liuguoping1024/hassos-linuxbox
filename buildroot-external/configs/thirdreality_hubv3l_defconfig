@@ -5,7 +5,7 @@ BR2_DL_DIR="/cache/dl"
 BR2_CCACHE=y
 BR2_CCACHE_DIR="/cache/cc"
 BR2_ENABLE_LTO=y
-BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/patches"
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/sdk54/patches $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/patches"
 BR2_SSP_REGULAR=y
 BR2_TARGET_GENERIC_HOSTNAME="HubV3L"
 BR2_TARGET_GENERIC_ISSUE="Welcome to ThirdReality HubV3L (buildroot)"
@@ -22,8 +22,11 @@ BR2_SYSTEM_DEFAULT_PATH="/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="5.4.180"
-# Patches applied via BR2_GLOBAL_PATCH_DIR -> patches/linux/
-# Includes: 46 SDK patches + local DTS/driver fixes (1000-1002, 1013-1020)
+# Patches applied via BR2_GLOBAL_PATCH_DIR, shared layer first:
+#   sdk54/patches/linux/   0100-0900  Amlogic SDK vendor patches (46)
+#   hubv3l/patches/linux/  0993-1021  board dts + local fixes (18)
+# The numbering keeps the original apply order across the two directories,
+# because buildroot walks BR2_GLOBAL_PATCH_DIR entries left to right.
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/kernel-linuxbox-hubv3l.config"
 BR2_LINUX_KERNEL_IMAGEGZ=y
@@ -123,13 +126,10 @@ BR2_TARGET_ROOTFS_EROFS_LZ4HC_LEVEL=12
 # ---- U-Boot: legacy SDK 2015.01 (via uboot-legacy package) ----
 # BR2_TARGET_UBOOT is not set
 BR2_PACKAGE_UBOOT_LEGACY=y
-# NOTE: BR2_PACKAGE_UBOOT_LEGACY_BOARD_DEFCONFIG and _SDK_PATH used to be set
-# here, but uboot-legacy/Config.in never declared those symbols, so kconfig
-# silently dropped them and the original Amlogic SDK tree was never read.
-# The real settings live in the package:
-#   board name  -> UBOOT_LEGACY_BOARD (axg_hubv3l_v1) in uboot-legacy.mk
-#   prebuilt BL / FIP tools -> board/thirdreality/hubv3l/aml-fip/, aml-tools/
-#   bare-metal toolchain    -> AML_BAREMETAL_TOOLCHAIN env var (see uboot-legacy.mk)
+BR2_PACKAGE_UBOOT_LEGACY_BOARD="axg_hubv3l_v1"
+# Prebuilt BL blobs, FIP tools and upgrade templates are shared across the
+# sdk54 line and live in board/thirdreality/sdk54/.
+# Bare-metal toolchain -> AML_BAREMETAL_TOOLCHAIN env var (see uboot-legacy.mk)
 
 # ---- Host tools ----
 BR2_PACKAGE_HOST_DOSFSTOOLS=y

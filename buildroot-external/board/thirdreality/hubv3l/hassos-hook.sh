@@ -11,18 +11,18 @@
 #   - rootfs.erofs       (HAOS rootfs)
 #   - u-boot.bin*        (from uboot-legacy package)
 #
-# Prebuilt blobs (from aml-fip/):
+# Prebuilt blobs (from sdk54/aml-fip/):
 #   - rootfs.cpio.gz     (SDK ramdisk, temporary)
 #   - logo.img
 #
-# Tools (from aml-tools/):
+# Tools (from sdk54/aml-tools/):
 #   - dtbTool, mkbootimg, aml_image_v2_packer_new, aml_upgrade_pkg_gen.sh
 #
 
-BOARD_DIR="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/hubv3l"
-TOOLS_DIR="${BOARD_DIR}/aml-tools"
-FIP_DIR="${BOARD_DIR}/aml-fip"
-UPGRADE_DIR="${BOARD_DIR}/upgrade-axg"
+SDK_DIR="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/sdk54"
+TOOLS_DIR="${SDK_DIR}/aml-tools"
+FIP_DIR="${SDK_DIR}/aml-fip"
+UPGRADE_DIR="${SDK_DIR}/upgrade-axg"
 
 # Override create_disk_image - hubv3l uses Amlogic image packaging
 function create_disk_image() {
