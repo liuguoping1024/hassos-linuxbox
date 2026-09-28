@@ -1,0 +1,14 @@
+[Unit]
+Description=OS data partition (HubV3A eMMC)
+DefaultDependencies=no
+Before=umount.target local-fs.target
+Conflicts=umount.target
+
+[Mount]
+What=/dev/data
+Where=/mnt/data
+Type=ext4
+Options=commit=30
+
+[Install]
+WantedBy=local-fs.target

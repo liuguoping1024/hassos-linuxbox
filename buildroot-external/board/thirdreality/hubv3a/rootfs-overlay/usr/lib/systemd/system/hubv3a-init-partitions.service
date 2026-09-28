@@ -1,0 +1,13 @@
+[Unit]
+Description=Initialize HubV3A eMMC partitions (first boot)
+DefaultDependencies=no
+Before=mnt-overlay.mount mnt-data.mount local-fs-pre.target
+After=systemd-udevd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/hubv3a-init-partitions
+
+[Install]
+WantedBy=local-fs-pre.target

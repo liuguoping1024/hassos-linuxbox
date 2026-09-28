@@ -11,15 +11,15 @@
 #   - rootfs.erofs       (HAOS rootfs)
 #   - u-boot.bin*        (from uboot-legacy package)
 #
-# Prebuilt blobs (from sdk54/aml-fip/):
+# Prebuilt blobs (from amlogic-sdk/aml-fip/):
 #   - rootfs.cpio.gz     (SDK ramdisk, temporary)
 #   - logo.img
 #
-# Tools (from sdk54/aml-tools/):
+# Tools (from amlogic-sdk/aml-tools/):
 #   - dtbTool, mkbootimg, aml_image_v2_packer_new, aml_upgrade_pkg_gen.sh
 #
 
-SDK_DIR="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/sdk54"
+SDK_DIR="${BR2_EXTERNAL_HASSOS_PATH}/board/thirdreality/amlogic-sdk"
 TOOLS_DIR="${SDK_DIR}/aml-tools"
 FIP_DIR="${SDK_DIR}/aml-fip"
 UPGRADE_DIR="${SDK_DIR}/upgrade-axg"

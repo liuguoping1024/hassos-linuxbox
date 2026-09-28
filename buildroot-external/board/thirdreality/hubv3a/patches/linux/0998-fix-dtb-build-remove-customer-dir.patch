@@ -1,0 +1,30 @@
+--- a/Makefile	2026-04-20 15:16:34.772388410 +0800
++++ b/Makefile	2026-04-20 15:17:07.780118265 +0800
+@@ -1375,27 +1375,12 @@
+ 
+ ifneq ($(dtstree),)
+ 
+-ifdef CONFIG_AMLOGIC_MODIFY
+-%.dtb: include/config/kernel.release scripts_dtc
+-	$(if $(filter $@,$(mesondtb)),\
+-	$(Q)$(MAKE) $(build)=$(dtstree) $(dtstree)/amlogic/$@,\
+-	$(Q)$(MAKE) $(build)=customer/$(dtstree) customer/$(dtstree)/$@)
+-else
+ %.dtb: include/config/kernel.release scripts_dtc
+ 	$(Q)$(MAKE) $(build)=$(dtstree) $(dtstree)/$@
+-endif
+ 
+ PHONY += dtbs dtbs_install dtbs_check
+ dtbs: include/config/kernel.release scripts_dtc
+-ifdef CONFIG_AMLOGIC_MODIFY
+ 	$(Q)$(MAKE) $(build)=$(dtstree)/amlogic
+-ifeq ($(srctree)/customer, $(wildcard $(srctree)/customer))
+-	$(Q)$(MAKE) $(build)=customer/$(dtstree)
+-endif
+-else
+-	$(Q)$(MAKE) $(build)=$(dtstree)
+-endif
+-
+ ifneq ($(filter dtbs_check, $(MAKECMDGOALS)),)
+ dtbs: dt_binding_check
+ endif

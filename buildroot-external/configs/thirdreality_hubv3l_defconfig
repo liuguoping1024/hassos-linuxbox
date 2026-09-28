@@ -5,7 +5,7 @@ BR2_DL_DIR="/cache/dl"
 BR2_CCACHE=y
 BR2_CCACHE_DIR="/cache/cc"
 BR2_ENABLE_LTO=y
-BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/sdk54/patches $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/patches"
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/amlogic-sdk/patches $(BR2_EXTERNAL_HASSOS_PATH)/board/thirdreality/hubv3l/patches"
 BR2_SSP_REGULAR=y
 BR2_TARGET_GENERIC_HOSTNAME="HubV3L"
 BR2_TARGET_GENERIC_ISSUE="Welcome to ThirdReality HubV3L (buildroot)"
@@ -23,7 +23,7 @@ BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="5.4.180"
 # Patches applied via BR2_GLOBAL_PATCH_DIR, shared layer first:
-#   sdk54/patches/linux/   0100-0900  Amlogic SDK vendor patches (46)
+#   amlogic-sdk/patches/linux/   0100-0900  Amlogic SDK vendor patches (46)
 #   hubv3l/patches/linux/  0993-1021  board dts + local fixes (18)
 # The numbering keeps the original apply order across the two directories,
 # because buildroot walks BR2_GLOBAL_PATCH_DIR entries left to right.
@@ -128,7 +128,7 @@ BR2_TARGET_ROOTFS_EROFS_LZ4HC_LEVEL=12
 BR2_PACKAGE_UBOOT_LEGACY=y
 BR2_PACKAGE_UBOOT_LEGACY_BOARD="axg_hubv3l_v1"
 # Prebuilt BL blobs, FIP tools and upgrade templates are shared across the
-# sdk54 line and live in board/thirdreality/sdk54/.
+# amlogic-sdk line and live in board/thirdreality/amlogic-sdk/.
 # Bare-metal toolchain -> AML_BAREMETAL_TOOLCHAIN env var (see uboot-legacy.mk)
 
 # ---- Host tools ----

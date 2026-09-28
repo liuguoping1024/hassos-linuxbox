@@ -46,17 +46,17 @@ unset _var _old _new
 #   name : defconfig : line : ram : flash : radio
 #
 # line   mainline = 6.6.120 + u-boot 2024.01 (tracks HAOS upstream / armbian)
-#        sdk54    = Amlogic A113X vendor SDK, 5.4.180 + u-boot 2015.01
+#        amlogic-sdk    = Amlogic A113X vendor SDK, 5.4.180 + u-boot 2015.01
 # ---------------------------------------------------------------------------
 BOARDS=(
-    "hubv3a:thirdreality_hubv3a_defconfig:mainline:1G:8G:zigbee"
     "hubv3:thirdreality_hubv3_defconfig:mainline:2G:8G:zigbee+thread"
     "hubv3b:thirdreality_hubv3b_defconfig:mainline:2G:8G:zigbee+thread"
     "hubv3c:thirdreality_hubv3c_defconfig:mainline:2G:32G:zigbee+thread"
-    "hubv3l:thirdreality_hubv3l_defconfig:sdk54:1G:8G:zigbee+thread"
+    "hubv3a:thirdreality_hubv3a_defconfig:amlogic-sdk:1G:8G:zigbee"
+    "hubv3l:thirdreality_hubv3l_defconfig:amlogic-sdk:1G:8G:zigbee+thread"
 )
 
-# Bare-metal aarch64-elf toolchain, required only by the sdk54 line
+# Bare-metal aarch64-elf toolchain, required only by the amlogic-sdk line
 # (Amlogic u-boot 2015.01 / BL30 / BL301). Override in the environment.
 AML_BAREMETAL_TOOLCHAIN="${AML_BAREMETAL_TOOLCHAIN:-/opt/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-elf}"
 export AML_BAREMETAL_TOOLCHAIN
@@ -101,7 +101,7 @@ Rebuild scope (pick at most one):
   clean       remove output/<board> entirely (toolchain included).
 
 Environment:
-  AML_BAREMETAL_TOOLCHAIN   aarch64-elf toolchain root, sdk54 line only
+  AML_BAREMETAL_TOOLCHAIN   aarch64-elf toolchain root, amlogic-sdk line only
                             current: ${AML_BAREMETAL_TOOLCHAIN}
 
 Output:
@@ -207,9 +207,9 @@ apply_buildroot_patches() {
 
 check_line_prereqs() {
     local line="$1"
-    if [ "${line}" = sdk54 ]; then
+    if [ "${line}" = amlogic-sdk ]; then
         if [ ! -x "${AML_BAREMETAL_TOOLCHAIN}/bin/aarch64-elf-gcc" ]; then
-            echo "Error: sdk54 boards need a bare-metal aarch64-elf toolchain." >&2
+            echo "Error: amlogic-sdk boards need a bare-metal aarch64-elf toolchain." >&2
             echo "  looked for: ${AML_BAREMETAL_TOOLCHAIN}/bin/aarch64-elf-gcc" >&2
             echo "  set AML_BAREMETAL_TOOLCHAIN=/path/to/gcc-linaro-<ver>-aarch64-elf" >&2
             return 1

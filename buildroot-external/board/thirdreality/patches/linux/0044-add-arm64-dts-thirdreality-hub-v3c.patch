@@ -11,7 +11,7 @@ production board:
   hub-v3b as a starting skeleton (WiFi/BT/UART pinout not yet re-verified
   against the V3C schematic (Sch_HubV3MB0.3.PDF); expect follow-up fixes
   once hardware is available for bring-up)
-- Zigbee + Thread supported (same as hub-v3/v3b, unlike hub-v3a)
+- Zigbee + Thread supported, same as hub-v3/v3b
 
 ---
  arch/arm64/boot/dts/amlogic/Makefile              |  1 +
@@ -22,10 +22,10 @@ production board:
 diff --git a/arch/arm64/boot/dts/amlogic/Makefile b/arch/arm64/boot/dts/amlogic/Makefile
 --- a/arch/arm64/boot/dts/amlogic/Makefile
 +++ b/arch/arm64/boot/dts/amlogic/Makefile
-@@ -9,6 +9,7 @@
+@@ -8,6 +8,7 @@
+ dtb-$(CONFIG_ARCH_MESON) += meson-axg-jethome-jethub-j110-rev-3.dtb
  dtb-$(CONFIG_ARCH_MESON) += meson-axg-thirdreality-hub-v3.dtb
  dtb-$(CONFIG_ARCH_MESON) += meson-axg-thirdreality-hub-v3b.dtb
- dtb-$(CONFIG_ARCH_MESON) += meson-axg-thirdreality-hub-v3a.dtb
 +dtb-$(CONFIG_ARCH_MESON) += meson-axg-thirdreality-hub-v3c.dtb
  # dtb-$(CONFIG_ARCH_MESON) += meson-axg-s400.dtb
  # dtb-$(CONFIG_ARCH_MESON) += meson-g12a-radxa-zero.dtb

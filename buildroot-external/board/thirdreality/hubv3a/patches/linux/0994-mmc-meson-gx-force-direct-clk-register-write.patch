@@ -1,0 +1,11 @@
+--- a/drivers/mmc/host/meson-gx-mmc.c
++++ b/drivers/mmc/host/meson-gx-mmc.c
+@@ -279,7 +279,7 @@
+	writel(cfg, host->regs + SD_EMMC_CFG);
+	host->ddr = ddr;
+
+-	if (host->run_pxp_flag == 0) {
++	if (0 /* HUBV3L: bypass runtime clk_set (avoid -EBUSY); probe still acquires+enables clocks */) {
+		if (rate <= 24000000) {
+			ret = clk_set_parent(host->mux[0], host->clk[0]);
+			if (ret) {
