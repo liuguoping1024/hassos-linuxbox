@@ -950,7 +950,7 @@ diff -ruN a/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts b/arc
 +	pinctrl-0 = <&a_uart_pins>;
 +};
 +
-+/* Zigbee (BL706) */
++/* Zigbee (BL702): Z_TXD0/Z_RXD0 here, reset/ISP on GPIOA_17/GPIOA_16 */
 +&uart_AO_B {
 +	status = "okay";
 +	pinctrl-names = "default";
