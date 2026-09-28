@@ -41,12 +41,11 @@ diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
 index 85fd5b1157b..c9cbd168b20 100644
 --- a/arch/arm/dts/Makefile
 +++ b/arch/arm/dts/Makefile
-@@ -206,6 +206,9 @@ dtb-$(CONFIG_ARCH_MESON) += \
+@@ -206,6 +206,8 @@ dtb-$(CONFIG_ARCH_MESON) += \
  	meson-a1-ad401.dtb \
  	meson-axg-s400.dtb \
  	meson-axg-jethome-jethub-j100.dtb \
 +	meson-axg-thirdreality-hub-v3.dtb \
-+	meson-axg-thirdreality-hub-v3a.dtb \
 +	meson-axg-thirdreality-hub-v3b.dtb \
  	meson-gxbb-kii-pro.dtb \
  	meson-gxbb-nanopi-k2.dtb \
