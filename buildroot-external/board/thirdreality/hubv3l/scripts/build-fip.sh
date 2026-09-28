@@ -82,7 +82,9 @@ cat "${FIP_TMP}/bl30_zero.bin" "${FIP_TMP}/bl301_zero.bin" > "${FIP_TMP}/bl30_ne
 rm -f "${FIP_TMP}/zero_tmp"
 
 #--- acs_tool: inject DDR params into BL2 ---
-python "${FIP_TOOLS}/acs_tool.pyc" \
+# The SDK's acs_tool.pyc is Python 2.7 bytecode; use the Python 3 port
+# (decompiled and ported by the SDK team) instead of requiring python2.
+python3 "${FIP_TOOLS}/acs_tool.py" \
     "${FIP_TMP}/bl2.bin" "${FIP_TMP}/bl2_acs.bin" "${FIP_TMP}/acs.bin" 0
 
 #--- fix_blx: BL2 + BL21 ---

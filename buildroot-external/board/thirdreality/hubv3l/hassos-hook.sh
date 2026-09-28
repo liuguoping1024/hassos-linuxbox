@@ -7,7 +7,7 @@
 #
 # Inputs (already in BINARIES_DIR from buildroot):
 #   - Image.gz          (kernel, from BR2_LINUX_KERNEL)
-#   - axg_s420_1g.dtb   (DTB, from BR2_LINUX_KERNEL)
+#   - meson-axg-thirdreality-hub-v3l.dtb  (DTB, from BR2_LINUX_KERNEL)
 #   - rootfs.erofs       (HAOS rootfs)
 #   - u-boot.bin*        (from uboot-legacy package)
 #
@@ -46,6 +46,7 @@ function hassos_post_image() {
     _prepare_system_partition
     _copy_upgrade_templates
     _pack_upgrade_image
+    _rename_and_zip_upgrade_image
 }
 
 # ---------------------------------------------------------------------------
@@ -144,4 +145,21 @@ function _pack_upgrade_image() {
     echo "#   ${out} ($(stat -c %s "${out}") bytes)"
     echo "# Burn with Amlogic USB Burning Tool"
     echo "###########################################################"
+}
+
+# ---------------------------------------------------------------------------
+# 7) Rename to the release naming scheme and zip
+# ---------------------------------------------------------------------------
+function _rename_and_zip_upgrade_image() {
+    local src="${BINARIES_DIR}/aml_upgrade_package.img"
+    local kernel_version="5.4.180"
+    local fw_version="v${VERSION_MAJOR}.${VERSION_MINOR}${VERSION_SUFFIX:+.${VERSION_SUFFIX}}"
+    local name="thirdreality_hubv3l_buildroot_${kernel_version}_${fw_version}.burn.img"
+    local dst="${BINARIES_DIR}/${name}"
+
+    echo "=== Renaming and zipping burn image ==="
+    mv -f "${src}" "${dst}"
+    (cd "${BINARIES_DIR}" && zip -q "${name}.zip" "${name}")
+
+    echo "    -> $(ls -la "${dst}.zip")"
 }

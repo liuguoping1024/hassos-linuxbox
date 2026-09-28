@@ -675,7 +675,7 @@ diff -ruN a/board/amlogic/axg_hubv3l_v1/axg_hubv3l_v1.c b/board/amlogic/axg_hubv
 +
 +	printf("%s board adc:%d\n", __func__, b_id);
 +
-+	strcpy(loc_name, "axg_jethubj100_v1");
++	strcpy(loc_name, "axg_sensi_hubv3l_v1");
 +
 +	if (ddr_size == 0x40000000) {
 +		printf("======== HubV3L: 1GB DDR (2x512MB dual-chip)\n");
