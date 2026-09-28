@@ -8,10 +8,11 @@
 # Mapping (matches DTS aliases):
 #   ttyS0 -> ttyAML0  (Console / uart_AO)
 #   ttyS1 -> ttyAML1  (Bluetooth / uart_A)
-#   ttyS3 -> ttyAML3  (Zigbee / uart_AO_B)
-#   ttyS6 -> ttyAML6  (Thread / uart_B)
+#   ttyS3 -> ttyAML3  (Zigbee / uart_AO_B, on GPIOAO_4/5 here)
+#
+# No ttyAML6 rule: uart_B is disabled on this board, GPIOX_16/17 carry no
+# net, so there is no Thread radio and ttyS6 never appears.
 
 KERNEL=="ttyS0", SUBSYSTEM=="tty", SYMLINK+="ttyAML0"
 KERNEL=="ttyS1", SUBSYSTEM=="tty", SYMLINK+="ttyAML1"
 KERNEL=="ttyS3", SUBSYSTEM=="tty", SYMLINK+="ttyAML3"
-KERNEL=="ttyS6", SUBSYSTEM=="tty", SYMLINK+="ttyAML6"

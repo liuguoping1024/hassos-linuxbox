@@ -64,7 +64,7 @@ export PYTHONWARNINGS="ignore::SyntaxWarning"
 check_thread_support()
 {
     if [ ! -c "/dev/ttyAML6" ]; then
-        echo "Error: Thread is not supported on this hardware (V3A). /dev/ttyAML6 not found."
+        echo "Error: Thread is not supported on this hardware. /dev/ttyAML6 not found."
         exit 1
     fi
 }
