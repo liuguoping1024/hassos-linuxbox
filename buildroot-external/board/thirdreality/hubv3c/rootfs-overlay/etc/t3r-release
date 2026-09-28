@@ -1,6 +1,7 @@
 PRETTY_NAME="Third Reality Care Hub"
-NAME="LinuxBox/HubV3B"
+NAME="LinuxBox/HubV3C"
 MODLE="3RCH01091H"
+MAINBOARD="v0.2"
 VERSION_ID="2140150"
 VERSION="v2.14.01.50"
 HOME_URL="https://3reality.com/"

@@ -1,6 +1,7 @@
 PRETTY_NAME="LinuxBox/HubV3"
 NAME="LinuxBox/HubV3"
 MODLE="3RLB01081MH"
+MAINBOARD="v0.3"
 VERSION_ID="2140150"
 VERSION="v2.14.01.50"
 HOME_URL="https://3reality.com/"
