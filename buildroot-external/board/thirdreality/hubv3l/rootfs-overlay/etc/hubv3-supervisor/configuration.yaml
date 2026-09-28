@@ -26,25 +26,22 @@ hardware:
   
   # Button GPIO Configuration
   # HubV3 / HubV3B: chip="gpiochip0", line=26
-  # HubV3A:         chip="gpiochip1", line=11
+  # HubV3L:         GPIOAO_11, on the 15-line AO bank
   button:
-    chip: "gpiochip1"
+    chip: "gpiochip0"
     line: 11
 
   # Zigbee Module GPIO Configuration (BL702 reset/boot pins)
-  # HubV3/HubV3B defaults: reset_line=1, boot_line=3 (GPIOZ_1/GPIOZ_3)
-  # HubV3A values:  reset_line=43, boot_line=42 (GPIOA_17/GPIOA_16)
-  # chip: GPIO chip number (integer, e.g., 0 for gpiochip0)
+  # GPIOZ_1 = line 1 (reset), GPIOZ_3 = line 3 (boot/ISP)
   zigbee:
-    chip: 1
+    chip: "gpiochip1"
     reset_line: 1
     boot_line: 3
 
   # Thread Module GPIO Configuration
-  # HubV3/HubV3B defaults: reset_line=27, boot_line=29 (GPIOA_1/GPIOA_3)
-  # HubV3A values:  reset_line=2,  boot_line=4
+  # GPIOA_1 = line 27 (reset), GPIOA_3 = line 29 (boot/ISP)
   thread:
-    chip: 1
+    chip: "gpiochip1"
     reset_line: 27
     boot_line: 29
 

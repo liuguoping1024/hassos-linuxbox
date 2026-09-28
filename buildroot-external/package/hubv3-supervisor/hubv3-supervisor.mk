@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-HUBV3_SUPERVISOR_VERSION = 9c14568fc9c669d2d23ba07a366d343f20f32ed3
+HUBV3_SUPERVISOR_VERSION = 7ed9fa38314c38aa7c881fb1fdb41a6a76b9ff2b
 HUBV3_SUPERVISOR_SITE = git@github.com:liuguoping1024/LinuxBox_Supervisor.git
 HUBV3_SUPERVISOR_SITE_METHOD = git
 HUBV3_SUPERVISOR_LICENSE = Proprietary
