@@ -25,11 +25,12 @@ hardware:
       line: 5
   
   # Button GPIO Configuration
-  # HubV3 / HubV3B: chip="gpiochip0", line=26
-  # HubV3L:         GPIOAO_11, on the 15-line AO bank
+  # HubV3L: GPIOA_0 = line 26 = net BUTN_USR_A0, on the periphs bank.
+  # uart_A's pinctrl is split (patch 1001) precisely to free this pin, so
+  # unlike hubv3a's GPIOAO_11 the button is not on the AO bank here.
   button:
-    chip: "gpiochip0"
-    line: 11
+    chip: "gpiochip1"
+    line: 26
 
   # Zigbee Module GPIO Configuration (BL702 reset/boot pins)
   # GPIOZ_1 = line 1 (reset), GPIOZ_3 = line 3 (boot/ISP)

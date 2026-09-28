@@ -1,0 +1,52 @@
+dts: hubv3l: disable the audio DAIs, they squat on button and Thread pins
+
+No audio device is fitted on this board - boot ends with "No soundcards
+found" - but the TDM and SPDIF nodes still grab their pins, and on this
+PCB those pins do other jobs:
+
+  GPIOA_0  BUTN_USR_A0  user button    <- tdmc_mclk (mclk_a)
+  GPIOA_3  DB_BOOT2     Thread boot    <- tdmc_pins (tdmc_fs)
+
+The symptoms were a button the supervisor could never request (gpioinfo
+showed GPIOA_0 as "kernel [used]" even though patch 1001 splits uart_A's
+pinctrl to free it) and:
+
+  pin GPIOA_3 already requested by ff642000.audiobus:tdmc;
+  cannot claim for periphs-banks:440
+
+Disabling tdma/tdmc/spdif releases GPIOA_0 and GPIOA_2..4 in one go, which
+beats picking pin groups out of each node's pinctrl list and revisiting it
+every time another of these pins turns out to be wired to something.
+
+tdma only covers GPIOX_12..15 and collides with nothing today; it goes
+along with the others because it is equally unused. spdif already carried
+status = "okay", so that one is flipped rather than given a second
+property.
+
+--- a/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3l.dts
++++ b/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3l.dts
+@@ -564,6 +564,7 @@
+ &audiobus {
+ 	tdma: tdma {
+ 		compatible = "amlogic, axg-snd-tdma";
++		status = "disabled";
+ 		#sound-dai-cells = <0>;
+ 		dai-tdm-lane-slot-mask-in = <1 0>;
+ 		dai-tdm-lane-slot-mask-out = <0 1>;
+@@ -577,6 +578,7 @@
+ 
+ 	tdmc: tdmc {
+ 		compatible = "amlogic, axg-snd-tdmc";
++		status = "disabled";
+ 		#sound-dai-cells = <0>;
+ 		dai-tdm-lane-slot-mask-out = <1 0>;
+ 		dai-tdm-lane-slot-mask-in = <0 1>;
+@@ -619,7 +621,7 @@
+ 		 * 7: "Enable:192K",
+ 		 */
+ 		auto_asrc = <3>;
+-		status = "okay";
++		status = "disabled";
+ 	};
+ 
+ 	pdm: pdm {
