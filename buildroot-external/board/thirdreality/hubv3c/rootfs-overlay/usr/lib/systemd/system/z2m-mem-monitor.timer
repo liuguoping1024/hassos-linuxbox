@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Zigbee2MQTT memory monitor
+ConditionPathExists=/opt/zigbee2mqtt/index.js
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

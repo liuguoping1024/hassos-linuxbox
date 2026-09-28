@@ -1,0 +1,2 @@
+# HubV3B uses the same DTB as HubV3
+fdtfile=amlogic/meson-axg-thirdreality-hub-v3c.dtb
