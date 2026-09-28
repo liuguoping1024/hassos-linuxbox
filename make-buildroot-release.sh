@@ -51,7 +51,7 @@ unset _var _old _new
 BOARDS=(
     "hubv3:thirdreality_hubv3_defconfig:mainline:2G:8G:zigbee+thread"
     "hubv3b:thirdreality_hubv3b_defconfig:mainline:2G:8G:zigbee+thread"
-    "hubv3c:thirdreality_hubv3c_defconfig:mainline:2G:32G:zigbee+thread"
+    "hubv3c:thirdreality_hubv3c_defconfig:mainline:2G:32G:zigbee"
     "hubv3a:thirdreality_hubv3a_defconfig:amlogic-sdk:1G:8G:zigbee"
     "hubv3l:thirdreality_hubv3l_defconfig:amlogic-sdk:1G:8G:zigbee+thread"
 )
