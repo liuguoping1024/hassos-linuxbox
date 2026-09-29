@@ -31,7 +31,7 @@ diff -ruN a/arch/arm64/boot/dts/amlogic/Makefile b/arch/arm64/boot/dts/amlogic/M
 diff -ruN a/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts b/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts
 --- a/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts	1970-01-01 08:00:00.000000000 +0800
 +++ b/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts	2026-09-28 13:01:56.786840775 +0800
-@@ -0,0 +1,929 @@
+@@ -0,0 +1,930 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2021 Amlogic, Inc. All rights reserved.
@@ -948,6 +948,7 @@ diff -ruN a/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3a.dts b/arc
 +	status = "okay";
 +	pinctrl-names = "default";
 +	pinctrl-0 = <&a_uart_pins>;
++	uart-has-rtscts;
 +};
 +
 +/* Zigbee (BL702): Z_TXD0/Z_RXD0 here, reset/ISP on GPIOA_17/GPIOA_16 */

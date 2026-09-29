@@ -1,0 +1,26 @@
+dts: hubv3l: restore uart_A hardware flow control for Bluetooth
+
+Patch 1001 cut uart_A down to tx/rx, believing that freed GPIOA_0 for the
+button. It did not: uart_A is GPIOX_8..11, and GPIOA_0 was held by the
+audio tdmc_mclk (disabled in patch 1022). What the cut actually removed
+was CTS/RTS on GPIOX_10/11, and the W1 Bluetooth needs them. aml_hciattach
+gets one vendor event back at 115200, switches baud rate, and then times
+out.
+
+Every working reference agrees on four wires plus uart-has-rtscts:
+
+  SDK axg_s400*.dts   &uart_A { uart-has-rtscts; }  (default a_uart_pins)
+  6.6 jethub-j1xx     uart_a_pins + uart_a_cts_rts_pins, uart-has-rtscts
+
+--- a/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3l.dts
++++ b/arch/arm64/boot/dts/amlogic/meson-axg-thirdreality-hub-v3l.dts
+@@ -916,7 +916,8 @@
+ &uart_A {
+ 	status = "okay";
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&a_uart_txrx_pins>;
++	pinctrl-0 = <&a_uart_txrx_pins &a_uart_cts_rts_pins>;
++	uart-has-rtscts;
+ };
+ 
+ /* Zigbee (BL706) */

@@ -17,7 +17,7 @@ enable hubv3-usb-sync.service
 
 # WiFi/BT drivers
 enable amlogicw1.service
-disable amlogicw1-bt.service
+enable amlogicw1-bt.service
 
 # RAUC not used on hubv3l — masked via /dev/null symlink
 disable raucdb-update.service
