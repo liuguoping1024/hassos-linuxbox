@@ -25,6 +25,7 @@ serial:
   adapter: blz
 advanced:
   log_level: info
+  enable_external_js: true
   channel: 11
   pan_id: 6754
   network_key: GENERATE
