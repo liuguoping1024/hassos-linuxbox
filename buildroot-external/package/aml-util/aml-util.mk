@@ -13,7 +13,7 @@ AML_UTIL_DEPENDENCIES = linux libusb
 # Build flags: tell the driver loader where to find Amlogic WiFi modules
 AML_UTIL_CFLAGS = $(TARGET_CFLAGS) \
 	-I$(STAGING_DIR)/usr/include \
-	-DAMLOGIC_MODULES_PATH=/lib/modules/$(LINUX_VERSION_PROBED)/kernel/amlogic/wifi
+	-DAMLOGIC_MODULES_PATH=/lib/modules/$(LINUX_VERSION_PROBED)/extra/amlogic/wifi
 
 AML_UTIL_LDFLAGS = -lusb-1.0
 

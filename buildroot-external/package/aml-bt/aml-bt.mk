@@ -25,7 +25,7 @@ AML_BT_LICENSE = PROPRIETARY
 
 AML_BT_DEPENDENCIES = linux aml-wifi
 
-AML_BT_MODULE_DIR = kernel/amlogic/bt
+AML_BT_MODULE_DIR = extra/amlogic/bt
 AML_BT_INSTALL_DIR = $(TARGET_DIR)/lib/modules/$(LINUX_VERSION_PROBED)/$(AML_BT_MODULE_DIR)
 
 # Path to WiFi driver's Module.symvers (provides g_w1_hif_ops etc.)

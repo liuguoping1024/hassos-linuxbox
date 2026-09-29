@@ -57,25 +57,20 @@ done
 # Fix overlay presets
 "${HOST_DIR}/bin/systemctl" --root="${TARGET_DIR}" preset-all
 
-# --- Persist out-of-tree aml-wifi kernel modules across kernel rebuilds -----
-# Root cause: whenever `linux` is (re)built, buildroot reinstalls the in-kernel
-# modules into $TARGET_DIR/lib/modules/<ver> and wipes the aml-wifi .ko that
-# were installed earlier. On incremental builds aml-wifi is skipped (its build
-# stamp is present), so its modules end up missing from the rootfs and WiFi
-# fails to load at boot ("insmod: ERROR: could not load module").
-# This runs on every build, right before the rootfs image is generated, and
-# re-syncs the modules (idempotent). Guarded by the .ko existence check, so it
-# only affects boards that actually build aml-wifi.
-for _amlvmac in "${BUILD_DIR}"/aml-wifi-*/project_w1/vmac; do
-	[ -f "${_amlvmac}/aml_sdio.ko" ] || continue
-	_krel=$(ls "${TARGET_DIR}/lib/modules" 2>/dev/null | head -1)
-	[ -n "${_krel}" ] || continue
-	_wifidir="${TARGET_DIR}/lib/modules/${_krel}/kernel/amlogic/wifi"
-	mkdir -p "${_wifidir}"
-	for _ko in aml_sdio.ko vlsicomm.ko; do
-		[ -f "${_amlvmac}/${_ko}" ] && install -m 0644 "${_amlvmac}/${_ko}" "${_wifidir}/${_ko}"
-	done
-	"${HOST_DIR}/sbin/depmod" -b "${TARGET_DIR}" "${_krel}" 2>/dev/null || true
-	echo "post-build: re-synced aml-wifi modules into ${_wifidir}"
+# --- Out-of-tree Amlogic W1 modules must be in the image ---------------------
+# They live under extra/, which the kernel's modules_install leaves alone
+# (it only replaces kernel/). Fail here rather than ship a board with no
+# WiFi or Bluetooth.
+_krel=$(ls "${TARGET_DIR}/lib/modules" 2>/dev/null | head -1)
+_amlmissing=""
+grep -q '^BR2_PACKAGE_AML_WIFI=y' "${BR2_CONFIG}" && for _ko in wifi/aml_sdio.ko wifi/vlsicomm.ko; do
+	[ -f "${TARGET_DIR}/lib/modules/${_krel}/extra/amlogic/${_ko}" ] || _amlmissing="${_amlmissing} ${_ko}"
 done
+grep -q '^BR2_PACKAGE_AML_BT=y' "${BR2_CONFIG}" && \
+	{ [ -f "${TARGET_DIR}/lib/modules/${_krel}/extra/amlogic/bt/sdio_bt.ko" ] || _amlmissing="${_amlmissing} bt/sdio_bt.ko"; }
+if [ -n "${_amlmissing}" ]; then
+	echo "post-build: ERROR: Amlogic modules missing from rootfs:${_amlmissing}" >&2
+	echo "post-build: run 'make aml-wifi-reinstall aml-bt-reinstall' in the output dir" >&2
+	exit 1
+fi
 # ---------------------------------------------------------------------------

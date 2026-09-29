@@ -1,10 +1,10 @@
 #!/bin/bash
 # HubV3L WiFi driver loader (5.4 kernel, out-of-tree build)
 #
-# Modules installed to /lib/modules/$(uname -r)/kernel/amlogic/wifi/
+# Modules installed to /lib/modules/$(uname -r)/extra/amlogic/wifi/
 # by the aml-wifi buildroot package.
 
-MODDIR="/lib/modules/$(uname -r)/kernel/amlogic/wifi"
+MODDIR="/lib/modules/$(uname -r)/extra/amlogic/wifi"
 
 # Power on the WiFi chip before loading modules. The /sys/class/aml_wifi/power
 # node is provided by the in-kernel aml_wifi platform driver (present at boot,
