@@ -20,6 +20,7 @@ fi
 # Unconditional: every board runs a broker, so /etc/mosquitto and
 # var-lib-mosquitto.mount both live in this shared overlay.
 mkdir -p /mnt/overlay/var/lib/mosquitto
+chown mosquitto:mosquitto /mnt/overlay/var/lib/mosquitto
 
 # Supervisor persistent state (survives the zram /var remount).
 # Unconditional - the supervisor runs on every board.

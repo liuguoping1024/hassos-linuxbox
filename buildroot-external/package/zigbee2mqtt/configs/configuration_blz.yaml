@@ -28,4 +28,6 @@ homeassistant:
   status_topic: 'homeassistant/status'
   experimental_event_entities: false
   legacy_action_sensor: false
+device_options:
+  retain: true
 

@@ -4,18 +4,18 @@
 
 ## 包含的组件
 
-1. **zigbee-herdsman** - 定制版本 (分支: 3r_blz_7.0.3)
+1. **zigbee-herdsman** - 定制版本 (分支: 3r_blz_10.0.8)
    - 仓库: https://github.com/thirdreality/zigbee-herdsman.git
    - 安装路径: `/opt/zigbee-herdsman`
 
-2. **zigbee2mqtt** - 定制版本 (分支: 3r_blz_2.7.0)
+2. **zigbee2mqtt** - 定制版本 (分支: 3r_blz_2.11.0)
    - 仓库: https://github.com/thirdreality/zigbee2mqtt.git
    - 安装路径: `/opt/zigbee2mqtt`
 
 3. **mosquitto** - MQTT broker (版本: 2.0.20)
    - Buildroot 内置包
 
-4. **nodejs** - JavaScript 运行时 (版本: 20.18.2)
+4. **nodejs** - JavaScript 运行时 (版本: 24.21.0)
    - Buildroot 内置包
 
 ## 配置
@@ -85,7 +85,7 @@ systemctl enable zigbee2mqtt
 
 ```
 zigbee2mqtt
-├── nodejs (20.18.2)
+├── nodejs (24.21.0)
 ├── npm
 ├── mosquitto (MQTT broker)
 └── zigbee-herdsman (定制版本)
@@ -115,7 +115,7 @@ zigbee2mqtt
 
 ## 版本信息
 
-- zigbee-herdsman: 分支 3r_blz_7.0.3
-- zigbee2mqtt: 分支 3r_blz_2.7.0
+- zigbee-herdsman: 分支 3r_blz_10.0.8
+- zigbee2mqtt: 分支 3r_blz_2.11.0
 - mosquitto: 2.0.20
-- nodejs: 20.18.2
+- nodejs: 24.21.0
