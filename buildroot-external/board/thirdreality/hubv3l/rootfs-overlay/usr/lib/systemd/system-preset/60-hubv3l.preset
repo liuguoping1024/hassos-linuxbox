@@ -13,7 +13,6 @@ disable debug-shell.service
 
 # ThirdReality services (from shared overlay)
 enable hubv3-overlay.service
-enable hubv3-usb-sync.service
 
 # WiFi/BT drivers
 enable amlogicw1.service

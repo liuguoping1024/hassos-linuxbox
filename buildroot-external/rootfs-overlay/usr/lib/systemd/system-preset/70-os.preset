@@ -1,5 +1,4 @@
 disable apparmor.service
-disable hubv3-usb-sync.service
 
 enable systemd-time-wait-sync.service
 enable os-bt-cache.timer
